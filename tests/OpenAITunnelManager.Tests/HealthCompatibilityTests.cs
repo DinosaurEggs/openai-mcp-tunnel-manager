@@ -66,6 +66,43 @@ public sealed class HealthCompatibilityTests
         Assert.Contains("拒绝访问非 loopback Health URL", text, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task LoopbackRedirectToRemoteHostIsNotFollowed()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await using var server = await RawLoopbackHttpServer.StartAsync(
+            "HTTP/1.1 302 Found\r\nLocation: https://example.com/health\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+            token);
+        var connection = RuntimeConnection() with
+        {
+            HealthDetailsUrl = $"http://127.0.0.1:{server.Port}/redirect",
+            McpHealthUrl = string.Empty
+        };
+
+        var text = await Operations(connection).GetDetailedHealthAsync(connection, token);
+
+        Assert.Contains("拒绝跟随 Health 重定向", text, StringComparison.Ordinal);
+        Assert.Contains("example.com", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task OversizedHealthResponseIsRejectedBeforeBufferingBody()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await using var server = await RawLoopbackHttpServer.StartAsync(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 1048577\r\nConnection: close\r\n\r\n",
+            token);
+        var connection = RuntimeConnection() with
+        {
+            HealthDetailsUrl = $"http://127.0.0.1:{server.Port}/huge",
+            McpHealthUrl = string.Empty
+        };
+
+        var text = await Operations(connection).GetDetailedHealthAsync(connection, token);
+
+        Assert.Contains("超过 1024 KiB 限制", text, StringComparison.Ordinal);
+    }
+
     private static TunnelClientOperations Operations(TunnelConnection connection) =>
         new(new TunnelClientOptions(), new StaticInventory(connection));
 
@@ -142,6 +179,52 @@ public sealed class HealthCompatibilityTests
                 await stream.WriteAsync(body, cancellationToken);
                 await stream.FlushAsync(cancellationToken);
             }
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            _cts.Cancel();
+            _listener.Stop();
+            try { await _serveTask; } catch (OperationCanceledException) { } catch (SocketException) { }
+            _cts.Dispose();
+        }
+    }
+
+    private sealed class RawLoopbackHttpServer : IAsyncDisposable
+    {
+        private readonly TcpListener _listener;
+        private readonly Task _serveTask;
+        private readonly CancellationTokenSource _cts = new();
+        private readonly string _response;
+
+        private RawLoopbackHttpServer(TcpListener listener, string response)
+        {
+            _listener = listener;
+            _response = response;
+            Port = ((IPEndPoint)listener.LocalEndpoint).Port;
+            _serveTask = ServeAsync(_cts.Token);
+        }
+
+        public int Port { get; }
+
+        public static Task<RawLoopbackHttpServer> StartAsync(string response, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start();
+            return Task.FromResult(new RawLoopbackHttpServer(listener, response));
+        }
+
+        private async Task ServeAsync(CancellationToken cancellationToken)
+        {
+            using var client = await _listener.AcceptTcpClientAsync(cancellationToken);
+            await using var stream = client.GetStream();
+            using var reader = new StreamReader(stream, Encoding.ASCII, detectEncodingFromByteOrderMarks: false, leaveOpen: true);
+            string? line;
+            do { line = await reader.ReadLineAsync(cancellationToken); } while (!string.IsNullOrEmpty(line));
+            var responseBytes = Encoding.ASCII.GetBytes(_response);
+            await stream.WriteAsync(responseBytes, cancellationToken);
+            await stream.FlushAsync(cancellationToken);
         }
 
         public async ValueTask DisposeAsync()
