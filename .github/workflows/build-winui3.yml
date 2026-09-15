@@ -140,6 +140,28 @@ jobs:
             }
           }
 
+          $forbiddenDesktopDlls = @(
+            "System.Windows.Forms.dll",
+            "PresentationFramework.dll",
+            "PresentationCore.dll",
+            "WindowsFormsIntegration.dll"
+          )
+          $desktopHits = Get-ChildItem $output -File -Recurse | Where-Object { $forbiddenDesktopDlls -contains $_.Name }
+          if ($desktopHits) {
+            $desktopHits | ForEach-Object { Write-Host "Forbidden published desktop-stack DLL: $($_.FullName)" }
+            throw 'Published artifact contains WinForms/WPF runtime files; pure WinUI 3 requirement violated.'
+          }
+
+          $pythonHits = Get-ChildItem $output -File -Recurse | Where-Object {
+            $_.Extension -eq '.py' -or
+            $_.Name -eq 'pyproject.toml' -or
+            $_.Name -like 'requirements*.txt'
+          }
+          if ($pythonHits) {
+            $pythonHits | ForEach-Object { Write-Host "Forbidden published Python artifact: $($_.FullName)" }
+            throw 'Published artifact contains Python files.'
+          }
+
       - name: Smoke test x64 startup
         if: matrix.rid == 'win-x64'
         shell: pwsh
