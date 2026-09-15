@@ -42,6 +42,22 @@ tunnel-client runtimes stop <alias> --json
 
 The application is being built around five workspaces: Overview, Connections, Logs, Diagnostics, and Settings.
 
+## Application log
+
+Startup and unhandled exceptions are written to:
+
+```text
+%LOCALAPPDATA%\OpenAITunnelManager\logs\app.log
+```
+
+Open it quickly from PowerShell:
+
+```powershell
+notepad "$env:LOCALAPPDATA\OpenAITunnelManager\logs\app.log"
+```
+
+The log starts before the main window is created, so failures during App.xaml initialization, dependency injection, WinUI window construction, or initial tunnel-client synchronization can be diagnosed even when the window never appears.
+
 ## Build
 
 ```powershell
