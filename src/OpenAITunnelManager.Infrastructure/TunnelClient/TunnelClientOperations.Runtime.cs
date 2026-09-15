@@ -114,7 +114,18 @@ public sealed partial class TunnelClientOperations
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (process.HasExited) break;
-            if (File.Exists(healthFile) && !string.IsNullOrWhiteSpace(await File.ReadAllTextAsync(healthFile, cancellationToken))) break;
+            if (File.Exists(healthFile))
+            {
+                try
+                {
+                    if (!string.IsNullOrWhiteSpace(await File.ReadAllTextAsync(healthFile, cancellationToken))) break;
+                }
+                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                {
+                    // tunnel-client may still have the URL file open while writing it.
+                    // Treat this as a transient startup race and retry until the normal deadline.
+                }
+            }
             await Task.Delay(75, cancellationToken);
         }
         if (process.HasExited) throw new InvalidOperationException($"Profile 前台进程已退出，退出码 {process.ExitCode}。日志：{logPath}");
