@@ -20,6 +20,10 @@ public sealed partial class MainWindow
 
     private void RequestUiPolish() => DispatcherQueue.TryEnqueue(ApplyUiPolish);
 
+    // This remains as the settings-save hook used by MainWindow.Actions. Inventory polling
+    // no longer exists; saving settings only ensures the independent log viewer timer runs.
+    private void ResetTimers() => _logTimer.Start();
+
     private void ApplyUiPolish()
     {
         CacheResponsiveElements();
