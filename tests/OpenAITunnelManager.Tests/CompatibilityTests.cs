@@ -1,0 +1,112 @@
+using OpenAITunnelManager.Infrastructure.Settings;
+using OpenAITunnelManager.Infrastructure.Windows;
+using Xunit;
+
+namespace OpenAITunnelManager.Tests;
+
+public sealed class CompatibilityTests
+{
+    [Fact]
+    public async Task BrokenSettingsArePreservedAsBrokenBackup()
+    {
+        var token = TestContext.Current.CancellationToken;
+        using var temp = new TempDirectory();
+        var path = Path.Combine(temp.Path, "config", "settings.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        await File.WriteAllTextAsync(path, "{broken", token);
+
+        var loaded = await new JsonSettingsStore(path).LoadAsync(token);
+
+        Assert.Empty(loaded.ProfilePreferences);
+        Assert.True(File.Exists(path + ".broken"));
+    }
+
+    [Fact]
+    public async Task PythonLegacySettingsAreMigratedWithoutTunnelDefinitions()
+    {
+        var token = TestContext.Current.CancellationToken;
+        using var temp = new TempDirectory();
+        var path = Path.Combine(temp.Path, "config", "settings.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        const string legacy = """
+            {
+              "schema_version": 1,
+              "binary_path": "C:/Tools/tunnel-client.exe",
+              "close_to_tray": false,
+              "start_with_windows": true,
+              "refresh_interval_ms": 5000,
+              "profile_preferences": {
+                "profile:kept": {"auto_connect": true, "auto_reconnect": false, "enabled": true}
+              },
+              "tunnels": [
+                {
+                  "alias": "idea",
+                  "tunnel_id": "old-private-definition",
+                  "mcp_target": "http://old-private-target",
+                  "api_key": "must-not-survive",
+                  "auto_connect": true,
+                  "auto_reconnect": true,
+                  "enabled": false
+                }
+              ]
+            }
+            """;
+        await File.WriteAllTextAsync(path, legacy, token);
+
+        var loaded = await new JsonSettingsStore(path).LoadAsync(token);
+
+        Assert.Equal(2, loaded.SchemaVersion);
+        Assert.Equal("C:/Tools/tunnel-client.exe", loaded.TunnelClientPath);
+        Assert.False(loaded.CloseToTray);
+        Assert.True(loaded.StartWithWindows);
+        Assert.Equal(5000, loaded.RefreshIntervalMs);
+        Assert.True(loaded.ProfilePreferences["profile:kept"].AutoConnect);
+        Assert.True(loaded.ProfilePreferences["idea"].AutoConnect);
+        Assert.True(loaded.ProfilePreferences["idea"].AutoReconnect);
+        Assert.False(loaded.ProfilePreferences["idea"].Enabled);
+
+        var rewritten = await File.ReadAllTextAsync(path, token);
+        Assert.Contains("\"schemaVersion\": 2", rewritten, StringComparison.Ordinal);
+        Assert.Contains("\"tunnelClientPath\"", rewritten, StringComparison.Ordinal);
+        Assert.DoesNotContain("tunnels", rewritten, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("old-private-definition", rewritten, StringComparison.Ordinal);
+        Assert.DoesNotContain("old-private-target", rewritten, StringComparison.Ordinal);
+        Assert.DoesNotContain("must-not-survive", rewritten, StringComparison.Ordinal);
+        Assert.DoesNotContain("mcp_target", rewritten, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void WindowsCredentialManagerRoundTrip()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var store = new WindowsCredentialStore();
+        var key = "test-" + Guid.NewGuid().ToString("N");
+        var secret = "sk-test-" + Guid.NewGuid().ToString("N");
+        try
+        {
+            store.Set(key, secret);
+            Assert.Equal(secret, store.Get(key));
+        }
+        finally
+        {
+            store.Delete(key);
+        }
+        Assert.Null(store.Get(key));
+    }
+
+    private sealed class TempDirectory : IDisposable
+    {
+        public TempDirectory()
+        {
+            Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "OpenAITunnelManager.Tests", Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(Path);
+        }
+
+        public string Path { get; }
+
+        public void Dispose()
+        {
+            try { Directory.Delete(Path, recursive: true); } catch { }
+        }
+    }
+}
