@@ -8,6 +8,8 @@ public interface ITunnelClientOperations
     Task<TunnelClientCapabilities> GetCapabilitiesAsync(CancellationToken cancellationToken = default);
     Task<TunnelConnection> GetStatusAsync(TunnelConnection connection, CancellationToken cancellationToken = default);
     Task CreateProfileAsync(ProfileSpec spec, CancellationToken cancellationToken = default);
+    Task ImportProfileAsync(string name, string sourcePath, CancellationToken cancellationToken = default);
+    Task ExportProfileAsync(string name, string expectedPath, string destinationPath, CancellationToken cancellationToken = default);
     Task<string> ReadProfileTextAsync(string name, string expectedPath, CancellationToken cancellationToken = default);
     Task SaveProfileTextAsync(string name, string expectedPath, string text, CancellationToken cancellationToken = default);
     Task DeleteProfileAsync(string name, string expectedPath, CancellationToken cancellationToken = default);
