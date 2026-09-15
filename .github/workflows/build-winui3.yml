@@ -92,15 +92,13 @@ jobs:
         run: |
           $exe = (Resolve-Path "artifacts/win-x64/OpenAITunnelManager.exe").Path
           $workingDirectory = Split-Path $exe
-          $env:LOCALAPPDATA = Join-Path $env:RUNNER_TEMP "OpenAITunnelManagerSmoke"
-          New-Item -ItemType Directory -Force -Path $env:LOCALAPPDATA | Out-Null
           $startedAt = Get-Date
 
           $process = Start-Process -FilePath $exe -WorkingDirectory $workingDirectory -PassThru
           Start-Sleep -Seconds 5
 
           if ($process.HasExited) {
-            $log = Join-Path $env:LOCALAPPDATA "OpenAITunnelManager\logs\app.log"
+            $log = Join-Path $workingDirectory "logs\app.log"
             if (Test-Path $log) {
               Write-Host "----- app.log -----"
               Get-Content $log
