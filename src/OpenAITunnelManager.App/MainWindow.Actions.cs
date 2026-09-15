@@ -20,18 +20,18 @@ public sealed partial class MainWindow
             return;
         }
 
-        var name = new TextBox { Header = "Profile 名称", PlaceholderText = "idea" };
-        var tunnelId = new TextBox { Header = "Tunnel ID", PlaceholderText = "tunnel_..." };
+        var name = new TextBox { Header = "Profile 名称", PlaceholderText = "my-profile", HorizontalAlignment = HorizontalAlignment.Stretch };
+        var tunnelId = new TextBox { Header = "Tunnel ID", PlaceholderText = "tunnel_ + 32 位小写十六进制字符", HorizontalAlignment = HorizontalAlignment.Stretch };
         var type = new ComboBox { Header = "MCP 类型", SelectedIndex = 0, HorizontalAlignment = HorizontalAlignment.Stretch };
         type.Items.Add("HTTP URL");
         type.Items.Add("STDIO Command");
-        var target = new TextBox { Header = "MCP 地址 / 命令", PlaceholderText = "http://127.0.0.1:64343/stream" };
-        var secret = new PasswordBox { Header = "Runtime API Key", PlaceholderText = "可留空，填写后仅保存到 Windows 凭据管理器" };
+        var target = new TextBox { Header = "MCP 地址 / 命令", PlaceholderText = "例如 http://127.0.0.1:8000/mcp", HorizontalAlignment = HorizontalAlignment.Stretch };
+        var secret = new PasswordBox { Header = "Runtime API Key", PlaceholderText = "可留空，填写后仅保存到 Windows 凭据管理器", HorizontalAlignment = HorizontalAlignment.Stretch };
         var enabled = new CheckBox { Content = "启用此配置", IsChecked = true };
         var autoConnect = new CheckBox { Content = "程序启动后自动连接" };
         var autoReconnect = new CheckBox { Content = "异常停止后自动重连" };
         var error = new TextBlock { TextWrapping = TextWrapping.Wrap, Foreground = new SolidColorBrush(Microsoft.UI.Colors.IndianRed) };
-        var panel = new StackPanel { Spacing = 10 };
+        var panel = new StackPanel { Spacing = 10, HorizontalAlignment = HorizontalAlignment.Stretch };
         foreach (var control in new UIElement[] { name, tunnelId, type, target, secret, enabled, autoConnect, autoReconnect, error }) panel.Children.Add(control);
 
         var dialog = NewDialog("新建 tunnel-client Profile", panel, "创建");
@@ -72,9 +72,9 @@ public sealed partial class MainWindow
         try
         {
             var data = await ViewModel.LoadSelectedProfileAsync();
-            var tunnelId = new TextBox { Header = "Tunnel ID", Text = data.TunnelId };
-            var target = new TextBox { Header = data.TargetKind == "command" ? "main MCP Command" : "main MCP URL", Text = data.TargetValue };
-            var secret = new PasswordBox { Header = "新的 Runtime API Key", PlaceholderText = data.HasSavedSecret ? "已保存；留空表示不修改" : "未保存；留空使用环境变量" };
+            var tunnelId = new TextBox { Header = "Tunnel ID", Text = data.TunnelId, HorizontalAlignment = HorizontalAlignment.Stretch };
+            var target = new TextBox { Header = data.TargetKind == "command" ? "main MCP Command" : "main MCP URL", Text = data.TargetValue, HorizontalAlignment = HorizontalAlignment.Stretch };
+            var secret = new PasswordBox { Header = "新的 Runtime API Key", PlaceholderText = data.HasSavedSecret ? "已保存；留空表示不修改" : "未保存；留空使用环境变量", HorizontalAlignment = HorizontalAlignment.Stretch };
             var deleteSecret = new CheckBox { Content = "删除已保存的 Runtime API Key", IsEnabled = data.HasSavedSecret };
             var enabled = new CheckBox { Content = "启用此配置", IsChecked = data.Preference.Enabled };
             var autoConnect = new CheckBox { Content = "程序启动后自动连接", IsChecked = data.Preference.AutoConnect };
@@ -86,15 +86,22 @@ public sealed partial class MainWindow
                 AcceptsReturn = true,
                 TextWrapping = TextWrapping.NoWrap,
                 FontFamily = new FontFamily("Cascadia Mono"),
-                Height = 300
+                HorizontalAlignment = HorizontalAlignment.Stretch
             };
+            ConfigureProfileTextEditor(raw);
             ScrollViewer.SetHorizontalScrollBarVisibility(raw, ScrollBarVisibility.Auto);
             ScrollViewer.SetVerticalScrollBarVisibility(raw, ScrollBarVisibility.Auto);
 
             var error = new TextBlock { TextWrapping = TextWrapping.Wrap, Foreground = new SolidColorBrush(Microsoft.UI.Colors.IndianRed) };
-            var stack = new StackPanel { Spacing = 10 };
+            var stack = new StackPanel { Spacing = 10, HorizontalAlignment = HorizontalAlignment.Stretch };
             foreach (var control in new UIElement[] { tunnelId, target, enabled, autoConnect, autoReconnect, secret, deleteSecret, raw, error }) stack.Children.Add(control);
-            var scroll = new ScrollViewer { Content = stack, MaxHeight = 650, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+            var scroll = new ScrollViewer
+            {
+                Content = stack,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                HorizontalContentAlignment = HorizontalAlignment.Stretch
+            };
             var dialog = NewDialog($"编辑 Profile - {data.Name}", scroll, "保存");
             dialog.PrimaryButtonClick += (_, args) =>
             {
@@ -138,9 +145,9 @@ public sealed partial class MainWindow
             var enabled = new CheckBox { Content = "启用此配置", IsChecked = preference.Enabled };
             var autoConnect = new CheckBox { Content = "程序启动后自动连接", IsChecked = preference.AutoConnect };
             var autoReconnect = new CheckBox { Content = "异常停止后自动重连", IsChecked = preference.AutoReconnect };
-            var secret = new PasswordBox { Header = "新的 Runtime API Key", PlaceholderText = hasSecret ? "已保存；留空表示不修改" : "未保存；留空使用环境变量" };
+            var secret = new PasswordBox { Header = "新的 Runtime API Key", PlaceholderText = hasSecret ? "已保存；留空表示不修改" : "未保存；留空使用环境变量", HorizontalAlignment = HorizontalAlignment.Stretch };
             var deleteSecret = new CheckBox { Content = "删除已保存的 Runtime API Key", IsEnabled = hasSecret };
-            var panel = new StackPanel { Spacing = 10 };
+            var panel = new StackPanel { Spacing = 10, HorizontalAlignment = HorizontalAlignment.Stretch };
             foreach (var control in new UIElement[] { enabled, autoConnect, autoReconnect, secret, deleteSecret }) panel.Children.Add(control);
             var dialog = NewDialog($"本机偏好 / 密钥 - {item.Name}", panel, "保存");
             if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
@@ -173,7 +180,7 @@ public sealed partial class MainWindow
             {
                 Text = $"确定删除 {item.Name}？\n\n• 停止并移除对应 Runtime alias（如果有）{profileLine}\n• 删除对应本机偏好和不再使用的 Runtime API Key\n\n不会删除 OpenAI 平台上的远程 Tunnel。",
                 TextWrapping = TextWrapping.Wrap,
-                MaxWidth = 520
+                HorizontalAlignment = HorizontalAlignment.Stretch
             },
             "删除");
 
@@ -311,7 +318,7 @@ public sealed partial class MainWindow
         {
             XamlRoot = RootGrid.XamlRoot,
             Title = title,
-            Content = content,
+            Content = PrepareDialogContent(content),
             PrimaryButtonText = primaryText,
             CloseButtonText = "取消",
             DefaultButton = ContentDialogButton.Primary
@@ -321,7 +328,12 @@ public sealed partial class MainWindow
     private async Task ShowErrorAsync(string message)
     {
         ViewModel.StatusMessage = message;
-        var dialog = NewDialog("错误", new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap, MaxWidth = 540 }, "确定");
+        var dialog = NewDialog("错误", new TextBlock
+        {
+            Text = message,
+            TextWrapping = TextWrapping.Wrap,
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        }, "确定");
         dialog.CloseButtonText = string.Empty;
         await dialog.ShowAsync();
     }
