@@ -47,6 +47,12 @@ public sealed partial class TunnelClientOperations
     public async Task DeleteProfileAsync(string name, string expectedPath, CancellationToken cancellationToken = default)
     {
         var actual = await VerifyProfileEntryAsync(name, expectedPath, cancellationToken);
+
+        // A profile-only connection can be running as a Manager-owned foreground
+        // tunnel-client process. Stop that process before removing the official
+        // Profile entry so deletion cannot leave an orphan process behind.
+        if (_foreground.ContainsKey(name)) await StopProfileAsync(name);
+
         try { File.Delete(actual); }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
