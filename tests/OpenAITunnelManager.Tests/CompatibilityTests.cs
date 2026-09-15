@@ -76,40 +76,22 @@ public sealed class CompatibilityTests
     }
 
     [Fact]
-    public void AppDataPathsDefaultToLocalAppDataRoot()
+    public void AppDataPathsAlwaysUseExecutableDirectory()
     {
         using var temp = new TempDirectory();
         var baseDirectory = Path.Combine(temp.Path, "app");
-        var localAppData = Path.Combine(temp.Path, "local");
         Directory.CreateDirectory(baseDirectory);
-        Directory.CreateDirectory(localAppData);
 
-        var paths = new AppDataPaths(baseDirectory, localAppData);
+        var paths = new AppDataPaths(baseDirectory);
 
-        Assert.False(paths.IsPortable);
-        Assert.False(paths.PortableRequested);
-        Assert.Equal(Path.GetFullPath(Path.Combine(localAppData, "OpenAITunnelManager")), paths.RootDirectory);
-        Assert.Equal(Path.Combine(paths.ConfigDirectory, "settings.json"), paths.SettingsPath);
-        Assert.True(Directory.Exists(paths.LogsDirectory));
-        Assert.True(Directory.Exists(paths.StateDirectory));
-    }
-
-    [Fact]
-    public void PortableFlagUsesWritableExecutableDirectory()
-    {
-        using var temp = new TempDirectory();
-        var baseDirectory = Path.Combine(temp.Path, "portable-app");
-        var localAppData = Path.Combine(temp.Path, "local");
-        Directory.CreateDirectory(baseDirectory);
-        Directory.CreateDirectory(localAppData);
-        File.WriteAllText(Path.Combine(baseDirectory, "portable.flag"), string.Empty);
-
-        var paths = new AppDataPaths(baseDirectory, localAppData);
-
-        Assert.True(paths.PortableRequested);
-        Assert.True(paths.IsPortable);
         Assert.Equal(Path.GetFullPath(baseDirectory), paths.RootDirectory);
         Assert.Equal(Path.Combine(baseDirectory, "config", "settings.json"), paths.SettingsPath);
+        Assert.Equal(Path.Combine(baseDirectory, "logs", "app.log"), paths.ManagerLogPath);
+        Assert.Equal(Path.Combine(baseDirectory, "state", "foreground"), paths.ForegroundStateDirectory);
+        Assert.True(Directory.Exists(paths.ConfigDirectory));
+        Assert.True(Directory.Exists(paths.LogsDirectory));
+        Assert.True(Directory.Exists(paths.StateDirectory));
+        Assert.True(Directory.Exists(paths.ForegroundStateDirectory));
     }
 
     [Fact]
