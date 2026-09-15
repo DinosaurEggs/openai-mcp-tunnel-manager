@@ -25,11 +25,7 @@ internal static class AppLog
     {
         Write(
             "INFO",
-            $"Process started | OS={Environment.OSVersion} | Arch={RuntimeInformation.ProcessArchitecture} | .NET={Environment.Version} | BaseDir={AppContext.BaseDirectory} | DataRoot={AppDataPaths.Current.RootDirectory} | Portable={AppDataPaths.Current.IsPortable}");
-        if (!string.IsNullOrWhiteSpace(AppDataPaths.Current.PortableFallbackReason))
-        {
-            Info(AppDataPaths.Current.PortableFallbackReason);
-        }
+            $"Process started | OS={Environment.OSVersion} | Arch={RuntimeInformation.ProcessArchitecture} | .NET={Environment.Version} | BaseDir={AppContext.BaseDirectory} | DataRoot={AppDataPaths.Current.RootDirectory}");
     }
 
     public static void Info(string message) => Write("INFO", message);
