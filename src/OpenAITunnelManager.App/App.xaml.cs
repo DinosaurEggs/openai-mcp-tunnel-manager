@@ -117,7 +117,7 @@ public partial class App : Application
     {
         Environment.CurrentDirectory = baseDirectory;
         var paths = AppDataPaths.Current;
-        AppLog.Info($"Application storage configured | Root={paths.RootDirectory} | Portable={paths.IsPortable} | Settings={paths.SettingsPath} | Log={paths.ManagerLogPath}");
+        AppLog.Info($"Application storage configured | Root={paths.RootDirectory} | Settings={paths.SettingsPath} | Log={paths.ManagerLogPath}");
     }
 
     private static void ApplyDpiAwareInitialWindowPlacement(Window window)
