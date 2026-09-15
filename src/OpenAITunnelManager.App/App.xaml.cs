@@ -4,7 +4,9 @@ using Microsoft.UI.Xaml;
 using OpenAITunnelManager.App.Diagnostics;
 using OpenAITunnelManager.App.ViewModels;
 using OpenAITunnelManager.Core.Abstractions;
+using OpenAITunnelManager.Infrastructure.Settings;
 using OpenAITunnelManager.Infrastructure.TunnelClient;
+using OpenAITunnelManager.Infrastructure.Windows;
 
 namespace OpenAITunnelManager.App;
 
@@ -17,7 +19,6 @@ public partial class App : Application
     public App()
     {
         AppLog.Startup();
-
         try
         {
             InitializeComponent();
@@ -36,15 +37,12 @@ public partial class App : Application
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
         AppLog.Info("OnLaunched entered");
-
         try
         {
             await Host.StartAsync();
             AppLog.Info("Generic Host started");
-
             _window = Host.Services.GetRequiredService<MainWindow>();
             AppLog.Info("MainWindow resolved");
-
             _window.Activate();
             AppLog.Info("MainWindow activated");
         }
@@ -60,20 +58,22 @@ public partial class App : Application
         try
         {
             var baseDirectory = Path.GetFullPath(AppContext.BaseDirectory);
-            ConfigurePortableStorage(baseDirectory);
-
+            InitializeApplicationStorage(baseDirectory);
             var host = Microsoft.Extensions.Hosting.Host
                 .CreateDefaultBuilder()
                 .UseContentRoot(baseDirectory)
                 .ConfigureServices(static services =>
                 {
-                    services.AddSingleton(new TunnelClientOptions());
+                    services.AddSingleton<TunnelClientOptions>();
+                    services.AddSingleton<ISettingsStore, JsonSettingsStore>();
+                    services.AddSingleton<ICredentialStore, WindowsCredentialStore>();
+                    services.AddSingleton<IAutostartService, WindowsAutostartService>();
                     services.AddSingleton<ITunnelClientService, TunnelClientService>();
+                    services.AddSingleton<ITunnelClientOperations, TunnelClientOperations>();
                     services.AddSingleton<ConnectionsViewModel>();
                     services.AddSingleton<MainWindow>();
                 })
                 .Build();
-
             AppLog.Info("Generic Host built");
             return host;
         }
@@ -84,47 +84,25 @@ public partial class App : Application
         }
     }
 
-    private static void ConfigurePortableStorage(string baseDirectory)
+    private static void InitializeApplicationStorage(string baseDirectory)
     {
-        var profileDirectory = Path.Combine(baseDirectory, "config", "profiles");
-        var stateDirectory = Path.Combine(baseDirectory, "state");
-
-        Directory.CreateDirectory(profileDirectory);
-        Directory.CreateDirectory(stateDirectory);
-
         Environment.CurrentDirectory = baseDirectory;
-        Environment.SetEnvironmentVariable(
-            "TUNNEL_CLIENT_PROFILE_DIR",
-            profileDirectory,
-            EnvironmentVariableTarget.Process);
-        Environment.SetEnvironmentVariable(
-            "TUNNEL_CLIENT_STATE_DIR",
-            stateDirectory,
-            EnvironmentVariableTarget.Process);
-
-        AppLog.Info(
-            $"Portable storage configured | AppDir={baseDirectory} | Profiles={profileDirectory} | State={stateDirectory} | Log={AppLog.LogFilePath}");
+        foreach (var directory in new[] { "config", "logs", "state" })
+        {
+            Directory.CreateDirectory(Path.Combine(baseDirectory, directory));
+        }
+        AppLog.Info($"Application storage configured | AppDir={baseDirectory} | Settings={Path.Combine(baseDirectory, "config", "settings.json")} | Log={AppLog.LogFilePath}");
     }
 
-    private static void OnUnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
-    {
+    private static void OnUnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e) =>
         AppLog.Fatal("WinUI unhandled exception", e.Exception);
-    }
 
     private static void OnAppDomainUnhandledException(object sender, System.UnhandledExceptionEventArgs e)
     {
-        if (e.ExceptionObject is Exception exception)
-        {
-            AppLog.Fatal($"AppDomain unhandled exception | terminating={e.IsTerminating}", exception);
-        }
-        else
-        {
-            AppLog.Info($"AppDomain unhandled non-Exception object | terminating={e.IsTerminating} | value={e.ExceptionObject}");
-        }
+        if (e.ExceptionObject is Exception exception) AppLog.Fatal($"AppDomain unhandled exception | terminating={e.IsTerminating}", exception);
+        else AppLog.Info($"AppDomain unhandled non-Exception object | terminating={e.IsTerminating} | value={e.ExceptionObject}");
     }
 
-    private static void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
-    {
+    private static void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e) =>
         AppLog.Error("Unobserved task exception", e.Exception);
-    }
 }
