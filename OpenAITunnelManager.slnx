@@ -2,5 +2,6 @@
   <Project Path="src/OpenAITunnelManager.App/OpenAITunnelManager.App.csproj" />
   <Project Path="src/OpenAITunnelManager.Core/OpenAITunnelManager.Core.csproj" />
   <Project Path="src/OpenAITunnelManager.Infrastructure/OpenAITunnelManager.Infrastructure.csproj" />
+  <Project Path="tests/OpenAITunnelManager.FakeTunnelClient/OpenAITunnelManager.FakeTunnelClient.csproj" />
   <Project Path="tests/OpenAITunnelManager.Tests/OpenAITunnelManager.Tests.csproj" />
 </Solution>

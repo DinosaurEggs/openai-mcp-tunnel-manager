@@ -6,6 +6,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\OpenAITunnelManager.Core\OpenAITunnelManager.Core.csproj" />
     <ProjectReference Include="..\..\src\OpenAITunnelManager.Infrastructure\OpenAITunnelManager.Infrastructure.csproj" />
+    <ProjectReference Include="..\OpenAITunnelManager.FakeTunnelClient\OpenAITunnelManager.FakeTunnelClient.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
