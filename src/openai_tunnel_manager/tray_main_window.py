@@ -77,6 +77,7 @@ class TrayMainWindow(OptimizedMainWindow):
                 widget.destroy()
 
         self._style_config_sidebar()
+        self._install_config_context_menu()
 
         # Put the compact refresh action directly beside local preferences.
         if preference_button is not None:
@@ -133,6 +134,40 @@ class TrayMainWindow(OptimizedMainWindow):
         self.config_list_scrollbar = ttk.Scrollbar(sidebar, orient="vertical", command=self.listbox.yview)
         self.config_list_scrollbar.grid(row=1, column=1, sticky="ns", pady=(5, 0), padx=(5, 0))
         self.listbox.configure(yscrollcommand=self.config_list_scrollbar.set)
+
+    def _install_config_context_menu(self) -> None:
+        self.config_context_menu = tk.Menu(self.root, tearoff=False)
+        self.config_context_menu.add_command(label="编辑", command=self.edit_profile)
+        self.config_context_menu.add_command(label="删除", command=self.delete_selected)
+        self.listbox.bind("<Button-3>", self._show_config_context_menu, add="+")
+
+    def _show_config_context_menu(self, event: tk.Event) -> str | None:
+        if not self.items:
+            return None
+        index = int(self.listbox.nearest(event.y))
+        if not 0 <= index < len(self.items):
+            return None
+        bounds = self.listbox.bbox(index)
+        if bounds is None:
+            return None
+        _x, row_y, _width, row_height = bounds
+        if not row_y <= event.y <= row_y + row_height:
+            return None
+
+        self.listbox.selection_clear(0, "end")
+        self.listbox.selection_set(index)
+        self.listbox.activate(index)
+        self._selection_changed()
+
+        item = self.selected_item()
+        can_edit = bool(item and item.profile_name and item.profile_listed)
+        self.config_context_menu.entryconfigure("编辑", state="normal" if can_edit else "disabled")
+        self.config_context_menu.entryconfigure("删除", state="normal")
+        try:
+            self.config_context_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            self.config_context_menu.grab_release()
+        return "break"
 
     def _list_label(self, item, state: RuntimeState) -> str:
         started = state in {RuntimeState.STARTING, RuntimeState.RUNNING, RuntimeState.READY}

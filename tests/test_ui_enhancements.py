@@ -7,10 +7,11 @@ import tkinter as tk
 import unittest
 from pathlib import Path
 from tkinter import ttk
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from openai_tunnel_manager.credentials import MemoryCredentialStore
-from openai_tunnel_manager.models import AppSettings
+from openai_tunnel_manager.models import AppSettings, ManagedItem
 from openai_tunnel_manager.optimized_main_window import OptimizedMainWindow
 from openai_tunnel_manager.settings_store import SettingsStore
 from openai_tunnel_manager.tray_main_window import TrayMainWindow
@@ -138,6 +139,29 @@ class UiEnhancementTests(unittest.TestCase):
         self.pump(0.35)
         running = self.win.listbox.get(0).strip()
         self.assertEqual(running, "[已启动]  idea")
+
+    def test_configuration_context_menu_selects_right_clicked_item(self) -> None:
+        self._tray_window()
+        second = ManagedItem(
+            name="second",
+            profile_name="second",
+            profile_path="/tmp/second.yaml",
+            profile_listed=True,
+        )
+        self.win._apply_inventory([self.client.items[0], second], self.client.items[0].identity)
+        self.assertEqual(self.win.selected_item().name, "idea")
+        self.assertTrue(self.win.listbox.bind("<Button-3>"))
+        self.assertEqual(self.win.config_context_menu.entrycget(0, "label"), "编辑")
+        self.assertEqual(self.win.config_context_menu.entrycget(1, "label"), "删除")
+
+        event = SimpleNamespace(y=15, x_root=100, y_root=100)
+        with patch.object(self.win.listbox, "nearest", return_value=1), \
+             patch.object(self.win.listbox, "bbox", return_value=(0, 10, 220, 20)), \
+             patch.object(self.win.config_context_menu, "tk_popup") as popup:
+            result = self.win._show_config_context_menu(event)
+        self.assertEqual(result, "break")
+        self.assertEqual(self.win.selected_item().name, "second")
+        popup.assert_called_once_with(100, 100)
 
     def test_open_location_actions_use_selected_paths(self) -> None:
         self._tray_window()
