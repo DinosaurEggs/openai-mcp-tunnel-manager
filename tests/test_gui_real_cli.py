@@ -28,6 +28,11 @@ class GuiRealCliIntegrationTests(unittest.TestCase):
     def tearDown(self):
         try:self.win.quit()
         except tk.TclError:pass
+        # MainWindow closes the executor without waiting so the real app can exit promptly.
+        # Tests must join any in-flight CLI task before deleting the temporary .cmd launcher;
+        # otherwise Windows can transiently fail cleanup with WinError 32 (file in use).
+        try:self.win.async_bridge.pool.shutdown(wait=True,cancel_futures=True)
+        except Exception:pass
         self.env.stop(); self.tmp.cleanup()
     def pump_until(self,predicate,timeout=4.0):
         end=time.monotonic()+timeout
