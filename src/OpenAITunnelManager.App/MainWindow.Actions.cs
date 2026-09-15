@@ -268,12 +268,17 @@ public sealed partial class MainWindow
         ScrollViewer.SetHorizontalScrollBarVisibility(LogTextBox, wrap ? ScrollBarVisibility.Disabled : ScrollBarVisibility.Auto);
     }
 
-    private void ScrollLogToEndIfNeeded()
+    private double CaptureLogHorizontalOffset() =>
+        FindDescendant<ScrollViewer>(LogTextBox)?.HorizontalOffset ?? 0d;
+
+    private void RestoreLogViewport(double horizontalOffset, bool followVertical)
     {
-        if (!ViewModel.LogAutoRefresh) return;
         var viewer = FindDescendant<ScrollViewer>(LogTextBox);
         if (viewer is null) return;
-        viewer.ChangeView(viewer.HorizontalOffset, viewer.ScrollableHeight, null, disableAnimation: true);
+        var verticalOffset = followVertical && ViewModel.LogAutoRefresh
+            ? viewer.ScrollableHeight
+            : viewer.VerticalOffset;
+        viewer.ChangeView(horizontalOffset, verticalOffset, null, disableAnimation: true);
     }
 
     private static T? FindAncestor<T>(DependencyObject current) where T : DependencyObject
