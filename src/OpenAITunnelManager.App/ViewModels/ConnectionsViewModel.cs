@@ -19,8 +19,6 @@ public sealed record ProfileEditorData(
 
 public partial class ConnectionsViewModel : ObservableObject
 {
-    private static readonly int[] ReconnectDelaysMs = [1000, 2000, 5000, 10000, 30000, 60000];
-
     private readonly ITunnelClientService _inventory;
     private readonly ITunnelClientOperations _operations;
     private readonly ISettingsStore _settingsStore;
@@ -58,7 +56,6 @@ public partial class ConnectionsViewModel : ObservableObject
     [ObservableProperty] public partial bool IsBusy { get; set; }
     [ObservableProperty] public partial bool IsClientAvailable { get; set; }
     [ObservableProperty] public partial string TunnelClientPath { get; set; } = string.Empty;
-    [ObservableProperty] public partial int RefreshIntervalSeconds { get; set; } = 4;
     [ObservableProperty] public partial bool CloseToTray { get; set; } = true;
     [ObservableProperty] public partial bool StartWithWindows { get; set; }
     [ObservableProperty] public partial string ProfileDirectoryOverride { get; set; } = string.Empty;
@@ -101,18 +98,7 @@ public partial class ConnectionsViewModel : ObservableObject
     partial void OnLogSearchChanged(string value) => RenderLog();
     partial void OnLogLevelChanged(string value) => RenderLog();
 
-    public async Task InitializeAsync()
-    {
-        Settings = await _settingsStore.LoadAsync();
-        TunnelClientPath = Settings.TunnelClientPath;
-        RefreshIntervalSeconds = Math.Max(2, Settings.NormalizedRefreshIntervalMs / 1000);
-        CloseToTray = Settings.CloseToTray;
-        StartWithWindows = _autostart.IsEnabled();
-        ProfileDirectoryOverride = Settings.ProfileDirectoryOverride;
-        StateDirectoryOverride = Settings.StateDirectoryOverride;
-        ApplySettingsToOptions();
-        await RefreshAsync();
-    }
+    public Task InitializeAsync() => InitializeForManualRefreshAsync();
 
     [RelayCommand(CanExecute = nameof(CanRefresh))]
     public async Task RefreshAsync()
@@ -129,17 +115,21 @@ public partial class ConnectionsViewModel : ObservableObject
             var itemsTask = _inventory.GetConnectionsAsync();
             await Task.WhenAll(capabilitiesTask, itemsTask);
             ClientVersion = capabilitiesTask.Result.Version;
-            var items = new List<TunnelConnection>();
-            foreach (var item in itemsTask.Result)
-            {
-                var effective = await _operations.GetStatusAsync(item);
-                if (!string.IsNullOrWhiteSpace(effective.LogPath)) _lastLogPaths[effective.Identity] = effective.LogPath;
-                items.Add(effective);
-            }
+
+            var statuses = await ReadStatusesAsync(itemsTask.Result, CancellationToken.None);
             Connections.Clear();
-            foreach (var item in items) Connections.Add(item);
-            SelectedConnection = Connections.FirstOrDefault(item => string.Equals(item.Identity, selectedIdentity, StringComparison.OrdinalIgnoreCase)) ?? Connections.FirstOrDefault();
-            StatusMessage = Connections.Count == 0 ? "未发现 Profile 或 Runtime" : $"已从 tunnel-client 读取 {Connections.Count} 个配置/运行实例";
+            foreach (var item in statuses)
+            {
+                if (!string.IsNullOrWhiteSpace(item.LogPath)) _lastLogPaths[item.Identity] = item.LogPath;
+                Connections.Add(item);
+            }
+
+            SelectedConnection = Connections.FirstOrDefault(item =>
+                                     string.Equals(item.Identity, selectedIdentity, StringComparison.OrdinalIgnoreCase))
+                                 ?? Connections.FirstOrDefault();
+            StatusMessage = Connections.Count == 0
+                ? "未发现 Profile 或 Runtime"
+                : $"已从 tunnel-client 读取 {Connections.Count} 个配置/运行实例";
             NotifyOverviewState();
         }
         catch (Exception exception)
@@ -159,7 +149,6 @@ public partial class ConnectionsViewModel : ObservableObject
             _initialAutoConnectApplied = true;
             await ApplyAutoConnectAsync();
         }
-        EvaluateAutoReconnect();
     }
 
     private bool CanRefresh() => !IsBusy;
@@ -177,6 +166,7 @@ public partial class ConnectionsViewModel : ObservableObject
                 _lastLogPaths[status.Identity] = status.LogPath;
                 CurrentLogPath = status.LogPath;
             }
+            EvaluateRuntimeReconnect(status);
             NotifyOverviewState();
         }
         catch (Exception exception)
@@ -190,7 +180,6 @@ public partial class ConnectionsViewModel : ObservableObject
         var path = TunnelClientPath.Trim();
         if (!string.IsNullOrWhiteSpace(path) && !File.Exists(path)) throw new FileNotFoundException("选择的 tunnel-client.exe 不存在", path);
         Settings.TunnelClientPath = path;
-        Settings.RefreshIntervalMs = Math.Max(2, RefreshIntervalSeconds) * 1000;
         Settings.CloseToTray = CloseToTray;
         Settings.StartWithWindows = StartWithWindows;
         Settings.ProfileDirectoryOverride = ProfileDirectoryOverride.Trim();
@@ -201,6 +190,7 @@ public partial class ConnectionsViewModel : ObservableObject
         _initialAutoConnectApplied = false;
         StatusMessage = $"设置已保存：{SettingsPath}";
         await RefreshAsync();
+        StartRuntimeMonitor();
     }
 
     public void SetTunnelClientPath(string path) => TunnelClientPath = path;
@@ -220,19 +210,18 @@ public partial class ConnectionsViewModel : ObservableObject
         var item = SelectedConnection;
         if (item is null) return;
         _manualStopped.Remove(item.Identity);
+        CancelReconnect(item.Identity, resetAttempts: true);
         IsBusy = true;
         StatusMessage = $"正在重启 {item.Name}...";
         try
         {
             var secret = ReadSavedSecret(item);
             await _operations.RestartAsync(item, secret);
-            _reconnectAttempts.Remove(item.Identity);
             await RefreshAfterOperationAsync(item.Identity, $"{item.Name} 已重启");
         }
         catch (Exception exception)
         {
             StatusMessage = $"重启失败：{exception.Message}";
-            throw;
         }
         finally
         {
@@ -287,9 +276,19 @@ public partial class ConnectionsViewModel : ObservableObject
         bool deleteSecret)
     {
         var item = SelectedConnection ?? throw new InvalidOperationException("请先选择一个配置");
-        if (!string.Equals(item.ProfileName, original.Name, StringComparison.Ordinal) || !string.Equals(item.ProfilePath, original.Path, StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(item.ProfileName, original.Name, StringComparison.Ordinal) ||
+            !string.Equals(item.ProfilePath, original.Path, StringComparison.OrdinalIgnoreCase))
+        {
             throw new InvalidOperationException("当前选择的 Profile 已变化，请重新打开编辑器");
-        var updated = ProfileDocumentEditor.ApplyCommonFields(rawText, original.TunnelId, original.TargetKind, original.TargetValue, tunnelId.Trim(), targetValue.Trim());
+        }
+
+        var updated = ProfileDocumentEditor.ApplyCommonFields(
+            rawText,
+            original.TunnelId,
+            original.TargetKind,
+            original.TargetValue,
+            tunnelId.Trim(),
+            targetValue.Trim());
         IsBusy = true;
         try
         {
@@ -328,6 +327,14 @@ public partial class ConnectionsViewModel : ObservableObject
             _credentials.Set(CredentialWriteId(item), newSecret);
         }
         await _settingsStore.SaveAsync(Settings);
+        if (!preference.Enabled || !preference.AutoReconnect)
+        {
+            CancelReconnect(item.Identity, resetAttempts: true);
+        }
+        else
+        {
+            EvaluateRuntimeReconnect(item);
+        }
         StatusMessage = $"已保存 {item.Name} 的本机偏好";
     }
 
@@ -344,7 +351,8 @@ public partial class ConnectionsViewModel : ObservableObject
             var target = current ?? original;
             var sharedProfile = target.HasProfile && fresh.Any(item =>
                 !string.Equals(item.Identity, target.Identity, StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(item.ProfileName, target.ProfileName, StringComparison.OrdinalIgnoreCase));
+                item.HasProfile &&
+                PathsEqual(item.ProfilePath, target.ProfilePath));
             var profileDeleted = false;
 
             if (target.HasRuntime)
@@ -378,8 +386,7 @@ public partial class ConnectionsViewModel : ObservableObject
             }
             await _settingsStore.SaveAsync(Settings);
             _manualStopped.Remove(original.Identity);
-            _reconnectAttempts.Remove(original.Identity);
-            _reconnectScheduled.Remove(original.Identity);
+            CancelReconnect(original.Identity, resetAttempts: true);
             await RefreshAfterOperationAsync(null, $"已删除：{original.Name}");
         }
         finally
@@ -475,7 +482,11 @@ public partial class ConnectionsViewModel : ObservableObject
         return item?.ProfilePath ?? item?.RuntimeProfilePath ?? string.Empty;
     }
 
-    public async Task ShutdownAsync() => await _operations.ShutdownForegroundProfilesAsync();
+    public async Task ShutdownAsync()
+    {
+        await StopRuntimeMonitorAsync();
+        await _operations.ShutdownForegroundProfilesAsync();
+    }
 
     private async Task StartItemAsync(TunnelConnection item, bool manual)
     {
@@ -483,22 +494,22 @@ public partial class ConnectionsViewModel : ObservableObject
         var pref = FindPreference(item) ?? new ProfilePreference();
         if (!pref.Enabled)
         {
-            if (manual) throw new InvalidOperationException("此配置已在本机偏好中禁用");
+            if (manual) StatusMessage = "此配置已在本机偏好中禁用";
             return;
         }
+
         _manualStopped.Remove(item.Identity);
+        if (manual) CancelReconnect(item.Identity, resetAttempts: true);
         IsBusy = true;
         StatusMessage = $"正在启动 {item.Name}...";
         try
         {
             await _operations.StartAsync(item, ReadSavedSecret(item));
-            _reconnectAttempts.Remove(item.Identity);
             await RefreshAfterOperationAsync(item.Identity, $"{item.Name} 启动命令已完成");
         }
         catch (Exception exception)
         {
             StatusMessage = $"启动失败：{exception.Message}";
-            if (manual) throw;
         }
         finally
         {
@@ -510,8 +521,7 @@ public partial class ConnectionsViewModel : ObservableObject
     {
         EnsureClientAvailable();
         if (manual) _manualStopped.Add(item.Identity);
-        _reconnectAttempts.Remove(item.Identity);
-        _reconnectScheduled.Remove(item.Identity);
+        CancelReconnect(item.Identity, resetAttempts: true);
         IsBusy = true;
         StatusMessage = $"正在停止 {item.Name}...";
         try
@@ -523,7 +533,6 @@ public partial class ConnectionsViewModel : ObservableObject
         catch (Exception exception)
         {
             StatusMessage = $"停止失败：{exception.Message}";
-            if (manual) throw;
         }
         finally
         {
@@ -533,17 +542,14 @@ public partial class ConnectionsViewModel : ObservableObject
 
     private async Task RefreshAfterOperationAsync(string? identity, string completedMessage)
     {
-        var previous = SelectedConnection;
         var items = await _inventory.GetConnectionsAsync();
-        var refreshed = new List<TunnelConnection>();
-        foreach (var item in items)
-        {
-            var status = await _operations.GetStatusAsync(item);
-            if (!string.IsNullOrWhiteSpace(status.LogPath)) _lastLogPaths[status.Identity] = status.LogPath;
-            refreshed.Add(status);
-        }
+        var refreshed = await ReadStatusesAsync(items, CancellationToken.None);
         Connections.Clear();
-        foreach (var item in refreshed) Connections.Add(item);
+        foreach (var item in refreshed)
+        {
+            if (!string.IsNullOrWhiteSpace(item.LogPath)) _lastLogPaths[item.Identity] = item.LogPath;
+            Connections.Add(item);
+        }
         SelectedConnection = identity is null
             ? Connections.FirstOrDefault()
             : Connections.FirstOrDefault(item => string.Equals(item.Identity, identity, StringComparison.OrdinalIgnoreCase)) ?? Connections.FirstOrDefault();
@@ -554,47 +560,38 @@ public partial class ConnectionsViewModel : ObservableObject
 
     private async Task ApplyAutoConnectAsync()
     {
-        foreach (var item in Connections.ToArray())
-        {
-            var pref = FindPreference(item);
-            if (pref is not { Enabled: true, AutoConnect: true } || item.ProcessRunning || _manualStopped.Contains(item.Identity)) continue;
-            await StartItemAsync(item, manual: false);
-        }
-    }
+        var candidates = Connections
+            .Where(item => FindPreference(item) is { Enabled: true, AutoConnect: true })
+            .Where(item => !item.ProcessRunning && !_manualStopped.Contains(item.Identity))
+            .ToArray();
+        if (candidates.Length == 0) return;
 
-    private void EvaluateAutoReconnect()
-    {
-        foreach (var item in Connections.ToArray())
-        {
-            var pref = FindPreference(item);
-            if (pref is not { Enabled: true, AutoReconnect: true } || _manualStopped.Contains(item.Identity)) continue;
-            if (item.ProcessRunning || item.State is RuntimeState.Configured or RuntimeState.Starting or RuntimeState.Unknown) continue;
-            if (_reconnectScheduled.Contains(item.Identity)) continue;
-            var attempt = _reconnectAttempts.GetValueOrDefault(item.Identity);
-            if (attempt >= ReconnectDelaysMs.Length)
-            {
-                StatusMessage = $"{item.Name} 自动重连已暂停，请运行诊断检查";
-                continue;
-            }
-            _reconnectAttempts[item.Identity] = attempt + 1;
-            _reconnectScheduled.Add(item.Identity);
-            var delay = ReconnectDelaysMs[attempt];
-            StatusMessage = $"{item.Name} 将在 {delay / 1000} 秒后自动重连";
-            _ = ScheduleReconnectAsync(item, delay);
-        }
-    }
-
-    private async Task ScheduleReconnectAsync(TunnelConnection item, int delayMs)
-    {
+        IsBusy = true;
         try
         {
-            await Task.Delay(delayMs);
-            if (_manualStopped.Contains(item.Identity) || !Connections.Any(candidate => string.Equals(candidate.Identity, item.Identity, StringComparison.OrdinalIgnoreCase))) return;
-            await StartItemAsync(item, manual: false);
+            foreach (var item in candidates)
+            {
+                try
+                {
+                    await _operations.StartAsync(item, ReadSavedSecret(item));
+                }
+                catch (Exception exception)
+                {
+                    StatusMessage = $"{item.Name} 自动连接失败：{exception.Message}";
+                }
+            }
+
+            var statuses = await ReadStatusesAsync(Connections.ToArray(), CancellationToken.None);
+            foreach (var status in statuses)
+            {
+                ReplaceConnection(status);
+                if (!string.IsNullOrWhiteSpace(status.LogPath)) _lastLogPaths[status.Identity] = status.LogPath;
+            }
+            NotifyOverviewState();
         }
         finally
         {
-            _reconnectScheduled.Remove(item.Identity);
+            IsBusy = false;
         }
     }
 
@@ -661,6 +658,10 @@ public partial class ConnectionsViewModel : ObservableObject
         OnPropertyChanged(nameof(ActiveCount));
         OnPropertyChanged(nameof(HealthyCount));
         OnPropertyChanged(nameof(ProblemCount));
+        OnPropertyChanged(nameof(ReadinessState));
+        OnPropertyChanged(nameof(HasConnections));
+        OnPropertyChanged(nameof(HasSelectedConnection));
+        OnPropertyChanged(nameof(HasCurrentLog));
         NotifyActionState();
     }
 
@@ -671,5 +672,18 @@ public partial class ConnectionsViewModel : ObservableObject
         VisibleLog = string.Join(Environment.NewLine, RawLog.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
             .Where(line => string.IsNullOrWhiteSpace(query) || line.Contains(query, StringComparison.OrdinalIgnoreCase))
             .Where(line => level == "全部" || line.Contains(level, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private static bool PathsEqual(string left, string right)
+    {
+        if (string.IsNullOrWhiteSpace(left) || string.IsNullOrWhiteSpace(right)) return false;
+        try
+        {
+            return string.Equals(Path.GetFullPath(left), Path.GetFullPath(right), StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
     }
 }

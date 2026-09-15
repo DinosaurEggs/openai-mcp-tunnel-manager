@@ -61,7 +61,8 @@ public sealed class SafetyIntegrationTests : IDisposable
         };
         await operations.StartAsync(seed, "secret", token);
         Assert.Equal(1, ReadConnectCount("restart-runtime"));
-        var running = (await service.GetConnectionsAsync(token)).Single(item => item.RuntimeAlias == "restart-runtime");
+        var inventory = (await service.GetConnectionsAsync(token)).Single(item => item.RuntimeAlias == "restart-runtime");
+        var running = await service.GetStatusAsync(inventory, token);
 
         SetEnvironment("FAKE_FAIL_STOP", "restart-runtime");
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => operations.RestartAsync(running, "secret", token));
@@ -70,6 +71,38 @@ public sealed class SafetyIntegrationTests : IDisposable
         Assert.Equal(1, ReadConnectCount("restart-runtime"));
         var after = await service.GetStatusAsync(running, token);
         Assert.True(after.ProcessRunning);
+    }
+
+    [Fact]
+    public async Task CallerCancellationTerminatesLongRunningCommand()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var options = new TunnelClientOptions { ExecutablePath = FakeExecutable };
+        var runner = new TunnelClientProcessRunner(options);
+        var healthFile = Path.Combine(_root, "cancelled-health.url");
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
+        cancellation.CancelAfter(TimeSpan.FromMilliseconds(250));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => runner.RunAsync(
+            ["run", "--profile", "cancelled", "--health.url-file", healthFile],
+            allowFailure: false,
+            cancellationToken: cancellation.Token,
+            timeout: TimeSpan.FromSeconds(30)));
+    }
+
+    [Fact]
+    public async Task CommandTimeoutTerminatesLongRunningCommand()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var options = new TunnelClientOptions { ExecutablePath = FakeExecutable };
+        var runner = new TunnelClientProcessRunner(options);
+        var healthFile = Path.Combine(_root, "timeout-health.url");
+
+        await Assert.ThrowsAsync<TimeoutException>(() => runner.RunAsync(
+            ["run", "--profile", "timeout", "--health.url-file", healthFile],
+            allowFailure: false,
+            cancellationToken: token,
+            timeout: TimeSpan.FromMilliseconds(250)));
     }
 
     private int ReadConnectCount(string alias)
@@ -94,7 +127,7 @@ public sealed class SafetyIntegrationTests : IDisposable
     private (TunnelClientService Service, TunnelClientOperations Operations) Services()
     {
         var options = new TunnelClientOptions { ExecutablePath = FakeExecutable };
-        var service = new TunnelClientService(options);
+        var service = new TunnelClientService(new TunnelClientProcessRunner(options));
         return (service, new TunnelClientOperations(options, service));
     }
 

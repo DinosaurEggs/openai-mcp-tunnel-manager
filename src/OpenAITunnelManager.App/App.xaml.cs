@@ -93,6 +93,7 @@ public partial class App : Application
                 .ConfigureServices(static services =>
                 {
                     services.AddSingleton<TunnelClientOptions>();
+                    services.AddSingleton<TunnelClientProcessRunner>();
                     services.AddSingleton<ISettingsStore, JsonSettingsStore>();
                     services.AddSingleton<ICredentialStore, WindowsCredentialStore>();
                     services.AddSingleton<IAutostartService, WindowsAutostartService>();
@@ -115,11 +116,8 @@ public partial class App : Application
     private static void InitializeApplicationStorage(string baseDirectory)
     {
         Environment.CurrentDirectory = baseDirectory;
-        foreach (var directory in new[] { "config", "logs", "state" })
-        {
-            Directory.CreateDirectory(Path.Combine(baseDirectory, directory));
-        }
-        AppLog.Info($"Application storage configured | AppDir={baseDirectory} | Settings={Path.Combine(baseDirectory, "config", "settings.json")} | Log={AppLog.LogFilePath}");
+        var paths = AppDataPaths.Current;
+        AppLog.Info($"Application storage configured | Root={paths.RootDirectory} | Portable={paths.IsPortable} | Settings={paths.SettingsPath} | Log={paths.ManagerLogPath}");
     }
 
     private static void ApplyDpiAwareInitialWindowPlacement(Window window)

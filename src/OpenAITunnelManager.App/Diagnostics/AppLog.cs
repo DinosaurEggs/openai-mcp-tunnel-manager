@@ -1,19 +1,35 @@
 using System.Runtime.InteropServices;
 using System.Text;
+using OpenAITunnelManager.Infrastructure.Settings;
 
 namespace OpenAITunnelManager.App.Diagnostics;
 
 internal static class AppLog
 {
+    private const long MaxLogBytes = 5L * 1024 * 1024;
+    private const int BackupCount = 3;
     private static readonly object Sync = new();
 
-    public static string LogFilePath { get; } = BuildLogFilePath();
+    public static string LogFilePath { get; private set; } = AppDataPaths.Current.ManagerLogPath;
+
+    public static void Configure(string logFilePath)
+    {
+        if (string.IsNullOrWhiteSpace(logFilePath)) return;
+        lock (Sync)
+        {
+            LogFilePath = Path.GetFullPath(logFilePath);
+        }
+    }
 
     public static void Startup()
     {
         Write(
             "INFO",
-            $"Process started | OS={Environment.OSVersion} | Arch={RuntimeInformation.ProcessArchitecture} | .NET={Environment.Version} | BaseDir={AppContext.BaseDirectory}");
+            $"Process started | OS={Environment.OSVersion} | Arch={RuntimeInformation.ProcessArchitecture} | .NET={Environment.Version} | BaseDir={AppContext.BaseDirectory} | DataRoot={AppDataPaths.Current.RootDirectory} | Portable={AppDataPaths.Current.IsPortable}");
+        if (!string.IsNullOrWhiteSpace(AppDataPaths.Current.PortableFallbackReason))
+        {
+            Info(AppDataPaths.Current.PortableFallbackReason);
+        }
     }
 
     public static void Info(string message) => Write("INFO", message);
@@ -38,6 +54,7 @@ internal static class AppLog
                 builder.AppendLine(exception.ToString());
             }
 
+            var text = builder.ToString();
             lock (Sync)
             {
                 var directory = Path.GetDirectoryName(LogFilePath);
@@ -46,7 +63,8 @@ internal static class AppLog
                     Directory.CreateDirectory(directory);
                 }
 
-                File.AppendAllText(LogFilePath, builder.ToString(), Encoding.UTF8);
+                RotateIfNeeded(Encoding.UTF8.GetByteCount(text));
+                File.AppendAllText(LogFilePath, text, Encoding.UTF8);
             }
         }
         catch
@@ -55,6 +73,17 @@ internal static class AppLog
         }
     }
 
-    private static string BuildLogFilePath() =>
-        Path.Combine(AppContext.BaseDirectory, "logs", "app.log");
+    private static void RotateIfNeeded(int incomingBytes)
+    {
+        if (!File.Exists(LogFilePath)) return;
+        if (new FileInfo(LogFilePath).Length + incomingBytes <= MaxLogBytes) return;
+
+        for (var index = BackupCount; index >= 1; index--)
+        {
+            var destination = $"{LogFilePath}.{index}";
+            var source = index == 1 ? LogFilePath : $"{LogFilePath}.{index - 1}";
+            if (!File.Exists(source)) continue;
+            File.Move(source, destination, overwrite: true);
+        }
+    }
 }

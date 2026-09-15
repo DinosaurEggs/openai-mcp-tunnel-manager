@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 using OpenAITunnelManager.Core.Models;
+using OpenAITunnelManager.Infrastructure.Settings;
 
 namespace OpenAITunnelManager.Infrastructure.TunnelClient;
 
@@ -80,11 +81,12 @@ public sealed partial class TunnelClientOperations
         if (existing is not null)
         {
             _foreground.TryRemove(name, out _);
+            existing.LogWriter.Dispose();
             existing.Process.Dispose();
         }
 
         var safeName = string.Concat(name.Select(ch => Path.GetInvalidFileNameChars().Contains(ch) ? '_' : ch));
-        var workDirectory = Path.Combine(AppContext.BaseDirectory, "state", "foreground", safeName);
+        var workDirectory = Path.Combine(AppDataPaths.Current.ForegroundStateDirectory, safeName);
         Directory.CreateDirectory(workDirectory);
         var healthFile = Path.Combine(workDirectory, "health.url");
         var logPath = Path.Combine(workDirectory, "runtime.log");
@@ -96,39 +98,63 @@ public sealed partial class TunnelClientOperations
             metadata.ApiKeyRef,
             secret);
         var process = new Process { StartInfo = info, EnableRaisingEvents = true };
+        var logStream = new FileStream(logPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete, 64 * 1024, FileOptions.SequentialScan);
+        var logWriter = new StreamWriter(logStream, new UTF8Encoding(false)) { AutoFlush = true };
         var gate = new object();
         void Append(string? line)
         {
             if (line is null) return;
-            lock (gate) File.AppendAllText(logPath, line + Environment.NewLine, new UTF8Encoding(false));
+            lock (gate)
+            {
+                try { logWriter.WriteLine(line); }
+                catch (ObjectDisposedException) { }
+            }
         }
         process.OutputDataReceived += (_, e) => Append(e.Data);
         process.ErrorDataReceived += (_, e) => Append(e.Data);
-        if (!process.Start()) { process.Dispose(); throw new InvalidOperationException("无法启动 tunnel-client Profile 进程"); }
+
+        try
+        {
+            if (!process.Start()) throw new InvalidOperationException("无法启动 tunnel-client Profile 进程");
+        }
+        catch
+        {
+            logWriter.Dispose();
+            process.Dispose();
+            throw;
+        }
+
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
-        _foreground[name] = new ForegroundProfile(process, healthFile, logPath, connection.ProfilePath);
+        _foreground[name] = new ForegroundProfile(process, healthFile, logPath, connection.ProfilePath, logWriter);
 
-        var deadline = DateTimeOffset.UtcNow.AddSeconds(12);
-        while (DateTimeOffset.UtcNow < deadline)
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (process.HasExited) break;
-            if (File.Exists(healthFile))
+            var deadline = DateTimeOffset.UtcNow.AddSeconds(12);
+            while (DateTimeOffset.UtcNow < deadline)
             {
-                try
+                cancellationToken.ThrowIfCancellationRequested();
+                if (process.HasExited) break;
+                if (File.Exists(healthFile))
                 {
-                    if (!string.IsNullOrWhiteSpace(await File.ReadAllTextAsync(healthFile, cancellationToken))) break;
+                    try
+                    {
+                        if (!string.IsNullOrWhiteSpace(await File.ReadAllTextAsync(healthFile, cancellationToken))) break;
+                    }
+                    catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                    {
+                    }
                 }
-                catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-                {
-                    // tunnel-client may still have the URL file open while writing it.
-                    // Treat this as a transient startup race and retry until the normal deadline.
-                }
+                await Task.Delay(75, cancellationToken);
             }
-            await Task.Delay(75, cancellationToken);
+
+            if (process.HasExited) throw new InvalidOperationException($"Profile 前台进程已退出，退出码 {process.ExitCode}。日志：{logPath}");
         }
-        if (process.HasExited) throw new InvalidOperationException($"Profile 前台进程已退出，退出码 {process.ExitCode}。日志：{logPath}");
+        catch (OperationCanceledException)
+        {
+            await StopProfileAsync(name);
+            throw;
+        }
     }
 
     private Task StopProfileAsync(string name)
@@ -141,8 +167,14 @@ public sealed partial class TunnelClientOperations
                 record.Process.Kill(entireProcessTree: true);
                 record.Process.WaitForExit(5000);
             }
+            try { record.Process.CancelOutputRead(); } catch { }
+            try { record.Process.CancelErrorRead(); } catch { }
         }
-        finally { record.Process.Dispose(); }
+        finally
+        {
+            try { record.LogWriter.Dispose(); } catch { }
+            record.Process.Dispose();
+        }
         return Task.CompletedTask;
     }
 

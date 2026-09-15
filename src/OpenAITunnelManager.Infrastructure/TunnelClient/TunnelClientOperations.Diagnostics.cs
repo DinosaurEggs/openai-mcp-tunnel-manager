@@ -8,7 +8,8 @@ namespace OpenAITunnelManager.Infrastructure.TunnelClient;
 
 public sealed partial class TunnelClientOperations
 {
-    private static readonly HttpClient HealthClient = new() { Timeout = TimeSpan.FromSeconds(3) };
+    private const int MaxHealthResponseBytes = 1024 * 1024;
+    private static readonly HttpClient HealthClient = CreateHealthClient();
 
     public async Task<TunnelConnection> GetStatusAsync(TunnelConnection connection, CancellationToken cancellationToken = default)
     {
@@ -53,7 +54,7 @@ public sealed partial class TunnelClientOperations
         args.Add("--explain");
         var metadata = ProfileMetadataReader.Read(profilePath);
         var result = await RunAsync(args, false, cancellationToken, TimeSpan.FromSeconds(60), metadata.ApiKeyRef, secret);
-        return result.Stdout;
+        return result.StandardOutput;
     }
 
     public async Task<string> ReadLogTailAsync(string path, int maxBytes = 512 * 1024, int maxLines = 5000, CancellationToken cancellationToken = default)
@@ -95,6 +96,12 @@ public sealed partial class TunnelClientOperations
         return output.ToString().TrimEnd();
     }
 
+    private static HttpClient CreateHealthClient()
+    {
+        var handler = new HttpClientHandler { AllowAutoRedirect = false };
+        return new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(3) };
+    }
+
     private static async Task<bool> ProbeAsync(string baseOrUrl, string suffix, CancellationToken cancellationToken)
     {
         var baseUrl = baseOrUrl.Trim();
@@ -102,7 +109,8 @@ public sealed partial class TunnelClientOperations
         if (!TryLoopbackUri(baseUrl.TrimEnd('/'), out var uri)) return false;
         try
         {
-            using var response = await HealthClient.GetAsync(new Uri(uri, suffix), HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(uri, suffix));
+            using var response = await HealthClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             return response.IsSuccessStatusCode;
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException) { return false; }
@@ -115,12 +123,46 @@ public sealed partial class TunnelClientOperations
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, uri);
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-            using var response = await HealthClient.SendAsync(request, cancellationToken);
-            var text = await response.Content.ReadAsStringAsync(cancellationToken);
+            using var response = await HealthClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+
+            if ((int)response.StatusCode is >= 300 and < 400)
+            {
+                var location = response.Headers.Location?.ToString() ?? "(未提供 Location)";
+                return $"拒绝跟随 Health 重定向：HTTP {(int)response.StatusCode} -> {location}";
+            }
+
+            var text = await ReadBoundedContentAsync(response.Content, cancellationToken);
             try { using var json = JsonDocument.Parse(text); return JsonSerializer.Serialize(json.RootElement, new JsonSerializerOptions { WriteIndented = true }); }
             catch (JsonException) { return $"HTTP {(int)response.StatusCode} {response.ReasonPhrase}{Environment.NewLine}{text}"; }
         }
+        catch (InvalidDataException exception)
+        {
+            return $"拒绝读取 Health 响应：{exception.Message}";
+        }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException) { return $"请求失败：{exception.Message}"; }
+    }
+
+    private static async Task<string> ReadBoundedContentAsync(HttpContent content, CancellationToken cancellationToken)
+    {
+        if (content.Headers.ContentLength is > MaxHealthResponseBytes)
+        {
+            throw new InvalidDataException($"响应超过 {MaxHealthResponseBytes / 1024} KiB 限制");
+        }
+
+        await using var source = await content.ReadAsStreamAsync(cancellationToken);
+        using var memory = new MemoryStream();
+        var buffer = new byte[16 * 1024];
+        while (true)
+        {
+            var read = await source.ReadAsync(buffer, cancellationToken);
+            if (read == 0) break;
+            if (memory.Length + read > MaxHealthResponseBytes)
+            {
+                throw new InvalidDataException($"响应超过 {MaxHealthResponseBytes / 1024} KiB 限制");
+            }
+            await memory.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+        }
+        return Encoding.UTF8.GetString(memory.GetBuffer(), 0, checked((int)memory.Length));
     }
 
     private static bool TryLoopbackUri(string value, out Uri uri)

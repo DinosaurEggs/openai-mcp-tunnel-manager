@@ -14,7 +14,7 @@ public sealed class JsonSettingsStore : ISettingsStore
 
     public JsonSettingsStore(string? settingsPath = null)
     {
-        SettingsPath = settingsPath ?? Path.Combine(AppContext.BaseDirectory, "config", "settings.json");
+        SettingsPath = settingsPath ?? AppDataPaths.Current.SettingsPath;
     }
 
     public string SettingsPath { get; }
@@ -93,8 +93,6 @@ public sealed class JsonSettingsStore : ISettingsStore
             }
         }
 
-        // One-way migration from the old manager schema. Only manager-local behavior
-        // survives; Tunnel ID, MCP target, commands and secrets remain owned elsewhere.
         if (TryProperty(root, out var tunnels, "tunnels") && tunnels.ValueKind == JsonValueKind.Array)
         {
             foreach (var tunnel in tunnels.EnumerateArray())

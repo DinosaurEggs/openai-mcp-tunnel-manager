@@ -1,11 +1,10 @@
-using System.Diagnostics;
 using System.Text.Json;
 using OpenAITunnelManager.Core.Abstractions;
 using OpenAITunnelManager.Core.Models;
 
 namespace OpenAITunnelManager.Infrastructure.TunnelClient;
 
-public sealed class TunnelClientService(TunnelClientOptions options) : ITunnelClientService
+public sealed class TunnelClientService(TunnelClientProcessRunner runner) : ITunnelClientService
 {
     public async Task<string> GetVersionAsync(CancellationToken cancellationToken = default)
     {
@@ -22,40 +21,42 @@ public sealed class TunnelClientService(TunnelClientOptions options) : ITunnelCl
         var linkedProfiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var result = new List<TunnelConnection>();
 
+        // Inventory refresh deliberately does not query every runtime status. Dynamic state is
+        // handled by GetStatusAsync and the lightweight RuntimeMonitor in the ViewModel.
         foreach (var runtime in ParseRuntimes(runtimesJson.RootElement))
         {
             profilesByName.TryGetValue(runtime.ProfileName, out var listed);
-            if (listed is not null && !string.IsNullOrWhiteSpace(runtime.ProfilePath) && !SamePath(listed.Path, runtime.ProfilePath)) listed = null;
+            if (listed is not null && !string.IsNullOrWhiteSpace(runtime.ProfilePath) && !SamePath(listed.Path, runtime.ProfilePath))
+            {
+                listed = null;
+            }
             if (listed is not null) linkedProfiles.Add(listed.Name);
 
             var profilePath = listed?.Path ?? runtime.ProfilePath;
             var profileName = !string.IsNullOrWhiteSpace(runtime.ProfileName) ? runtime.ProfileName : listed?.Name ?? string.Empty;
             var metadata = ProfileMetadataReader.Read(profilePath);
-            var status = await ReadStatusAsync(runtime.Alias, cancellationToken).ConfigureAwait(false);
-            var target = ResolveTarget(status.Raw, metadata);
-            var effectiveProfilePath = FirstNonEmpty(listed?.Path, status.ProfilePath, runtime.ProfilePath);
 
             result.Add(new TunnelConnection(
                 Name: runtime.Alias,
                 ProfileName: profileName,
-                ProfilePath: effectiveProfilePath,
+                ProfilePath: FirstNonEmpty(listed?.Path, runtime.ProfilePath),
                 ProfileListed: listed is not null,
                 RuntimeAlias: runtime.Alias,
                 RuntimeProfileName: runtime.ProfileName,
-                RuntimeProfilePath: FirstNonEmpty(status.ProfilePath, runtime.ProfilePath),
-                TunnelId: FirstNonEmpty(status.TunnelId, runtime.TunnelId, metadata.TunnelId),
-                TargetKind: target.Kind,
-                TargetValue: target.Value,
-                State: status.State,
-                ProcessRunning: status.ProcessRunning,
-                Healthy: status.Healthy,
-                Ready: status.Ready,
-                HealthUrl: status.HealthUrl,
-                HealthDetailsUrl: status.HealthDetailsUrl,
-                McpHealthUrl: status.McpHealthUrl,
-                LogPath: status.LogPath,
-                ProcessId: status.ProcessId,
-                Error: status.ErrorMessage));
+                RuntimeProfilePath: runtime.ProfilePath,
+                TunnelId: FirstNonEmpty(runtime.TunnelId, metadata.TunnelId),
+                TargetKind: metadata.TargetKind,
+                TargetValue: metadata.TargetValue,
+                State: RuntimeState.Configured,
+                ProcessRunning: false,
+                Healthy: false,
+                Ready: false,
+                HealthUrl: string.Empty,
+                HealthDetailsUrl: string.Empty,
+                McpHealthUrl: string.Empty,
+                LogPath: string.Empty,
+                ProcessId: null,
+                Error: string.Empty));
         }
 
         foreach (var profile in profiles)
@@ -153,9 +154,6 @@ public sealed class TunnelClientService(TunnelClientOptions options) : ITunnelCl
                 : runtimeState is "stopped" or "disconnected" or "not_running" or "missing_profile" ? RuntimeState.Stopped
                 : command.ExitCode == 0 ? RuntimeState.Stopped : RuntimeState.Error;
             var errorMessage = FirstNonEmpty(GetString(root, "error", "remote_error"), command.ExitCode == 0 ? string.Empty : command.StandardError.Trim());
-            // An explicit stale state is meaningful tunnel-client status and must
-            // survive a non-zero exit code, even when the accompanying remote
-            // error happens to contain generic text such as "not found".
             if (!stale && command.ExitCode != 0 && LooksLikeMissingAlias(errorMessage)) state = RuntimeState.Stopped;
             return new RuntimeSnapshot(
                 alias,
@@ -187,44 +185,11 @@ public sealed class TunnelClientService(TunnelClientOptions options) : ITunnelCl
         catch (JsonException exception) { throw new InvalidOperationException($"tunnel-client 返回了无效 JSON：{string.Join(' ', arguments)}", exception); }
     }
 
-    private async Task<CommandResult> RunAsync(IReadOnlyList<string> arguments, bool allowFailure, CancellationToken cancellationToken)
-    {
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = options.ResolveExecutablePath(),
-            WorkingDirectory = AppContext.BaseDirectory,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            RedirectStandardInput = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-        options.ApplyChildEnvironment(startInfo);
-        foreach (var argument in arguments) startInfo.ArgumentList.Add(argument);
-        using var process = new Process { StartInfo = startInfo };
-        try
-        {
-            if (!process.Start()) throw new InvalidOperationException("无法启动 tunnel-client 进程");
-        }
-        catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or InvalidOperationException)
-        {
-            throw new InvalidOperationException($"无法启动 tunnel-client：{startInfo.FileName}", exception);
-        }
-        var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-        var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(options.CommandTimeout);
-        try { await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false); }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            try { process.Kill(entireProcessTree: true); } catch { }
-            throw new TimeoutException($"tunnel-client 命令执行超时：{string.Join(' ', arguments)}");
-        }
-        var result = new CommandResult(process.ExitCode, await stdoutTask.ConfigureAwait(false), await stderrTask.ConfigureAwait(false));
-        if (!allowFailure && result.ExitCode != 0)
-            throw new InvalidOperationException($"tunnel-client 命令失败（退出码 {result.ExitCode}）：{FirstNonEmpty(result.StandardError.Trim(), result.StandardOutput.Trim(), "未知错误")}");
-        return result;
-    }
+    private Task<TunnelClientProcessResult> RunAsync(
+        IReadOnlyList<string> arguments,
+        bool allowFailure,
+        CancellationToken cancellationToken) =>
+        runner.RunAsync(arguments, allowFailure, cancellationToken);
 
     private static IReadOnlyList<ProfileEntry> ParseProfiles(JsonElement root)
     {
@@ -332,19 +297,26 @@ public sealed class TunnelClientService(TunnelClientOptions options) : ITunnelCl
         {
             foreach (var property in element.EnumerateObject())
             {
-                if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase)) { value = property.Value; return true; }
+                if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase))
+                {
+                    value = property.Value;
+                    return true;
+                }
             }
         }
         value = default;
         return false;
     }
 
-    private static string FirstNonEmpty(params string?[] values) => values.FirstOrDefault(static value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
+    private static string FirstNonEmpty(params string?[] values) =>
+        values.FirstOrDefault(static value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
+
     private static bool LooksLikeMissingAlias(string text)
     {
         var value = text.ToLowerInvariant();
         return new[] { "not found", "unknown alias", "no runtime alias", "does not exist", "is not known" }.Any(value.Contains);
     }
+
     private static bool SamePath(string left, string right)
     {
         try { return string.Equals(Path.GetFullPath(left), Path.GetFullPath(right), StringComparison.OrdinalIgnoreCase); }
@@ -353,7 +325,6 @@ public sealed class TunnelClientService(TunnelClientOptions options) : ITunnelCl
 
     private sealed record ProfileEntry(string Name, string Path);
     private sealed record RuntimeEntry(string Alias, string ProfileName, string ProfilePath, string TunnelId);
-    private sealed record CommandResult(int ExitCode, string StandardOutput, string StandardError);
     private sealed record RuntimeSnapshot(
         string Alias,
         RuntimeState State,
