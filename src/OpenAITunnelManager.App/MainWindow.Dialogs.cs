@@ -45,6 +45,7 @@ public sealed partial class MainWindow
         editor.Height = double.NaN;
         if (RootGrid.ActualHeight > 1)
         {
+            editor.MinHeight = RootGrid.ActualHeight * 0.24;
             editor.MaxHeight = RootGrid.ActualHeight * 0.42;
         }
     }
