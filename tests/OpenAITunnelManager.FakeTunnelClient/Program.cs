@@ -4,7 +4,9 @@ using System.Text.RegularExpressions;
 
 namespace OpenAITunnelManager.FakeTunnelClient;
 
-public static class Marker;
+public static class Marker
+{
+}
 
 public static class Program
 {
@@ -153,6 +155,10 @@ public static class Program
                 return 2;
             }
 
+            var state = LoadState();
+            var runtimes = EnsureRuntimes(state);
+            var previous = runtimes[alias] as JsonObject;
+            var connectCount = previous?["connect_count"]?.GetValue<int>() ?? 0;
             var profilePath = ResolveRuntimeProfile(profileName, profileDir, tunnelId, url, command);
             Directory.CreateDirectory(RuntimeDirectory);
             var logPath = Path.Combine(RuntimeDirectory, alias + ".log");
@@ -175,10 +181,10 @@ public static class Program
                 ["mcp_health_url"] = "http://127.0.0.1:54321/mcp",
                 ["log_path"] = logPath,
                 ["pid"] = 4242,
+                ["connect_count"] = connectCount + 1,
                 ["process"] = new JsonObject { ["target_kind"] = targetKind, ["target_value"] = targetValue }
             };
-            var state = LoadState();
-            EnsureRuntimes(state)[alias] = runtime;
+            runtimes[alias] = runtime;
             SaveState(state);
             Console.WriteLine(new JsonObject { ["ready"] = true }.ToJsonString(CompactJson));
             return 0;
@@ -212,6 +218,11 @@ public static class Program
         if (args.Length >= 3 && args[1] == "stop")
         {
             var alias = args[2];
+            if (string.Equals(Environment.GetEnvironmentVariable("FAKE_FAIL_STOP"), alias, StringComparison.OrdinalIgnoreCase))
+            {
+                Console.Error.WriteLine("stop failed");
+                return 9;
+            }
             var state = LoadState();
             var runtime = EnsureRuntimes(state)[alias] as JsonObject;
             if (runtime is null)
