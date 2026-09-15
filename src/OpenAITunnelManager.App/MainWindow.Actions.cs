@@ -4,7 +4,6 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using OpenAITunnelManager.Core.Models;
-using Windows.ApplicationModel.DataTransfer;
 using Windows.Storage.Pickers;
 
 namespace OpenAITunnelManager.App;
@@ -72,8 +71,17 @@ public sealed partial class MainWindow
         try
         {
             var data = await ViewModel.LoadSelectedProfileAsync();
+            var commonTargetSupported = data.TargetKind is "server_url" or "command";
             var tunnelId = new TextBox { Header = "Tunnel ID", Text = data.TunnelId, HorizontalAlignment = HorizontalAlignment.Stretch };
-            var target = new TextBox { Header = data.TargetKind == "command" ? "main MCP Command" : "main MCP URL", Text = data.TargetValue, HorizontalAlignment = HorizontalAlignment.Stretch };
+            var target = new TextBox
+            {
+                Header = data.TargetKind == "command"
+                    ? "main MCP Command"
+                    : commonTargetSupported ? "main MCP URL" : $"main MCP target ({data.TargetKind}) - 请在高级配置中修改",
+                Text = data.TargetValue,
+                IsEnabled = commonTargetSupported,
+                HorizontalAlignment = HorizontalAlignment.Stretch
+            };
             var secret = new PasswordBox { Header = "新的 Runtime API Key", PlaceholderText = data.HasSavedSecret ? "已保存；留空表示不修改" : "未保存；留空使用环境变量", HorizontalAlignment = HorizontalAlignment.Stretch };
             var deleteSecret = new CheckBox { Content = "删除已保存的 Runtime API Key", IsEnabled = data.HasSavedSecret };
             var enabled = new CheckBox { Content = "启用此配置", IsChecked = data.Preference.Enabled };
@@ -105,7 +113,12 @@ public sealed partial class MainWindow
             var dialog = NewDialog($"编辑 Profile - {data.Name}", scroll, "保存");
             dialog.PrimaryButtonClick += (_, args) =>
             {
-                var spec = new ProfileSpec(data.Name, tunnelId.Text, data.TargetKind == "command" ? McpType.Stdio : McpType.Http, target.Text);
+                var validationTarget = commonTargetSupported ? target.Text : "http://127.0.0.1/";
+                var spec = new ProfileSpec(
+                    data.Name,
+                    tunnelId.Text,
+                    data.TargetKind == "command" ? McpType.Stdio : McpType.Http,
+                    validationTarget);
                 var errors = spec.Validate();
                 if (errors.Count == 0 && !string.IsNullOrWhiteSpace(raw.Text)) return;
                 args.Cancel = true;
@@ -117,7 +130,7 @@ public sealed partial class MainWindow
                 data,
                 raw.Text,
                 tunnelId.Text,
-                target.Text,
+                commonTargetSupported ? target.Text : data.TargetValue,
                 new ProfilePreference
                 {
                     Enabled = enabled.IsChecked == true,
@@ -240,32 +253,6 @@ public sealed partial class MainWindow
     {
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) return;
         Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{Path.GetFullPath(path)}\"") { UseShellExecute = true });
-    }
-
-    private void CopyLog_Click(object sender, RoutedEventArgs e)
-    {
-        var package = new DataPackage();
-        package.SetText(ViewModel.VisibleLog ?? string.Empty);
-        Clipboard.SetContent(package);
-        ViewModel.StatusMessage = "已复制当前可见日志";
-    }
-
-    private async void ExportLog_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            var picker = new FileSavePicker { SuggestedFileName = $"{ViewModel.SelectedConnection?.Name ?? "tunnel"}-log" };
-            picker.FileTypeChoices.Add("日志文件", new List<string> { ".log" });
-            WinRT.Interop.InitializeWithWindow.Initialize(picker, _hwnd);
-            var file = await picker.PickSaveFileAsync();
-            if (file is null) return;
-            await File.WriteAllTextAsync(file.Path, ViewModel.VisibleLog ?? string.Empty);
-            ViewModel.StatusMessage = $"日志已导出：{file.Path}";
-        }
-        catch (Exception exception)
-        {
-            await ShowErrorAsync($"导出日志失败：{exception.Message}");
-        }
     }
 
     private void LogWrap_Changed(object sender, RoutedEventArgs e)
