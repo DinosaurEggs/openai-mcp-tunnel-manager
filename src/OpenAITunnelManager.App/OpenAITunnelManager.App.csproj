@@ -3,8 +3,16 @@
     <OutputType>WinExe</OutputType>
     <AssemblyName>OpenAITunnelManager</AssemblyName>
     <UseWinUI>true</UseWinUI>
+
     <WindowsPackageType>None</WindowsPackageType>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <SelfContained>true</SelfContained>
+
+    <PublishTrimmed>false</PublishTrimmed>
+    <PublishSingleFile>false</PublishSingleFile>
+    <PublishReadyToRun>false</PublishReadyToRun>
+
     <RootNamespace>OpenAITunnelManager.App</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <Platforms>x64;ARM64</Platforms>
