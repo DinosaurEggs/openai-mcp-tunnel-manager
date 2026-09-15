@@ -133,6 +133,7 @@ public partial class App : Application
             var scale = Math.Max(1d, dpi / 96d);
             var displayArea = DisplayArea.GetFromWindowId(window.AppWindow.Id, DisplayAreaFallback.Primary);
             var workArea = displayArea.WorkArea;
+            var outerBounds = displayArea.OuterBounds;
 
             var marginPx = (int)Math.Round(workAreaMarginDip * scale);
             var maxWidthPx = Math.Max((int)Math.Round(minimumWidthDip * scale), workArea.Width - (marginPx * 2));
@@ -142,11 +143,13 @@ public partial class App : Application
             widthPx = Math.Min(widthPx, workArea.Width);
             heightPx = Math.Min(heightPx, workArea.Height);
 
-            var x = workArea.X + Math.Max(0, (workArea.Width - widthPx) / 2);
-            var y = workArea.Y + Math.Max(0, (workArea.Height - heightPx) / 2);
+            var workAreaScreenX = outerBounds.X + workArea.X;
+            var workAreaScreenY = outerBounds.Y + workArea.Y;
+            var x = workAreaScreenX + Math.Max(0, (workArea.Width - widthPx) / 2);
+            var y = workAreaScreenY + Math.Max(0, (workArea.Height - heightPx) / 2);
             window.AppWindow.MoveAndResize(new RectInt32(x, y, widthPx, heightPx));
 
-            AppLog.Info($"DPI-aware initial window placement | dpi={dpi} | scale={scale:F2} | physical={widthPx}x{heightPx} | effective≈{widthPx / scale:F0}x{heightPx / scale:F0}");
+            AppLog.Info($"DPI-aware initial window placement | dpi={dpi} | scale={scale:F2} | physical={widthPx}x{heightPx} | effective≈{widthPx / scale:F0}x{heightPx / scale:F0} | displayOrigin={outerBounds.X},{outerBounds.Y}");
         }
         catch (Exception exception)
         {
