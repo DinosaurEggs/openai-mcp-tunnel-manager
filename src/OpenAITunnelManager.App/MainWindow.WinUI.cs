@@ -9,7 +9,6 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using OpenAITunnelManager.App.Diagnostics;
 using OpenAITunnelManager.App.ViewModels;
-using Windows.Graphics;
 
 namespace OpenAITunnelManager.App;
 
@@ -51,7 +50,9 @@ public sealed partial class MainWindow : Window
 
         try
         {
-            AppWindow.Resize(new SizeInt32(1200, 760));
+            // Window size/position is applied once by App using a percentage of the current
+            // display work area before activation.  Do not apply a fixed physical-pixel size
+            // here, otherwise WinUI can perform its first Measure pass against stale metrics.
             var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico");
             if (File.Exists(iconPath)) AppWindow.SetIcon(iconPath);
         }
@@ -86,6 +87,7 @@ public sealed partial class MainWindow : Window
             ResetTimers();
             if (!ViewModel.IsClientAvailable) SelectPage("settings");
             MissingClientInfo.IsOpen = !ViewModel.IsClientAvailable;
+            RequestResponsiveLayout();
             AppLog.Info($"Initial tunnel-client refresh completed: {ViewModel.StatusMessage}");
         }
         catch (Exception exception)
@@ -166,6 +168,12 @@ public sealed partial class MainWindow : Window
         LogsPage.Visibility = tag == "logs" ? Visibility.Visible : Visibility.Collapsed;
         DiagnosticsPage.Visibility = tag == "diagnostics" ? Visibility.Visible : Visibility.Collapsed;
         SettingsPage.Visibility = tag == "settings" ? Visibility.Visible : Visibility.Collapsed;
+
+        // Visibility changes can realize a previously-collapsed ScrollViewer only after this
+        // event returns.  Always request a post-navigation responsive pass instead of relying
+        // on the user to trigger SizeChanged by resizing the window.
+        RequestResponsiveLayout();
+
         if (!updateNavigation) return;
 
         if (tag == "settings")
@@ -268,6 +276,7 @@ public sealed partial class MainWindow : Window
     {
         ShowWindow(_hwnd, SwShow);
         SetForegroundWindow(_hwnd);
+        RequestResponsiveLayout();
         ViewModel.StatusMessage = "窗口已恢复";
     }
 
