@@ -1,51 +1,110 @@
-# C# / WinUI 3 rewrite
+# C# / WinUI 3 architecture
 
-This branch contains the C# rewrite of OpenAI MCP Tunnel Manager.
+`rewrite/csharp-winui3` 是 OpenAI MCP Tunnel Manager 的纯 C# / WinUI 3 实现。
 
-## Baseline
+## UI 约束
 
-- .NET 10 / C# 14
-- WinUI 3 on Windows App SDK 2.4
-- CommunityToolkit.Mvvm
-- Microsoft.Extensions.Hosting
-- YamlDotNet
-- unpackaged, Windows App SDK self-contained deployment
+应用 UI 只允许：
 
-## Architecture
+- WinUI 3
+- Windows App SDK
+- H.NotifyIcon.WinUI（系统托盘）
+- 必要的 Win32 / WinRT API
+
+不允许引入 WinForms、WPF、WindowsFormsHost/Integration、PresentationFramework/PresentationCore 或 Python UI/运行时。
+
+GitHub Actions 在测试前执行静态门禁，发现这些依赖或 Python 源码/配置会直接失败。
+
+## 工程分层
 
 ```text
 OpenAITunnelManager.App
-  -> OpenAITunnelManager.Core
-  -> OpenAITunnelManager.Infrastructure
-       -> tunnel-client.exe
+  WinUI Shell / Views / ViewModels
+        |
+        v
+OpenAITunnelManager.Core
+  Models / abstractions
+        |
+        v
+OpenAITunnelManager.Infrastructure
+  tunnel-client process adapter
+  settings
+  Windows Credential Manager
+  Windows autostart
 ```
 
-`tunnel-client` remains the source of truth. The application does not persist a second copy of Profile, Runtime, Tunnel ID, MCP target, health, or log-path data.
-
-The first migration milestone implements the new Connections workspace and reads live data from:
+测试工程：
 
 ```text
-tunnel-client --version
-tunnel-client profiles list --json
-tunnel-client runtimes list --json
-tunnel-client runtimes status <alias> --json
+OpenAITunnelManager.Tests
+  -> unit / behavior / Windows integration tests
+
+OpenAITunnelManager.FakeTunnelClient
+  -> pure C# executable used to verify the real child-process CLI boundary
 ```
 
-Runtime stop is wired through:
+Fake CLI 只属于测试，不进入发布产物。
+
+## Source of truth
+
+`tunnel-client` 是 Profile / Runtime / Tunnel ID / MCP target / Health URL / runtime log path / runtime state 的唯一事实来源。
+
+Manager 的 `config/settings.json` 只保存 UI/本机偏好。API Key 使用 Windows Credential Manager。
+
+Manager 默认继承当前进程的 `TUNNEL_CLIENT_PROFILE_DIR` / `TUNNEL_CLIENT_STATE_DIR`，不会强制把 tunnel-client 官方数据重定向到 Manager 目录。设置页中的目录覆盖为显式 opt-in。
+
+## Manager 本地目录
 
 ```text
-tunnel-client runtimes stop <alias> --json
+<app>\config\settings.json
+<app>\logs\app.log
+<app>\state\foreground\...
+<app>\state\temp\...
 ```
 
-Profile metadata is read from the official profile path returned by `tunnel-client`. Start/restart are intentionally disabled until Credential Manager and the full `runtimes connect` reconstruction path are migrated.
+应用日志在 WinUI Application/Window 创建之前就开始记录，因此 XAML、DI、窗口构造和首次 inventory 刷新失败都可诊断。
 
-## Build
+## CLI adapter
 
-Requirements: Visual Studio 2026 with Windows application development tooling, or the .NET 10 SDK on Windows.
+Inventory：
 
-```powershell
-dotnet restore .\OpenAITunnelManager.slnx
-dotnet build .\src\OpenAITunnelManager.App\OpenAITunnelManager.App.csproj -c Release -p:Platform=x64 -r win-x64
+```text
+profiles list --json
+runtimes list --json
+runtimes status <alias> --json
 ```
 
-Set `TUNNEL_CLIENT_PATH` to point to `tunnel-client.exe`, or place `tunnel-client.exe` next to the application executable. A settings page will replace this temporary bootstrap mechanism later in the migration.
+Profile：
+
+```text
+init ...
+profiles add <name> --from-file <temp> --force
+```
+
+Runtime：
+
+```text
+runtimes connect ... --json
+runtimes stop <alias> --json
+runtimes rm <alias> --json
+```
+
+Profile-only：
+
+```text
+run --profile <name> ...
+```
+
+诊断：
+
+```text
+doctor --profile <name> --explain
+# 或 custom runtime profile
+doctor --profile-file <path> --explain
+```
+
+## 发布
+
+应用采用 unpackaged + self-contained Windows App SDK 发布。`Directory.Build.targets` 明确保证应用自己的 `.pri` 进入 publish 输出，避免 WinUI ResourceDictionary 在启动前发生 `0xC000027B`。
+
+CI 同时发布 `win-x64` / `win-arm64`；x64 还必须通过真实进程启动和第二实例重定向 smoke test，之后才上传 Artifact。
