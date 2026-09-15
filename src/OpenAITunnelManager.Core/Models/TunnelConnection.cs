@@ -52,31 +52,23 @@ public sealed record TunnelConnection(
         string LogPath,
         int? ProcessId,
         string Error)
-        : this(
-            Name, ProfileName, ProfilePath, !string.IsNullOrWhiteSpace(ProfileName) && !string.IsNullOrWhiteSpace(ProfilePath),
-            RuntimeAlias, RuntimeProfileName, RuntimeProfilePath, TunnelId, TargetKind, TargetValue, State,
-            ProcessRunning, Healthy, Ready, HealthUrl, string.Empty, string.Empty, LogPath, ProcessId, Error)
+        : this(Name, ProfileName, ProfilePath,
+            !string.IsNullOrWhiteSpace(ProfileName) && !string.IsNullOrWhiteSpace(ProfilePath),
+            RuntimeAlias, RuntimeProfileName, RuntimeProfilePath, TunnelId, TargetKind, TargetValue,
+            State, ProcessRunning, Healthy, Ready, HealthUrl, string.Empty, string.Empty, LogPath, ProcessId, Error)
     {
     }
 
     public bool HasRuntime => !string.IsNullOrWhiteSpace(RuntimeAlias);
     public bool HasProfile => !string.IsNullOrWhiteSpace(ProfileName) && !string.IsNullOrWhiteSpace(ProfilePath);
-
-    public string Identity => HasRuntime
-        ? $"runtime:{RuntimeAlias}"
-        : HasProfile
-            ? $"profile:{ProfileName}"
-            : $"item:{Name}";
-
+    public string Identity => HasRuntime ? $"runtime:{RuntimeAlias}" : HasProfile ? $"profile:{ProfileName}" : $"item:{Name}";
     public string CredentialId => HasRuntime ? RuntimeAlias : HasProfile ? ProfileName : Name;
 
     public string StatusLabel => State switch
     {
-        RuntimeState.Ready => "已启动",
-        RuntimeState.Running => "已启动",
-        RuntimeState.Starting => "正在启动",
-        RuntimeState.Stopped => "已停止",
-        RuntimeState.Configured => "已停止",
+        RuntimeState.Ready or RuntimeState.Running => "已启动",
+        RuntimeState.Starting => "启动中",
+        RuntimeState.Stopped or RuntimeState.Configured => "已停止",
         RuntimeState.Stale => "状态失效",
         RuntimeState.Error => "异常",
         _ => "未知"
@@ -94,18 +86,16 @@ public sealed record TunnelConnection(
         _ => "未知"
     };
 
-    public string SourceText => ProfileListed && HasRuntime
-        ? "Profile + 运行实例"
-        : HasRuntime
-            ? "运行实例"
-            : "Profile 配置";
+    public string SourceText => ProfileListed && HasRuntime ? "Profile + 运行实例" : HasRuntime ? "运行实例" : "Profile 配置";
+    public string ProcessText => ProcessRunning ? "运行中" : State == RuntimeState.Unknown ? "未知" : "未运行";
+    public string HealthText => ProcessRunning ? Healthy ? "正常" : "异常/未知" : "-";
+    public string ReadyText => ProcessRunning ? Ready ? "已就绪" : "未就绪" : "-";
 
     public string Subtitle
     {
         get
         {
-            var parts = new[] { ProfileName, RuntimeAlias, TargetKind }
-                .Where(static value => !string.IsNullOrWhiteSpace(value));
+            var parts = new[] { ProfileName, RuntimeAlias, TargetKind }.Where(static value => !string.IsNullOrWhiteSpace(value));
             return string.Join(" · ", parts);
         }
     }
