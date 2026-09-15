@@ -75,11 +75,13 @@ public sealed partial class MainWindow : Window
         if (Navigation.SettingsItem is NavigationViewItem settingsItem) settingsItem.Content = "设置";
         AppLog.Info("MainWindow loaded; initializing settings and tunnel-client state");
 
+        // Tray availability is independent of tunnel-client health/configuration.
+        SetupTrayIcon();
+
         try
         {
             await ViewModel.InitializeAsync();
             ViewModel.RestoreSelectedLogCache();
-            SetupTrayIcon();
             ResetTimers();
             if (!ViewModel.IsClientAvailable) SelectPage("settings");
             MissingClientInfo.IsOpen = !ViewModel.IsClientAvailable;
@@ -111,10 +113,11 @@ public sealed partial class MainWindow : Window
     private async void LogTimer_Tick(DispatcherQueueTimer sender, object args)
     {
         if (LogsPage.Visibility != Visibility.Visible || !ViewModel.LogAutoRefresh || ViewModel.IsBusy) return;
+        var horizontalOffset = CaptureLogHorizontalOffset();
         try
         {
             await ViewModel.RefreshLogIncrementalAsync();
-            ScrollLogToEndIfNeeded();
+            RestoreLogViewport(horizontalOffset, followVertical: true);
         }
         catch (Exception exception)
         {
@@ -140,8 +143,9 @@ public sealed partial class MainWindow : Window
             if (tag == "logs")
             {
                 ViewModel.RestoreSelectedLogCache();
+                var horizontalOffset = CaptureLogHorizontalOffset();
                 await ViewModel.RefreshLogIncrementalAsync();
-                ScrollLogToEndIfNeeded();
+                RestoreLogViewport(horizontalOffset, followVertical: true);
             }
             else if (tag == "diagnostics")
             {
@@ -186,8 +190,9 @@ public sealed partial class MainWindow : Window
             await ViewModel.RefreshSelectedStatusAsync();
             if (LogsPage.Visibility == Visibility.Visible)
             {
+                var horizontalOffset = CaptureLogHorizontalOffset();
                 await ViewModel.RefreshLogIncrementalAsync();
-                ScrollLogToEndIfNeeded();
+                RestoreLogViewport(horizontalOffset, followVertical: true);
             }
         }
         catch (Exception exception)
