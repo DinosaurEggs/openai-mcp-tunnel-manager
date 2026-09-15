@@ -1,0 +1,29 @@
+name: build-windows
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  test-and-build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Verify
+        shell: pwsh
+        run: python verify.py
+      - name: Package
+        shell: pwsh
+        run: |
+          pip install "pyinstaller>=6.11,<7"
+          pyinstaller --noconfirm --clean --windowed --onedir --name OpenAITunnelManager --paths src launcher.py
+          Compress-Archive -Path dist/OpenAITunnelManager/* -DestinationPath dist/OpenAITunnelManager-portable.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OpenAITunnelManager-windows
+          path: dist/OpenAITunnelManager-portable.zip
