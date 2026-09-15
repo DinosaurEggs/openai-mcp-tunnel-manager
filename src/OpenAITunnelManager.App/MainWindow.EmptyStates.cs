@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenAITunnelManager.App.Controls;
 using OpenAITunnelManager.App.ViewModels;
+using Windows.Storage.Pickers;
 
 namespace OpenAITunnelManager.App;
 
@@ -241,11 +242,26 @@ public sealed partial class MainWindow
         return Task.CompletedTask;
     }
 
-    private Task PickTunnelClientFromEmptyStateAsync()
+    private async Task PickTunnelClientFromEmptyStateAsync()
     {
-        SelectPage("settings");
-        BrowseTunnelClient_Click(this, null!);
-        return Task.CompletedTask;
+        try
+        {
+            var picker = new FileOpenPicker { SuggestedStartLocation = PickerLocationId.ComputerFolder };
+            picker.FileTypeFilter.Add(".exe");
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, _hwnd);
+            var file = await picker.PickSingleFileAsync();
+            if (file is null) return;
+
+            ViewModel.SetTunnelClientPath(file.Path);
+            await ViewModel.SaveSettingsAsync();
+            ResetTimers();
+            UpdateEmptyStates();
+        }
+        catch (Exception exception)
+        {
+            SelectPage("settings");
+            await ShowErrorAsync($"配置 tunnel-client 失败：{exception.Message}");
+        }
     }
 
     private Task CreateProfileFromEmptyStateAsync()
