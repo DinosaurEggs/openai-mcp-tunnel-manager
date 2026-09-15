@@ -9,25 +9,25 @@ public sealed class TunnelClientService(TunnelClientOptions options) : ITunnelCl
 {
     public async Task<string> GetVersionAsync(CancellationToken cancellationToken = default)
     {
-        var result = await RunAsync(["--version"], false, cancellationToken).ConfigureAwait(false);
+        var result = await RunAsync(["--version"], allowFailure: false, cancellationToken).ConfigureAwait(false);
         return result.StandardOutput.Trim();
     }
 
     public async Task<IReadOnlyList<TunnelConnection>> GetConnectionsAsync(CancellationToken cancellationToken = default)
     {
-        using var profilesDocument = await RunJsonAsync(["profiles", "list", "--json"], cancellationToken).ConfigureAwait(false);
-        using var runtimesDocument = await RunJsonAsync(["runtimes", "list", "--json"], cancellationToken).ConfigureAwait(false);
+        using var profilesJson = await RunJsonAsync(["profiles", "list", "--json"], cancellationToken).ConfigureAwait(false);
+        using var runtimesJson = await RunJsonAsync(["runtimes", "list", "--json"], cancellationToken).ConfigureAwait(false);
 
-        var profiles = ReadProfiles(profilesDocument.RootElement);
-        var runtimeEntries = ReadRuntimeEntries(runtimesDocument.RootElement);
-        var profilesByName = profiles.ToDictionary(static item => item.Name, StringComparer.OrdinalIgnoreCase);
+        var profiles = ParseProfiles(profilesJson.RootElement);
+        var profilesByName = profiles.ToDictionary(static profile => profile.Name, StringComparer.OrdinalIgnoreCase);
         var linkedProfiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var connections = new List<TunnelConnection>();
 
-        foreach (var runtime in runtimeEntries)
+        foreach (var runtime in ParseRuntimes(runtimesJson.RootElement))
         {
             profilesByName.TryGetValue(runtime.ProfileName, out var listedProfile);
-            if (listedProfile is not null && !string.IsNullOrWhiteSpace(runtime.ProfilePath) && !SamePath(listedProfile.Path, runtime.ProfilePath))
+            if (listedProfile is not null && !string.IsNullOrWhiteSpace(runtime.ProfilePath) &&
+                !SamePath(listedProfile.Path, runtime.ProfilePath))
             {
                 listedProfile = null;
             }
@@ -37,13 +37,13 @@ public sealed class TunnelClientService(TunnelClientOptions options) : ITunnelCl
                 linkedProfiles.Add(listedProfile.Name);
             }
 
+            var profilePath = listedProfile?.Path ?? runtime.ProfilePath;
             var profileName = !string.IsNullOrWhiteSpace(runtime.ProfileName)
                 ? runtime.ProfileName
                 : listedProfile?.Name ?? string.Empty;
-            var profilePath = listedProfile?.Path ?? runtime.ProfilePath;
             var metadata = ProfileMetadataReader.Read(profilePath);
             var status = await ReadStatusAsync(runtime.Alias, cancellationToken).ConfigureAwait(false);
-            var (targetKind, targetValue) = ResolveTarget(status.Raw, metadata);
+            var target = ResolveTarget(status.Raw, metadata);
 
             connections.Add(new TunnelConnection(
                 Name: runtime.Alias,
@@ -53,8 +53,8 @@ public sealed class TunnelClientService(TunnelClientOptions options) : ITunnelCl
                 RuntimeProfileName: runtime.ProfileName,
                 RuntimeProfilePath: runtime.ProfilePath,
                 TunnelId: FirstNonEmpty(status.TunnelId, runtime.TunnelId, metadata.TunnelId),
-                TargetKind: targetKind,
-                TargetValue: targetValue,
+                TargetKind: target.Kind,
+                TargetValue: target.Value,
                 State: status.State,
                 ProcessRunning: status.ProcessRunning,
                 Healthy: status.Healthy,
@@ -62,7 +62,7 @@ public sealed class TunnelClientService(TunnelClientOptions options) : ITunnelCl
                 HealthUrl: status.HealthUrl,
                 LogPath: status.LogPath,
                 ProcessId: status.ProcessId,
-                Error: status.Error));
+                Error: status.ErrorMessage));
         }
 
         foreach (var profile in profiles)
@@ -94,12 +94,14 @@ public sealed class TunnelClientService(TunnelClientOptions options) : ITunnelCl
         }
 
         return connections
-            .OrderBy(static item => item.Name, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(static item => item.RuntimeAlias, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(static connection => connection.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static connection => connection.RuntimeAlias, StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }
 
-    public async Task<TunnelConnection> GetStatusAsync(TunnelConnection connection, CancellationToken cancellationToken = default)
+    public async Task<TunnelConnection> GetStatusAsync(
+        TunnelConnection connection,
+        CancellationToken cancellationToken = default)
     {
         if (!connection.HasRuntime)
         {
@@ -108,13 +110,13 @@ public sealed class TunnelClientService(TunnelClientOptions options) : ITunnelCl
 
         var status = await ReadStatusAsync(connection.RuntimeAlias, cancellationToken).ConfigureAwait(false);
         var metadata = ProfileMetadataReader.Read(connection.ProfilePath);
-        var (targetKind, targetValue) = ResolveTarget(status.Raw, metadata);
+        var target = ResolveTarget(status.Raw, metadata);
 
         return connection with
         {
             TunnelId = FirstNonEmpty(status.TunnelId, connection.TunnelId, metadata.TunnelId),
-            TargetKind = targetKind,
-            TargetValue = targetValue,
+            TargetKind = target.Kind,
+            TargetValue = target.Value,
             State = status.State,
             ProcessRunning = status.ProcessRunning,
             Healthy = status.Healthy,
@@ -122,42 +124,36 @@ public sealed class TunnelClientService(TunnelClientOptions options) : ITunnelCl
             HealthUrl = status.HealthUrl,
             LogPath = status.LogPath,
             ProcessId = status.ProcessId,
-            Error = status.Error
+            Error = status.ErrorMessage
         };
     }
 
     public async Task StopRuntimeAsync(string alias, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(alias);
-        await RunAsync(["runtimes", "stop", alias, "--json"], false, cancellationToken).ConfigureAwait(false);
+        await RunAsync(["runtimes", "stop", alias, "--json"], allowFailure: false, cancellationToken)
+            .ConfigureAwait(false);
     }
 
-    private async Task<StatusSnapshot> ReadStatusAsync(string alias, CancellationToken cancellationToken)
+    private async Task<RuntimeStatusSnapshot> ReadStatusAsync(string alias, CancellationToken cancellationToken)
     {
-        var result = await RunAsync(["runtimes", "status", alias, "--json"], true, cancellationToken).ConfigureAwait(false);
+        var result = await RunAsync(["runtimes", "status", alias, "--json"], allowFailure: true, cancellationToken)
+            .ConfigureAwait(false);
+
         if (string.IsNullOrWhiteSpace(result.StandardOutput))
         {
             return result.ExitCode == 0
-                ? StatusSnapshot.Empty(alias)
-                : StatusSnapshot.Error(alias, result.StandardError.Trim());
+                ? RuntimeStatusSnapshot.Empty(alias)
+                : RuntimeStatusSnapshot.Failure(alias, result.StandardError.Trim());
         }
 
-        JsonDocument document;
         try
         {
-            document = JsonDocument.Parse(result.StandardOutput);
-        }
-        catch (JsonException)
-        {
-            return StatusSnapshot.Error(alias, FirstNonEmpty(result.StandardError.Trim(), "Runtime 状态不是有效 JSON"));
-        }
-
-        using (document)
-        {
+            using var document = JsonDocument.Parse(result.StandardOutput);
             var root = document.RootElement;
             if (root.ValueKind != JsonValueKind.Object)
             {
-                return StatusSnapshot.Error(alias, "Runtime 状态 JSON 根节点不是对象");
+                return RuntimeStatusSnapshot.Failure(alias, "Runtime 状态 JSON 根节点不是对象");
             }
 
             var processRunning = GetBoolean(root, "process_running", "running");
@@ -180,7 +176,7 @@ public sealed class TunnelClientService(TunnelClientOptions options) : ITunnelCl
                                     ? RuntimeState.Stopped
                                     : result.ExitCode == 0 ? RuntimeState.Stopped : RuntimeState.Error;
 
-            return new StatusSnapshot(
+            return new RuntimeStatusSnapshot(
                 Alias: alias,
                 State: state,
                 ProcessRunning: processRunning,
@@ -190,25 +186,40 @@ public sealed class TunnelClientService(TunnelClientOptions options) : ITunnelCl
                 HealthUrl: FindString(root, "health_url", "health_base_url"),
                 LogPath: FindString(root, "log_path", "log_file", "log_file_path", "runtime_log", "logs_path", "logs"),
                 ProcessId: FindInt32(root, "pid", "process_id"),
-                Error: FirstNonEmpty(GetString(root, "error", "remote_error"), result.ExitCode == 0 ? string.Empty : result.StandardError.Trim()),
+                ErrorMessage: FirstNonEmpty(
+                    GetString(root, "error", "remote_error"),
+                    result.ExitCode == 0 ? string.Empty : result.StandardError.Trim()),
                 Raw: root.Clone());
+        }
+        catch (JsonException)
+        {
+            return RuntimeStatusSnapshot.Failure(
+                alias,
+                FirstNonEmpty(result.StandardError.Trim(), "Runtime 状态不是有效 JSON"));
         }
     }
 
-    private async Task<JsonDocument> RunJsonAsync(IReadOnlyList<string> arguments, CancellationToken cancellationToken)
+    private async Task<JsonDocument> RunJsonAsync(
+        IReadOnlyList<string> arguments,
+        CancellationToken cancellationToken)
     {
-        var result = await RunAsync(arguments, false, cancellationToken).ConfigureAwait(false);
+        var result = await RunAsync(arguments, allowFailure: false, cancellationToken).ConfigureAwait(false);
         try
         {
             return JsonDocument.Parse(result.StandardOutput);
         }
         catch (JsonException exception)
         {
-            throw new InvalidOperationException($"tunnel-client 返回了无效 JSON：{string.Join(' ', arguments)}", exception);
+            throw new InvalidOperationException(
+                $"tunnel-client 返回了无效 JSON：{string.Join(' ', arguments)}",
+                exception);
         }
     }
 
-    private async Task<CommandResult> RunAsync(IReadOnlyList<string> arguments, bool allowNonZeroExit, CancellationToken cancellationToken)
+    private async Task<CommandResult> RunAsync(
+        IReadOnlyList<string> arguments,
+        bool allowFailure,
+        CancellationToken cancellationToken)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -238,8 +249,8 @@ public sealed class TunnelClientService(TunnelClientOptions options) : ITunnelCl
             throw new InvalidOperationException($"无法启动 tunnel-client：{startInfo.FileName}", exception);
         }
 
-        var standardOutputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-        var standardErrorTask = process.StandardError.ReadToEndAsync(cancellationToken);
+        var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+        var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(options.CommandTimeout);
 
@@ -260,19 +271,22 @@ public sealed class TunnelClientService(TunnelClientOptions options) : ITunnelCl
             throw new TimeoutException($"tunnel-client 命令执行超时：{string.Join(' ', arguments)}");
         }
 
-        var standardOutput = await standardOutputTask.ConfigureAwait(false);
-        var standardError = await standardErrorTask.ConfigureAwait(false);
-        var result = new CommandResult(process.ExitCode, standardOutput, standardError);
-        if (!allowNonZeroExit && result.ExitCode != 0)
+        var result = new CommandResult(
+            process.ExitCode,
+            await stdoutTask.ConfigureAwait(false),
+            await stderrTask.ConfigureAwait(false));
+
+        if (!allowFailure && result.ExitCode != 0)
         {
             throw new InvalidOperationException(
-                $"tunnel-client 命令失败（退出码 {result.ExitCode}）：{FirstNonEmpty(result.StandardError.Trim(), result.StandardOutput.Trim())}");
+                $"tunnel-client 命令失败（退出码 {result.ExitCode}）：" +
+                FirstNonEmpty(result.StandardError.Trim(), result.StandardOutput.Trim()));
         }
 
         return result;
     }
 
-    private static IReadOnlyList<ProfileEntry> ReadProfiles(JsonElement root)
+    private static IReadOnlyList<ProfileEntry> ParseProfiles(JsonElement root)
     {
         if (root.ValueKind != JsonValueKind.Array)
         {
@@ -298,14 +312,16 @@ public sealed class TunnelClientService(TunnelClientOptions options) : ITunnelCl
         return profiles;
     }
 
-    private static IReadOnlyList<RuntimeEntry> ReadRuntimeEntries(JsonElement root)
+    private static IReadOnlyList<RuntimeEntry> ParseRuntimes(JsonElement root)
     {
-        if (root.ValueKind != JsonValueKind.Object || !TryGetProperty(root, "aliases", out var aliases) || aliases.ValueKind != JsonValueKind.Array)
+        if (root.ValueKind != JsonValueKind.Object ||
+            !TryGetProperty(root, "aliases", out var aliases) ||
+            aliases.ValueKind != JsonValueKind.Array)
         {
             return [];
         }
 
-        var entries = new List<RuntimeEntry>();
+        var runtimes = new List<RuntimeEntry>();
         foreach (var item in aliases.EnumerateArray())
         {
             if (item.ValueKind != JsonValueKind.Object)
@@ -319,19 +335,21 @@ public sealed class TunnelClientService(TunnelClientOptions options) : ITunnelCl
                 continue;
             }
 
-            entries.Add(new RuntimeEntry(
+            runtimes.Add(new RuntimeEntry(
                 Alias: alias,
                 ProfileName: GetString(item, "profile_name"),
                 ProfilePath: FirstNonEmpty(GetString(item, "profile_path"), GetString(item, "config_path")),
                 TunnelId: GetString(item, "tunnel_id")));
         }
 
-        return entries;
+        return runtimes;
     }
 
     private static (string Kind, string Value) ResolveTarget(JsonElement status, ProfileMetadata metadata)
     {
-        if (status.ValueKind == JsonValueKind.Object && TryGetProperty(status, "process", out var process) && process.ValueKind == JsonValueKind.Object)
+        if (status.ValueKind == JsonValueKind.Object &&
+            TryGetProperty(status, "process", out var process) &&
+            process.ValueKind == JsonValueKind.Object)
         {
             var kind = GetString(process, "target_kind");
             var value = GetString(process, "target_value");
@@ -344,27 +362,29 @@ public sealed class TunnelClientService(TunnelClientOptions options) : ITunnelCl
         return (metadata.TargetKind, metadata.TargetValue);
     }
 
-    private static string GetString(JsonElement element, params string[] propertyNames)
+    private static string GetString(JsonElement element, params string[] names)
     {
-        foreach (var name in propertyNames)
+        foreach (var name in names)
         {
-            if (TryGetProperty(element, name, out var value))
+            if (!TryGetProperty(element, name, out var value))
             {
-                return value.ValueKind switch
-                {
-                    JsonValueKind.String => value.GetString()?.Trim() ?? string.Empty,
-                    JsonValueKind.Number => value.GetRawText(),
-                    _ => string.Empty
-                };
+                continue;
             }
+
+            return value.ValueKind switch
+            {
+                JsonValueKind.String => value.GetString()?.Trim() ?? string.Empty,
+                JsonValueKind.Number => value.GetRawText(),
+                _ => string.Empty
+            };
         }
 
         return string.Empty;
     }
 
-    private static bool GetBoolean(JsonElement element, params string[] propertyNames)
+    private static bool GetBoolean(JsonElement element, params string[] names)
     {
-        foreach (var name in propertyNames)
+        foreach (var name in names)
         {
             if (!TryGetProperty(element, name, out var value))
             {
@@ -392,13 +412,10 @@ public sealed class TunnelClientService(TunnelClientOptions options) : ITunnelCl
             foreach (var property in element.EnumerateObject())
             {
                 if (keys.Any(key => string.Equals(key, property.Name, StringComparison.OrdinalIgnoreCase)) &&
-                    property.Value.ValueKind == JsonValueKind.String)
+                    property.Value.ValueKind == JsonValueKind.String &&
+                    !string.IsNullOrWhiteSpace(property.Value.GetString()))
                 {
-                    var value = property.Value.GetString();
-                    if (!string.IsNullOrWhiteSpace(value))
-                    {
-                        return value.Trim();
-                    }
+                    return property.Value.GetString()!.Trim();
                 }
 
                 var nested = FindString(property.Value, keys);
@@ -436,7 +453,8 @@ public sealed class TunnelClientService(TunnelClientOptions options) : ITunnelCl
                         return number;
                     }
 
-                    if (property.Value.ValueKind == JsonValueKind.String && int.TryParse(property.Value.GetString(), out number))
+                    if (property.Value.ValueKind == JsonValueKind.String &&
+                        int.TryParse(property.Value.GetString(), out number))
                     {
                         return number;
                     }
@@ -503,7 +521,7 @@ public sealed class TunnelClientService(TunnelClientOptions options) : ITunnelCl
 
     private sealed record CommandResult(int ExitCode, string StandardOutput, string StandardError);
 
-    private sealed record StatusSnapshot(
+    private sealed record RuntimeStatusSnapshot(
         string Alias,
         RuntimeState State,
         bool ProcessRunning,
@@ -513,13 +531,33 @@ public sealed class TunnelClientService(TunnelClientOptions options) : ITunnelCl
         string HealthUrl,
         string LogPath,
         int? ProcessId,
-        string Error,
+        string ErrorMessage,
         JsonElement Raw)
     {
-        public static StatusSnapshot Empty(string alias) => new(
-            alias, RuntimeState.Unknown, false, false, false, string.Empty, string.Empty, string.Empty, null, string.Empty, default);
+        public static RuntimeStatusSnapshot Empty(string alias) => new(
+            alias,
+            RuntimeState.Unknown,
+            false,
+            false,
+            false,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            null,
+            string.Empty,
+            default);
 
-        public static StatusSnapshot Error(string alias, string error) => new(
-            alias, RuntimeState.Error, false, false, false, string.Empty, string.Empty, string.Empty, null, error, default);
+        public static RuntimeStatusSnapshot Failure(string alias, string errorMessage) => new(
+            alias,
+            RuntimeState.Error,
+            false,
+            false,
+            false,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            null,
+            errorMessage,
+            default);
     }
 }
