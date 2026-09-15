@@ -169,7 +169,8 @@ jobs:
           $exe = (Resolve-Path "artifacts/win-x64/OpenAITunnelManager.exe").Path
           $workingDirectory = Split-Path $exe
           $startedAt = Get-Date
-          $log = Join-Path $workingDirectory "logs\app.log"
+          $dataRoot = Join-Path $env:LOCALAPPDATA "OpenAITunnelManager"
+          $log = Join-Path $dataRoot "logs\app.log"
 
           if (Test-Path $log) {
             Remove-Item $log -Force
