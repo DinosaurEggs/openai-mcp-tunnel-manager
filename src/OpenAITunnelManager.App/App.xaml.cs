@@ -49,7 +49,11 @@ public partial class App : Application
             AppLog.Info("MainWindow resolved");
 
             ApplyDpiAwareInitialWindowPlacement(_window);
-            if (_window is MainWindow mainWindow) mainWindow.EnableResponsiveLayout();
+            if (_window is MainWindow mainWindow)
+            {
+                mainWindow.EnableResponsiveLayout();
+                mainWindow.EnableEmptyStates();
+            }
 
             _window.Activate();
             AppLog.Info("MainWindow activated");
