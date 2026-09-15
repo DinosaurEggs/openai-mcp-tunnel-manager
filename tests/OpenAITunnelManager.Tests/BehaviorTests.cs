@@ -67,6 +67,7 @@ public sealed class BehaviorTests
     [Fact]
     public async Task SettingsStore_OnlyPersistsManagerPreferences()
     {
+        var cancellationToken = TestContext.Current.CancellationToken;
         using var temp = new TempDirectory();
         var path = Path.Combine(temp.Path, "config", "settings.json");
         var store = new JsonSettingsStore(path);
@@ -82,15 +83,15 @@ public sealed class BehaviorTests
             }
         };
 
-        await store.SaveAsync(settings);
-        var text = await File.ReadAllTextAsync(path);
+        await store.SaveAsync(settings, cancellationToken);
+        var text = await File.ReadAllTextAsync(path, cancellationToken);
         Assert.Contains("tunnelClientPath", text, StringComparison.Ordinal);
         Assert.Contains("profilePreferences", text, StringComparison.Ordinal);
         Assert.DoesNotContain(TunnelId, text, StringComparison.Ordinal);
         Assert.DoesNotContain("mcpTarget", text, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("apiKey", text, StringComparison.OrdinalIgnoreCase);
 
-        var loaded = await store.LoadAsync();
+        var loaded = await store.LoadAsync(cancellationToken);
         Assert.Equal(5000, loaded.RefreshIntervalMs);
         Assert.True(loaded.ProfilePreferences["PROFILE:IDEA"].AutoConnect);
     }
@@ -132,12 +133,13 @@ public sealed class BehaviorTests
     [Fact]
     public async Task LogTail_IsBoundedAndReadsNewestLines()
     {
+        var cancellationToken = TestContext.Current.CancellationToken;
         using var temp = new TempDirectory();
         var log = Path.Combine(temp.Path, "large.log");
-        await File.WriteAllLinesAsync(log, Enumerable.Range(0, 10000).Select(static index => $"INFO line {index}"));
+        await File.WriteAllLinesAsync(log, Enumerable.Range(0, 10000).Select(static index => $"INFO line {index}"), cancellationToken);
         var operations = new TunnelClientOperations(new TunnelClientOptions(), new FakeInventory());
 
-        var text = await operations.ReadLogTailAsync(log, maxBytes: 8192, maxLines: 80);
+        var text = await operations.ReadLogTailAsync(log, maxBytes: 8192, maxLines: 80, cancellationToken);
 
         Assert.Contains("INFO line 9999", text, StringComparison.Ordinal);
         Assert.True(text.Split(Environment.NewLine).Length <= 80);
