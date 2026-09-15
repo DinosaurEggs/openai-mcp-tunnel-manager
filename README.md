@@ -1,8 +1,6 @@
 # OpenAI MCP Tunnel Manager
 
-A new C# / WinUI 3 implementation of the Windows desktop manager for `tunnel-client`.
-
-This branch is a clean rewrite. It does not carry Python source, Python tests, Python packaging files, legacy build scripts, or legacy documentation from the previous implementation.
+Windows desktop manager for `tunnel-client`, implemented with C# and WinUI 3.
 
 ## Technology baseline
 
@@ -23,11 +21,11 @@ OpenAITunnelManager.App
        -> tunnel-client.exe
 ```
 
-`tunnel-client` is the source of truth for Profile, Runtime, Tunnel ID, MCP target, runtime state, health endpoints, and log paths. The GUI does not maintain a second copy of those objects.
+`tunnel-client` is the source of truth for Profile, Runtime, Tunnel ID, MCP target, runtime state, health endpoints, and log paths. The application stores only its own local UI preferences and credential references.
 
-## Current milestone
+## Current implementation
 
-The first milestone implements the new Connections workspace and reads live data from:
+The Connections workspace reads live data from:
 
 ```text
 tunnel-client --version
@@ -42,7 +40,7 @@ Runtime stop is wired through:
 tunnel-client runtimes stop <alias> --json
 ```
 
-Start/restart, Credential Manager, logs, diagnostics, settings, tray integration, autostart, and single-instance activation will be added as the rewrite progresses.
+The application is being built around five workspaces: Overview, Connections, Logs, Diagnostics, and Settings.
 
 ## Build
 
@@ -51,4 +49,4 @@ dotnet restore .\OpenAITunnelManager.slnx
 dotnet build .\src\OpenAITunnelManager.App\OpenAITunnelManager.App.csproj -c Release -p:Platform=x64 -r win-x64
 ```
 
-During early development, point the application at `tunnel-client.exe` with `TUNNEL_CLIENT_PATH`, or place the executable next to the built application.
+During development, set `TUNNEL_CLIENT_PATH` to the full path of `tunnel-client.exe`, or place the executable next to the application.
