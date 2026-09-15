@@ -2,12 +2,14 @@ namespace OpenAITunnelManager.Infrastructure.Settings;
 
 public sealed class AppDataPaths
 {
+    public static AppDataPaths Current { get; } = new();
+
     public AppDataPaths()
         : this(AppContext.BaseDirectory, Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData))
     {
     }
 
-    internal AppDataPaths(string baseDirectory, string localApplicationData)
+    public AppDataPaths(string baseDirectory, string localApplicationData)
     {
         BaseDirectory = Path.GetFullPath(baseDirectory);
         PortableFlagPath = Path.Combine(BaseDirectory, "portable.flag");
