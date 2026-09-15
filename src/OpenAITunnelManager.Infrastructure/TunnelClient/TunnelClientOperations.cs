@@ -121,5 +121,5 @@ public sealed partial class TunnelClientOperations : ITunnelClientOperations
         values.FirstOrDefault(static value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
 
     private sealed record CapabilityCache(string ExecutablePath, DateTime LastWriteTimeUtc, TunnelClientCapabilities Capabilities);
-    private sealed record ForegroundProfile(Process Process, string HealthFile, string LogPath, string ProfilePath);
+    private sealed record ForegroundProfile(Process Process, string HealthFile, string LogPath, string ProfilePath, StreamWriter LogWriter);
 }
