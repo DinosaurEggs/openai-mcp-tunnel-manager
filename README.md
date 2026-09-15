@@ -15,7 +15,7 @@ Windows 上的 `tunnel-client` 可视化管理器。此分支是完整的 C# / W
 
 应用目标框架为 `net10.0-windows10.0.19041.0`，发布为 unpackaged、self-contained 的 `win-x64` / `win-arm64`。
 
-## 数据来源
+## 数据来源与刷新模型
 
 `tunnel-client` 始终是以下数据的唯一事实来源：
 
@@ -27,41 +27,60 @@ Windows 上的 `tunnel-client` 可视化管理器。此分支是完整的 C# / W
 - Health URL
 - Runtime 日志路径
 
-界面直接调用：
+静态 inventory 只在应用启动、用户手动刷新以及显式 CRUD / lifecycle 操作后读取：
 
 ```text
-tunnel-client --version
 tunnel-client profiles list --json
 tunnel-client runtimes list --json
+```
+
+运行期间由轻量 `RuntimeMonitor` 每 5 秒只查询已知连接状态：
+
+```text
 tunnel-client runtimes status <alias> --json
 ```
 
-GUI 不保存第二套 Tunnel 配置。命令行侧新增、删除或修改 Profile / Runtime 后，GUI 刷新即可同步。
+因此不会恢复旧版对完整 inventory 的周期轮询。命令行侧新增、删除或修改 Profile / Runtime 后，点击 GUI 的“刷新”即可同步；已知 Runtime 的运行状态与自动重连则由 RuntimeMonitor 独立维护。
 
-## 程序目录数据
+`tunnel-client --version` 和 capability probe 按可执行文件完整路径与最后修改时间缓存，不随每次刷新重复执行。
 
-Manager 自己的可写文件全部位于 `OpenAITunnelManager.exe` 所在目录：
+GUI 不保存第二套 Tunnel 配置。
+
+## Manager 数据目录
+
+默认使用标准 Windows 用户数据目录：
 
 ```text
-OpenAITunnelManager\
-├─ OpenAITunnelManager.exe
+%LOCALAPPDATA%\OpenAITunnelManager\
 ├─ config\
 │  └─ settings.json
 ├─ logs\
-│  └─ app.log
+│  ├─ app.log
+│  ├─ app.log.1
+│  ├─ app.log.2
+│  └─ app.log.3
 └─ state\
    ├─ foreground\
    └─ temp\
 ```
 
+如果 `OpenAITunnelManager.exe` 同目录存在：
+
+```text
+portable.flag
+```
+
+则切换为便携模式，把 `config / logs / state` 放到 EXE 所在目录。如果该目录不可写，会自动回退到 `%LOCALAPPDATA%\OpenAITunnelManager`，而不是因便携模式配置导致应用无法启动。
+
 `config/settings.json` 只保存 Manager 本机偏好：
 
 - `tunnel-client.exe` 路径
-- 刷新间隔
 - 关闭到托盘
 - Windows 登录启动
 - Profile / Runtime 的 enabled、auto-connect、auto-reconnect
 - 可选的 Profile / State 目录覆盖
+
+旧 settings 中的 `refreshIntervalMs` 仍可读取以保持兼容，但当前 UI 不再提供 inventory 自动刷新间隔设置，也不依赖该字段驱动 RuntimeMonitor。
 
 Runtime API Key 明文只进入 Windows Credential Manager，不写入 `settings.json`、Profile 或应用日志。
 
@@ -69,24 +88,27 @@ Runtime API Key 明文只进入 Windows Credential Manager，不写入 `settings
 
 ## 首次运行
 
-首次启动如果没有找到 `tunnel-client.exe`，应用会进入“设置”。可使用 WinUI 文件选择器选择正在使用的 `tunnel-client.exe`，保存后立即验证版本和能力并刷新官方 Profile / Runtime。
+首次启动进入“设置”，使用 WinUI 文件选择器选择正在使用的 `tunnel-client.exe`。保存后立即验证版本和能力并刷新官方 Profile / Runtime。
 
 显式配置的路径不存在时不会偷偷 fallback 到其他 `tunnel-client`。
 
 ## 主要功能
 
-- 自动发现现有 Profile / Runtime
+- 读取现有 Profile / Runtime
 - Profile 与 Runtime alias 使用独立实体 Identity，同名也不会错误合并
 - 新建 Profile
 - GUI 内编辑 Profile，不打开外部文本编辑器
 - 常用字段编辑后保留高级 YAML / JSON 内容
+- 未识别的未来 MCP target 类型仍允许在高级编辑器修改，不会被强制转换成 HTTP target
 - 保存 Profile 时调用 `tunnel-client profiles add ... --force` 做官方校验
-- 删除 Runtime / Profile，含共享 Profile 保护和路径二次核验
+- 删除 Runtime / Profile，含共享 Profile 路径保护和路径二次核验
 - Profile-only 前台运行
 - Runtime / Profile 启动、停止、重启
 - Stop 失败时 Restart 不继续 Start
 - enabled / auto-connect / auto-reconnect
-- 手动 Stop 抑制自动重连
+- 轻量 RuntimeMonitor + 1/2/5/10/30/60 秒自动重连退避
+- Runtime Ready 稳定 20 秒后才重置重连退避
+- 手动 Stop / 关闭自动重连 / 删除配置 / 应用退出都会取消待执行的重连任务
 - Runtime API Key 使用 Windows Credential Manager，并支持 Runtime → Profile 凭据继承
 - `doctor --explain`
 - Health / Ready 与新旧 Runtime 兼容
@@ -96,9 +118,16 @@ Runtime API Key 明文只进入 Windows Credential Manager，不写入 `settings
 - 打开配置文件 / 日志文件所在位置
 - 纯 WinUI 系统托盘：打开 / 退出
 - 关闭到系统托盘
-- Windows 登录启动
+- Windows 登录启动，并检测指向旧 EXE 的失效启动项
 - Windows App SDK `AppInstance` 单实例；再次启动恢复并置前已有窗口
 - EXE、窗口和托盘统一应用图标
+
+以下旧功能已按 Python 1.0.0 最终产品范围删除，不再保留隐藏后端：
+
+- Profile 导入 / 导出
+- 复制可见日志
+- 导出日志
+- 完整 inventory 周期轮询及其可配置刷新间隔 UI
 
 ## Profile 编辑
 
@@ -106,7 +135,7 @@ Runtime API Key 明文只进入 Windows Credential Manager，不写入 `settings
 
 ```text
 WinUI 编辑
-  -> state\temp 临时 Profile
+  -> <Manager data>\state\temp 临时 Profile
   -> tunnel-client profiles add <name> --from-file <temp> --force
   -> 官方校验成功
   -> 刷新 inventory
@@ -116,7 +145,7 @@ WinUI 编辑
 
 ## Runtime 与纯 Profile 启动
 
-已有 Runtime alias 时，根据官方 Runtime/Profile 状态重建 `runtimes connect` 参数，包括 Alias、Tunnel ID、Profile、Profile 目录、MCP target 与 API key ref。
+已有 Runtime alias 时，根据官方 Runtime/Profile 数据重建 `runtimes connect` 参数，包括 Alias、Tunnel ID、Profile、Profile 目录、MCP target 与 API key ref。
 
 只有 Profile、没有 Runtime alias 时，Manager 使用：
 
@@ -124,7 +153,19 @@ WinUI 编辑
 tunnel-client run --profile <name>
 ```
 
-前台子进程信息和运行日志仅作为 Manager 本次进程的运行状态管理，不成为新的 Tunnel 配置事实来源。
+前台子进程信息和运行日志仅作为 Manager 本次进程的运行状态管理，不成为新的 Tunnel 配置事实来源。前台 stdout/stderr 使用持久 `StreamWriter` 写入，不再每行重新打开日志文件。
+
+所有短生命周期 `tunnel-client` 命令统一通过一个 process runner 执行；调用方取消、命令超时和应用退出时都会终止整个子进程树。真正退出应用前会等待 RuntimeMonitor 与 Manager 拥有的前台 Profile 完成清理。
+
+## 自动重连
+
+RuntimeMonitor 每 5 秒检查已知连接状态，最多并发 4 个状态查询。需要重连时使用：
+
+```text
+1s -> 2s -> 5s -> 10s -> 30s -> 60s -> 60s ...
+```
+
+延迟结束后重新按 connection Identity 获取当前对象，不使用旧快照。`connect` 命令成功只表示重连命令已提交；必须由后续监控确认 Runtime `Ready`，并持续稳定 20 秒后才重置退避计数。
 
 ## 日志
 
@@ -135,7 +176,10 @@ Runtime 使用 `runtimes status --json` 返回的官方 `log_path`。纯 Profile
 - 大量突发追加时重新 tail，避免一次性分配巨大字符串
 - 每个连接独立缓存，不串日志
 - 支持 `DEBUG / INFO / WARN / ERROR` 过滤和文本搜索
+- 支持自动换行
 - 自动跟随只改变纵向位置，横向滚动由用户控制
+- 可直接打开当前日志文件所在位置
+- Manager 自身 `app.log` 按约 5 MiB × 3 份备份滚动
 
 ## Health
 
@@ -146,7 +190,15 @@ health_details_url
 mcp_health_url
 ```
 
-未声明时显示“未声明详细健康接口”，不会对旧 Runtime 猜测新路由。所有 Manager 主动发出的 Health 请求都限制为 HTTP(S) loopback 地址。
+未声明时显示“未声明详细健康接口”，不会对旧 Runtime 猜测新路由。
+
+所有 Manager 主动发出的 Health 请求：
+
+- 只允许 HTTP(S) loopback 地址；
+- 禁止自动 HTTP 重定向，避免 loopback 通过 30x 跳转到远端；
+- 使用流式读取；
+- 单个详细 Health 响应最大 1 MiB；
+- 默认 3 秒超时。
 
 ## 单实例与托盘
 
@@ -162,7 +214,19 @@ mcp_health_url
   -> 第二进程退出
 ```
 
-托盘使用 WinUI 专用实现，不依赖 WinForms/WPF。
+托盘使用 WinUI 专用实现，不依赖 WinForms/WPF。选择“退出”或在关闭到托盘关闭时真正退出程序，会先等待 Manager 后台任务和前台子进程清理完成。
+
+## 响应式 UI
+
+主界面使用一套具名 WinUI 布局控制器，不再通过 VisualTree 顺序猜测页面结构，也不存在第二套 competing responsive 逻辑。
+
+```text
+Narrow   < 650 epx
+Compact  650–999 epx
+Wide     >= 1000 epx
+```
+
+连接页在窄窗口纵向堆叠列表 / 详情；日志筛选栏和诊断面板随断点重排。连接主操作只保留“启动 / 停止 / 重启 / 编辑”，本机偏好、打开配置位置和删除进入“更多”。
 
 ## 构建
 
