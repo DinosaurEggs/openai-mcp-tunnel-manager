@@ -18,7 +18,6 @@ public sealed partial class MainWindow : Window
     private const int SwShow = 5;
     private const int SwMinimize = 6;
 
-    private readonly DispatcherQueueTimer _refreshTimer;
     private readonly DispatcherQueueTimer _logTimer;
     private readonly nint _hwnd;
     private TaskbarIcon? _trayIcon;
@@ -35,6 +34,7 @@ public sealed partial class MainWindow : Window
         RootGrid.DataContext = ViewModel;
         ConnectionsList.RightTapped += ConnectionsList_RightTapped;
         ConfigureProfileTransferFlyout();
+        ConfigureUiPolish();
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
         _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
@@ -51,7 +51,7 @@ public sealed partial class MainWindow : Window
         try
         {
             // Window size/position is applied once by App using a percentage of the current
-            // display work area before activation.  Do not apply a fixed physical-pixel size
+            // display work area before activation. Do not apply a fixed physical-pixel size
             // here, otherwise WinUI can perform its first Measure pass against stale metrics.
             var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico");
             if (File.Exists(iconPath)) AppWindow.SetIcon(iconPath);
@@ -61,8 +61,6 @@ public sealed partial class MainWindow : Window
             AppLog.Error("Initial window configuration failed; continuing with system defaults", exception);
         }
 
-        _refreshTimer = DispatcherQueue.CreateTimer();
-        _refreshTimer.Tick += RefreshTimer_Tick;
         _logTimer = DispatcherQueue.CreateTimer();
         _logTimer.Interval = TimeSpan.FromSeconds(1);
         _logTimer.Tick += LogTimer_Tick;
@@ -82,34 +80,20 @@ public sealed partial class MainWindow : Window
 
         try
         {
-            await ViewModel.InitializeAsync();
+            await ViewModel.InitializeForManualRefreshAsync();
             ViewModel.RestoreSelectedLogCache();
-            ResetTimers();
+            _logTimer.Start();
+            ApplyUiPolish();
             if (!ViewModel.IsClientAvailable) SelectPage("settings");
             MissingClientInfo.IsOpen = !ViewModel.IsClientAvailable;
             RequestResponsiveLayout();
-            AppLog.Info($"Initial tunnel-client refresh completed: {ViewModel.StatusMessage}");
+            AppLog.Info($"Initial tunnel-client load completed: {ViewModel.StatusMessage}");
         }
         catch (Exception exception)
         {
             AppLog.Error("Initial UI initialization failed", exception);
             await ShowErrorAsync(exception.Message);
             SelectPage("settings");
-        }
-    }
-
-    private async void RefreshTimer_Tick(DispatcherQueueTimer sender, object args)
-    {
-        if (ViewModel.IsBusy) return;
-        try
-        {
-            await ViewModel.RefreshAsync();
-            MissingClientInfo.IsOpen = !ViewModel.IsClientAvailable;
-        }
-        catch (Exception exception)
-        {
-            AppLog.Error("Background inventory refresh failed", exception);
-            ViewModel.StatusMessage = $"刷新失败：{exception.Message}";
         }
     }
 
@@ -127,14 +111,6 @@ public sealed partial class MainWindow : Window
             AppLog.Error("Background log refresh failed", exception);
             ViewModel.StatusMessage = $"读取日志失败：{exception.Message}";
         }
-    }
-
-    private void ResetTimers()
-    {
-        _refreshTimer.Stop();
-        _refreshTimer.Interval = TimeSpan.FromSeconds(Math.Max(2, ViewModel.RefreshIntervalSeconds));
-        _refreshTimer.Start();
-        _logTimer.Start();
     }
 
     private async void Navigation_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
@@ -170,9 +146,10 @@ public sealed partial class MainWindow : Window
         SettingsPage.Visibility = tag == "settings" ? Visibility.Visible : Visibility.Collapsed;
 
         // Visibility changes can realize a previously-collapsed ScrollViewer only after this
-        // event returns.  Always request a post-navigation responsive pass instead of relying
+        // event returns. Always request a post-navigation responsive pass instead of relying
         // on the user to trigger SizeChanged by resizing the window.
         RequestResponsiveLayout();
+        RequestUiPolish();
 
         if (!updateNavigation) return;
 
@@ -194,15 +171,17 @@ public sealed partial class MainWindow : Window
     {
         if (!_initialized || ViewModel.SelectedConnection is null) return;
         ViewModel.RestoreSelectedLogCache();
+
+        // Selecting an item must not query tunnel-client. Inventory/status refresh is now
+        // explicit: once during application entry (when a client path is configured), after
+        // explicit operations, or when the user presses Refresh.
+        if (LogsPage.Visibility != Visibility.Visible) return;
+
         try
         {
-            await ViewModel.RefreshSelectedStatusAsync();
-            if (LogsPage.Visibility == Visibility.Visible)
-            {
-                var horizontalOffset = CaptureLogHorizontalOffset();
-                await ViewModel.RefreshLogIncrementalAsync();
-                RestoreLogViewport(horizontalOffset, followVertical: true);
-            }
+            var horizontalOffset = CaptureLogHorizontalOffset();
+            await ViewModel.RefreshLogIncrementalAsync();
+            RestoreLogViewport(horizontalOffset, followVertical: true);
         }
         catch (Exception exception)
         {
@@ -264,7 +243,6 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        _refreshTimer.Stop();
         _logTimer.Stop();
         DisposeTray();
         _ = ViewModel.ShutdownAsync();
@@ -277,13 +255,13 @@ public sealed partial class MainWindow : Window
         ShowWindow(_hwnd, SwShow);
         SetForegroundWindow(_hwnd);
         RequestResponsiveLayout();
+        RequestUiPolish();
         ViewModel.StatusMessage = "窗口已恢复";
     }
 
     private async Task ExitApplicationAsync()
     {
         _allowClose = true;
-        _refreshTimer.Stop();
         _logTimer.Stop();
         await ViewModel.ShutdownAsync();
         DisposeTray();
