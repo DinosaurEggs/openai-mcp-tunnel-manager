@@ -1,5 +1,7 @@
+using System.Runtime.InteropServices;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using OpenAITunnelManager.App.Diagnostics;
 using OpenAITunnelManager.App.ViewModels;
@@ -7,6 +9,7 @@ using OpenAITunnelManager.Core.Abstractions;
 using OpenAITunnelManager.Infrastructure.Settings;
 using OpenAITunnelManager.Infrastructure.TunnelClient;
 using OpenAITunnelManager.Infrastructure.Windows;
+using Windows.Graphics;
 
 namespace OpenAITunnelManager.App;
 
@@ -44,6 +47,10 @@ public partial class App : Application
             AppLog.Info("Generic Host started");
             _window = Host.Services.GetRequiredService<MainWindow>();
             AppLog.Info("MainWindow resolved");
+
+            ApplyDpiAwareInitialWindowPlacement(_window);
+            if (_window is MainWindow mainWindow) mainWindow.EnableResponsiveLayout();
+
             _window.Activate();
             AppLog.Info("MainWindow activated");
             if (_pendingRedirectedActivation)
@@ -111,6 +118,42 @@ public partial class App : Application
         AppLog.Info($"Application storage configured | AppDir={baseDirectory} | Settings={Path.Combine(baseDirectory, "config", "settings.json")} | Log={AppLog.LogFilePath}");
     }
 
+    private static void ApplyDpiAwareInitialWindowPlacement(Window window)
+    {
+        try
+        {
+            const double desiredWidthDip = 1200d;
+            const double desiredHeightDip = 760d;
+            const double minimumWidthDip = 760d;
+            const double minimumHeightDip = 560d;
+            const double workAreaMarginDip = 24d;
+
+            var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
+            var dpi = GetDpiForWindow(hwnd);
+            var scale = Math.Max(1d, dpi / 96d);
+            var displayArea = DisplayArea.GetFromWindowId(window.AppWindow.Id, DisplayAreaFallback.Primary);
+            var workArea = displayArea.WorkArea;
+
+            var marginPx = (int)Math.Round(workAreaMarginDip * scale);
+            var maxWidthPx = Math.Max((int)Math.Round(minimumWidthDip * scale), workArea.Width - (marginPx * 2));
+            var maxHeightPx = Math.Max((int)Math.Round(minimumHeightDip * scale), workArea.Height - (marginPx * 2));
+            var widthPx = Math.Min((int)Math.Round(desiredWidthDip * scale), maxWidthPx);
+            var heightPx = Math.Min((int)Math.Round(desiredHeightDip * scale), maxHeightPx);
+            widthPx = Math.Min(widthPx, workArea.Width);
+            heightPx = Math.Min(heightPx, workArea.Height);
+
+            var x = workArea.X + Math.Max(0, (workArea.Width - widthPx) / 2);
+            var y = workArea.Y + Math.Max(0, (workArea.Height - heightPx) / 2);
+            window.AppWindow.MoveAndResize(new RectInt32(x, y, widthPx, heightPx));
+
+            AppLog.Info($"DPI-aware initial window placement | dpi={dpi} | scale={scale:F2} | physical={widthPx}x{heightPx} | effective≈{widthPx / scale:F0}x{heightPx / scale:F0}");
+        }
+        catch (Exception exception)
+        {
+            AppLog.Error("DPI-aware initial window placement failed; keeping system/default size", exception);
+        }
+    }
+
     private static void OnUnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e) =>
         AppLog.Fatal("WinUI unhandled exception", e.Exception);
 
@@ -122,4 +165,7 @@ public partial class App : Application
 
     private static void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e) =>
         AppLog.Error("Unobserved task exception", e.Exception);
+
+    [LibraryImport("user32.dll")]
+    private static partial uint GetDpiForWindow(nint hwnd);
 }
