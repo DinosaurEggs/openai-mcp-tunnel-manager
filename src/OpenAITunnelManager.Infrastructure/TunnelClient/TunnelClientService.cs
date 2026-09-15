@@ -153,7 +153,10 @@ public sealed class TunnelClientService(TunnelClientOptions options) : ITunnelCl
                 : runtimeState is "stopped" or "disconnected" or "not_running" or "missing_profile" ? RuntimeState.Stopped
                 : command.ExitCode == 0 ? RuntimeState.Stopped : RuntimeState.Error;
             var errorMessage = FirstNonEmpty(GetString(root, "error", "remote_error"), command.ExitCode == 0 ? string.Empty : command.StandardError.Trim());
-            if (command.ExitCode != 0 && LooksLikeMissingAlias(errorMessage)) state = RuntimeState.Stopped;
+            // An explicit stale state is meaningful tunnel-client status and must
+            // survive a non-zero exit code, even when the accompanying remote
+            // error happens to contain generic text such as "not found".
+            if (!stale && command.ExitCode != 0 && LooksLikeMissingAlias(errorMessage)) state = RuntimeState.Stopped;
             return new RuntimeSnapshot(
                 alias,
                 state,
