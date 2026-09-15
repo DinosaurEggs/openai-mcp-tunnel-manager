@@ -10,98 +10,81 @@ public sealed partial class TunnelClientOperations : ITunnelClientOperations
 {
     private readonly TunnelClientOptions _options;
     private readonly ITunnelClientService _inventory;
+    private readonly TunnelClientProcessRunner _runner;
     private readonly ConcurrentDictionary<string, ForegroundProfile> _foreground = new(StringComparer.OrdinalIgnoreCase);
+    private readonly SemaphoreSlim _capabilitiesGate = new(1, 1);
+    private CapabilityCache? _capabilityCache;
 
-    public TunnelClientOperations(TunnelClientOptions options, ITunnelClientService inventory)
+    public TunnelClientOperations(
+        TunnelClientOptions options,
+        ITunnelClientService inventory,
+        TunnelClientProcessRunner runner)
     {
         _options = options;
         _inventory = inventory;
+        _runner = runner;
     }
 
     public string ResolveExecutablePath() => _options.ResolveExecutablePath();
 
     public async Task<TunnelClientCapabilities> GetCapabilitiesAsync(CancellationToken cancellationToken = default)
     {
-        var version = (await RunAsync(["--version"], false, cancellationToken, TimeSpan.FromSeconds(10))).Stdout.Trim();
-        async Task<bool> Supports(params string[] args) =>
-            (await RunAsync(args, true, cancellationToken, TimeSpan.FromSeconds(10))).ExitCode == 0;
-
-        var profiles = Supports("profiles", "--help");
-        var runtimes = Supports("runtimes", "--help");
-        var doctor = Supports("doctor", "--help");
-        await Task.WhenAll(profiles, runtimes, doctor);
-        return new TunnelClientCapabilities(version, profiles.Result, runtimes.Result, doctor.Result);
-    }
-
-    private ProcessStartInfo CreateStartInfo(IEnumerable<string> arguments, string? secretRef = null, string? secret = null)
-    {
-        var info = new ProcessStartInfo
+        var executable = ResolveExecutablePath();
+        var lastWrite = File.GetLastWriteTimeUtc(executable);
+        var cached = _capabilityCache;
+        if (cached is not null &&
+            string.Equals(cached.ExecutablePath, executable, StringComparison.OrdinalIgnoreCase) &&
+            cached.LastWriteTimeUtc == lastWrite)
         {
-            FileName = _options.ResolveExecutablePath(),
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            RedirectStandardInput = true,
-            CreateNoWindow = true,
-            WorkingDirectory = AppContext.BaseDirectory
-        };
-        foreach (var argument in arguments) info.ArgumentList.Add(argument);
-        _options.ApplyChildEnvironment(info);
-        if (!string.IsNullOrWhiteSpace(secret) && !string.IsNullOrWhiteSpace(secretRef) &&
-            secretRef.StartsWith("env:", StringComparison.OrdinalIgnoreCase) && secretRef.Length > 4)
-        {
-            info.Environment[secretRef[4..]] = secret;
+            return cached.Capabilities;
         }
-        return info;
+
+        await _capabilitiesGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            cached = _capabilityCache;
+            if (cached is not null &&
+                string.Equals(cached.ExecutablePath, executable, StringComparison.OrdinalIgnoreCase) &&
+                cached.LastWriteTimeUtc == lastWrite)
+            {
+                return cached.Capabilities;
+            }
+
+            var version = (await RunAsync(["--version"], false, cancellationToken, TimeSpan.FromSeconds(10))).StandardOutput.Trim();
+            async Task<bool> Supports(params string[] args) =>
+                (await RunAsync(args, true, cancellationToken, TimeSpan.FromSeconds(10))).ExitCode == 0;
+
+            var profiles = Supports("profiles", "--help");
+            var runtimes = Supports("runtimes", "--help");
+            var doctor = Supports("doctor", "--help");
+            await Task.WhenAll(profiles, runtimes, doctor).ConfigureAwait(false);
+
+            var capabilities = new TunnelClientCapabilities(version, profiles.Result, runtimes.Result, doctor.Result);
+            _capabilityCache = new CapabilityCache(executable, lastWrite, capabilities);
+            return capabilities;
+        }
+        finally
+        {
+            _capabilitiesGate.Release();
+        }
     }
 
-    private async Task<ProcessResult> RunAsync(
+    private ProcessStartInfo CreateStartInfo(IEnumerable<string> arguments, string? secretRef = null, string? secret = null) =>
+        _runner.CreateStartInfo(arguments, secretRef, secret);
+
+    private Task<TunnelClientProcessResult> RunAsync(
         IEnumerable<string> arguments,
         bool allowFailure,
         CancellationToken cancellationToken,
         TimeSpan? timeout = null,
         string? secretRef = null,
-        string? secret = null)
-    {
-        var args = arguments.ToArray();
-        var info = CreateStartInfo(args, secretRef, secret);
-        using var process = new Process { StartInfo = info };
-        try
-        {
-            if (!process.Start()) throw new InvalidOperationException("无法启动 tunnel-client 进程");
-        }
-        catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or InvalidOperationException)
-        {
-            throw new InvalidOperationException($"无法启动 tunnel-client：{info.FileName}", exception);
-        }
-
-        var stdout = process.StandardOutput.ReadToEndAsync(cancellationToken);
-        var stderr = process.StandardError.ReadToEndAsync(cancellationToken);
-        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        deadline.CancelAfter(timeout ?? _options.CommandTimeout);
-        try
-        {
-            await process.WaitForExitAsync(deadline.Token);
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            try { process.Kill(entireProcessTree: true); } catch { }
-            throw new TimeoutException($"tunnel-client 命令执行超时：{string.Join(' ', args)}");
-        }
-
-        var result = new ProcessResult(process.ExitCode, await stdout, await stderr);
-        if (!allowFailure && result.ExitCode != 0)
-        {
-            var detail = FirstNonEmpty(result.Stderr.Trim(), result.Stdout.Trim(), "未知错误");
-            throw new InvalidOperationException($"tunnel-client 命令失败（退出码 {result.ExitCode}）：{detail}");
-        }
-        return result;
-    }
+        string? secret = null) =>
+        _runner.RunAsync(arguments, allowFailure, cancellationToken, timeout, secretRef, secret);
 
     private async Task<JsonDocument> RunJsonAsync(IEnumerable<string> args, CancellationToken cancellationToken)
     {
         var result = await RunAsync(args, false, cancellationToken);
-        try { return JsonDocument.Parse(result.Stdout); }
+        try { return JsonDocument.Parse(result.StandardOutput); }
         catch (JsonException exception) { throw new InvalidOperationException("tunnel-client 返回的内容不是有效 JSON", exception); }
     }
 
@@ -140,6 +123,6 @@ public sealed partial class TunnelClientOperations : ITunnelClientOperations
     private static string FirstNonEmpty(params string?[] values) =>
         values.FirstOrDefault(static value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
 
-    private sealed record ProcessResult(int ExitCode, string Stdout, string Stderr);
+    private sealed record CapabilityCache(string ExecutablePath, DateTime LastWriteTimeUtc, TunnelClientCapabilities Capabilities);
     private sealed record ForegroundProfile(Process Process, string HealthFile, string LogPath, string ProfilePath);
 }
