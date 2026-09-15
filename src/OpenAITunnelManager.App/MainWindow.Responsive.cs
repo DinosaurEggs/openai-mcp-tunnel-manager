@@ -1,12 +1,14 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using OpenAITunnelManager.App.Diagnostics;
 
 namespace OpenAITunnelManager.App;
 
 public sealed partial class MainWindow
 {
     private bool _responsiveLayoutEnabled;
+    private string _lastResponsiveLayoutBucket = string.Empty;
     private Grid? _contentGrid;
     private Grid? _connectionsHeader;
     private StackPanel? _connectionsHeaderTitle;
@@ -49,12 +51,25 @@ public sealed partial class MainWindow
         if (contentWidth <= 1) contentWidth = Math.Max(0, RootGrid.ActualWidth - 64);
         if (contentWidth <= 1) return;
 
-        var narrow = contentWidth < 820;
-        var medium = contentWidth < 1080;
-        var veryNarrow = contentWidth < 620;
+        var stackedConnections = contentWidth < 900;
+        var narrow = contentWidth < 620;
+        var veryNarrow = contentWidth < 520;
+        var bucket = contentWidth switch
+        {
+            < 520 => "very-narrow",
+            < 620 => "narrow",
+            < 900 => "stacked",
+            _ => "wide"
+        };
+
+        if (!string.Equals(bucket, _lastResponsiveLayoutBucket, StringComparison.Ordinal))
+        {
+            _lastResponsiveLayoutBucket = bucket;
+            AppLog.Info($"Responsive layout changed | mode={bucket} | contentWidth={contentWidth:F0}epx | windowWidth={RootGrid.ActualWidth:F0}epx");
+        }
 
         ApplyContentPadding(contentWidth);
-        ApplyConnectionsLayout(contentWidth, medium, narrow);
+        ApplyConnectionsLayout(contentWidth, stackedConnections, narrow);
         ApplyLogsLayout(contentWidth, veryNarrow);
         ApplyDiagnosticsLayout(contentWidth);
         ApplyDashboardLayout(contentWidth);
@@ -146,7 +161,7 @@ public sealed partial class MainWindow
         };
     }
 
-    private void ApplyConnectionsLayout(double width, bool medium, bool narrow)
+    private void ApplyConnectionsLayout(double width, bool stacked, bool narrow)
     {
         ConfigureHeader(
             _connectionsHeader,
@@ -156,12 +171,12 @@ public sealed partial class MainWindow
 
         if (_connectionsSplitGrid is not null && _connectionsListPanel is not null && _connectionsDetailsPanel is not null)
         {
-            if (medium)
+            if (stacked)
             {
                 _connectionsSplitGrid.ColumnDefinitions.Clear();
                 _connectionsSplitGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                 _connectionsSplitGrid.RowDefinitions.Clear();
-                _connectionsSplitGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(narrow ? 190 : 220) });
+                _connectionsSplitGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(narrow ? 180 : 220) });
                 _connectionsSplitGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(12) });
                 _connectionsSplitGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
@@ -187,7 +202,7 @@ public sealed partial class MainWindow
 
         if (_connectionsPrimaryActions is not null)
         {
-            _connectionsPrimaryActions.Orientation = width < 680 ? Orientation.Vertical : Orientation.Horizontal;
+            _connectionsPrimaryActions.Orientation = width < 620 ? Orientation.Vertical : Orientation.Horizontal;
             _connectionsPrimaryActions.HorizontalAlignment = HorizontalAlignment.Left;
         }
     }
@@ -277,6 +292,7 @@ public sealed partial class MainWindow
 
         if (width >= 820)
         {
+            _diagnosticsBody.RowSpacing = 0;
             _diagnosticsBody.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             _diagnosticsBody.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             Grid.SetRow(_diagnosticsDoctorPanel, 0);
@@ -286,6 +302,7 @@ public sealed partial class MainWindow
             return;
         }
 
+        _diagnosticsBody.RowSpacing = 0;
         _diagnosticsBody.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         _diagnosticsBody.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         _diagnosticsBody.RowDefinitions.Add(new RowDefinition { Height = new GridLength(12) });
@@ -307,6 +324,7 @@ public sealed partial class MainWindow
 
         if (width >= 800)
         {
+            _dashboardCardsGrid.RowSpacing = 0;
             for (var index = 0; index < 3; index++)
             {
                 _dashboardCardsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
