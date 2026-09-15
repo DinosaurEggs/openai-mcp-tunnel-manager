@@ -48,10 +48,10 @@ GUI 不保存第二套 Tunnel 配置。
 
 ## Manager 数据目录
 
-默认使用标准 Windows 用户数据目录：
+Manager 自身的配置、日志和状态文件**固定保存在 `OpenAITunnelManager.exe` 所在目录**，不会写入 `%LOCALAPPDATA%`、`%APPDATA%` 或其他用户目录，也不会在目录不可写时自动回退到其他位置。
 
 ```text
-%LOCALAPPDATA%\OpenAITunnelManager\
+OpenAITunnelManager.exe
 ├─ config\
 │  └─ settings.json
 ├─ logs\
@@ -64,13 +64,7 @@ GUI 不保存第二套 Tunnel 配置。
    └─ temp\
 ```
 
-如果 `OpenAITunnelManager.exe` 同目录存在：
-
-```text
-portable.flag
-```
-
-则切换为便携模式，把 `config / logs / state` 放到 EXE 所在目录。如果该目录不可写，会自动回退到 `%LOCALAPPDATA%\OpenAITunnelManager`，而不是因便携模式配置导致应用无法启动。
+因此发布目录必须可写；如果程序所在目录没有写权限，目录初始化会失败，而不是把数据静默迁移到别处。
 
 `config/settings.json` 只保存 Manager 本机偏好：
 
@@ -135,7 +129,7 @@ Runtime API Key 明文只进入 Windows Credential Manager，不写入 `settings
 
 ```text
 WinUI 编辑
-  -> <Manager data>\state\temp 临时 Profile
+  -> <程序目录>\state\temp 临时 Profile
   -> tunnel-client profiles add <name> --from-file <temp> --force
   -> 官方校验成功
   -> 刷新 inventory
