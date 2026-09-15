@@ -43,7 +43,7 @@ public sealed class TunnelClientIntegrationTests : IDisposable
     }
 
     [Fact]
-    public async Task LinkedRuntimeMergesWithProfileAndCanStopAndReconnect()
+    public async Task LinkedRuntimeInventoryAndStatusAreReadSeparately()
     {
         var token = TestContext.Current.CancellationToken;
         var (service, operations) = Services();
@@ -52,7 +52,11 @@ public sealed class TunnelClientIntegrationTests : IDisposable
         var runtimeSeed = RuntimeSeed(profile, "idea");
 
         await operations.StartAsync(runtimeSeed, "secret-key", token);
-        var running = Assert.Single(await service.GetConnectionsAsync(token));
+        var inventory = Assert.Single(await service.GetConnectionsAsync(token));
+        Assert.Equal(RuntimeState.Configured, inventory.State);
+        Assert.False(inventory.ProcessRunning);
+
+        var running = await service.GetStatusAsync(inventory, token);
         Assert.Equal("runtime:idea", running.Identity);
         Assert.True(running.ProfileListed);
         Assert.True(running.ProcessRunning);
@@ -229,7 +233,8 @@ public sealed class TunnelClientIntegrationTests : IDisposable
         await operations.StartAsync(seed, "secret", token);
         SetEnvironment("FAKE_STALE_STATUS", "stale-one");
 
-        var current = (await service.GetConnectionsAsync(token)).Single(item => item.RuntimeAlias == "stale-one");
+        var inventory = (await service.GetConnectionsAsync(token)).Single(item => item.RuntimeAlias == "stale-one");
+        var current = await service.GetStatusAsync(inventory, token);
         Assert.Equal(RuntimeState.Stale, current.State);
         Assert.Contains("remote tunnel not found", current.Error, StringComparison.OrdinalIgnoreCase);
     }
@@ -247,7 +252,7 @@ public sealed class TunnelClientIntegrationTests : IDisposable
     private (TunnelClientService Service, TunnelClientOperations Operations) Services()
     {
         var options = new TunnelClientOptions { ExecutablePath = FakeExecutable };
-        var service = new TunnelClientService(options);
+        var service = new TunnelClientService(new TunnelClientProcessRunner(options));
         return (service, new TunnelClientOperations(options, service));
     }
 
