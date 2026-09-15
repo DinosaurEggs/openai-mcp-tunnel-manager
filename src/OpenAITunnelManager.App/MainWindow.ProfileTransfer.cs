@@ -36,15 +36,17 @@ public sealed partial class MainWindow
             {
                 Header = "Profile 名称",
                 Text = Path.GetFileNameWithoutExtension(file.Path),
-                PlaceholderText = "idea"
+                PlaceholderText = "my-profile",
+                HorizontalAlignment = HorizontalAlignment.Stretch
             };
             var hint = new TextBlock
             {
                 Text = "导入内容由 tunnel-client 官方 profiles add 校验；Manager 不保存第二份 Profile。",
                 TextWrapping = TextWrapping.Wrap,
-                Opacity = 0.7
+                Opacity = 0.7,
+                HorizontalAlignment = HorizontalAlignment.Stretch
             };
-            var panel = new StackPanel { Spacing = 10 };
+            var panel = new StackPanel { Spacing = 10, HorizontalAlignment = HorizontalAlignment.Stretch };
             panel.Children.Add(name);
             panel.Children.Add(hint);
             var dialog = NewDialog("导入 tunnel-client Profile", panel, "导入");
