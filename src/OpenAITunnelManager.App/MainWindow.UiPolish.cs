@@ -12,6 +12,8 @@ public sealed partial class MainWindow
     {
         if (_uiPolishConfigured) return;
         _uiPolishConfigured = true;
+        ConfigureItemOnlyContextMenu();
+        ConfigureAdvancedDirectoryPickers();
         RootGrid.SizeChanged += UiPolish_SizeChanged;
         RequestUiPolish();
     }
@@ -27,6 +29,7 @@ public sealed partial class MainWindow
     private void ApplyUiPolish()
     {
         CacheResponsiveElements();
+        ConfigureAdvancedDirectoryPickers();
         CollapseObsoleteInventoryRefreshSetting();
 
         foreach (var button in FindDescendants<Button>(RootGrid))
