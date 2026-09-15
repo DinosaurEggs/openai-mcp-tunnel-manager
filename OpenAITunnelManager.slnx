@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="src/OpenAITunnelManager.App/OpenAITunnelManager.App.csproj" />
+  <Project Path="src/OpenAITunnelManager.Core/OpenAITunnelManager.Core.csproj" />
+  <Project Path="src/OpenAITunnelManager.Infrastructure/OpenAITunnelManager.Infrastructure.csproj" />
+</Solution>
