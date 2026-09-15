@@ -12,7 +12,10 @@ public sealed class WindowsAutostartService : IAutostartService
     {
         using var key = Registry.CurrentUser.OpenSubKey(RunKey, writable: false);
         var value = key?.GetValue(ValueName) as string;
-        return !string.IsNullOrWhiteSpace(value);
+        if (string.IsNullOrWhiteSpace(value)) return false;
+
+        var expected = BuildRunValue();
+        return string.Equals(value.Trim(), expected, StringComparison.OrdinalIgnoreCase);
     }
 
     public void SetEnabled(bool enabled)
@@ -22,13 +25,18 @@ public sealed class WindowsAutostartService : IAutostartService
 
         if (enabled)
         {
-            var executable = Environment.ProcessPath
-                ?? Path.Combine(AppContext.BaseDirectory, "OpenAITunnelManager.exe");
-            key.SetValue(ValueName, $"\"{executable}\"", RegistryValueKind.String);
+            key.SetValue(ValueName, BuildRunValue(), RegistryValueKind.String);
         }
         else
         {
             key.DeleteValue(ValueName, throwOnMissingValue: false);
         }
+    }
+
+    private static string BuildRunValue()
+    {
+        var executable = Environment.ProcessPath
+            ?? Path.Combine(AppContext.BaseDirectory, "OpenAITunnelManager.exe");
+        return $"\"{Path.GetFullPath(executable)}\"";
     }
 }
