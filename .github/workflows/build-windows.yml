@@ -22,9 +22,8 @@ jobs:
         shell: pwsh
         run: |
           pip install "pyinstaller>=6.11,<7"
-          pyinstaller --noconfirm --clean --windowed --onedir --name OpenAITunnelManager --paths src launcher.py
-          Compress-Archive -Path dist/OpenAITunnelManager/* -DestinationPath dist/OpenAITunnelManager-portable.zip
+          pyinstaller --noconfirm --clean --windowed --onefile --name OpenAITunnelManager --paths src launcher.py
       - uses: actions/upload-artifact@v4
         with:
           name: OpenAITunnelManager-windows
-          path: dist/OpenAITunnelManager-portable.zip
+          path: dist/OpenAITunnelManager.exe
