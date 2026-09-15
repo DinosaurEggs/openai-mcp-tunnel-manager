@@ -122,11 +122,8 @@ public partial class App : Application
     {
         try
         {
-            const double desiredWidthDip = 1200d;
-            const double desiredHeightDip = 760d;
-            const double minimumWidthDip = 760d;
-            const double minimumHeightDip = 560d;
-            const double workAreaMarginDip = 24d;
+            const double workAreaWidthRatio = 0.80d;
+            const double workAreaHeightRatio = 0.80d;
 
             var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
             var dpi = GetDpiForWindow(hwnd);
@@ -135,13 +132,8 @@ public partial class App : Application
             var workArea = displayArea.WorkArea;
             var outerBounds = displayArea.OuterBounds;
 
-            var marginPx = (int)Math.Round(workAreaMarginDip * scale);
-            var maxWidthPx = Math.Max((int)Math.Round(minimumWidthDip * scale), workArea.Width - (marginPx * 2));
-            var maxHeightPx = Math.Max((int)Math.Round(minimumHeightDip * scale), workArea.Height - (marginPx * 2));
-            var widthPx = Math.Min((int)Math.Round(desiredWidthDip * scale), maxWidthPx);
-            var heightPx = Math.Min((int)Math.Round(desiredHeightDip * scale), maxHeightPx);
-            widthPx = Math.Min(widthPx, workArea.Width);
-            heightPx = Math.Min(heightPx, workArea.Height);
+            var widthPx = Math.Max(1, (int)Math.Round(workArea.Width * workAreaWidthRatio));
+            var heightPx = Math.Max(1, (int)Math.Round(workArea.Height * workAreaHeightRatio));
 
             var workAreaScreenX = outerBounds.X + workArea.X;
             var workAreaScreenY = outerBounds.Y + workArea.Y;
@@ -149,11 +141,11 @@ public partial class App : Application
             var y = workAreaScreenY + Math.Max(0, (workArea.Height - heightPx) / 2);
             window.AppWindow.MoveAndResize(new RectInt32(x, y, widthPx, heightPx));
 
-            AppLog.Info($"DPI-aware initial window placement | dpi={dpi} | scale={scale:F2} | physical={widthPx}x{heightPx} | effective≈{widthPx / scale:F0}x{heightPx / scale:F0} | displayOrigin={outerBounds.X},{outerBounds.Y}");
+            AppLog.Info($"Display-relative initial window placement | dpi={dpi} | scale={scale:F2} | workArea={workArea.Width}x{workArea.Height} | ratio={workAreaWidthRatio:P0}x{workAreaHeightRatio:P0} | physical={widthPx}x{heightPx} | effective≈{widthPx / scale:F0}x{heightPx / scale:F0} | displayOrigin={outerBounds.X},{outerBounds.Y}");
         }
         catch (Exception exception)
         {
-            AppLog.Error("DPI-aware initial window placement failed; keeping system/default size", exception);
+            AppLog.Error("Display-relative initial window placement failed; keeping system/default size", exception);
         }
     }
 
