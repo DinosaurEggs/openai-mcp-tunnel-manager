@@ -28,6 +28,11 @@ public sealed partial class MainWindow
     private Border? _diagnosticsDoctorPanel;
     private Border? _diagnosticsHealthPanel;
     private Grid? _dashboardCardsGrid;
+    private StackPanel? _dashboardContentPanel;
+    private StackPanel? _settingsContentPanel;
+    private Grid? _settingsClientGrid;
+    private Grid? _settingsRefreshGrid;
+    private NumberBox? _settingsRefreshNumberBox;
 
     internal void EnableResponsiveLayout()
     {
@@ -69,10 +74,12 @@ public sealed partial class MainWindow
         }
 
         ApplyContentPadding(contentWidth);
-        ApplyConnectionsLayout(contentWidth, stackedConnections, narrow);
+        ApplyWidePageAlignment();
+        ApplyConnectionsLayout(contentWidth, stackedConnections);
         ApplyLogsLayout(contentWidth, veryNarrow);
         ApplyDiagnosticsLayout(contentWidth);
         ApplyDashboardLayout(contentWidth);
+        ApplySettingsLayout();
 
         if (RootGrid.ActualWidth < 1080)
         {
@@ -83,6 +90,23 @@ public sealed partial class MainWindow
     private void CacheResponsiveElements()
     {
         _contentGrid ??= VisualTreeHelper.GetParent(ConnectionsPage) as Grid;
+
+        _dashboardContentPanel ??= FindDescendants<StackPanel>(DashboardPage)
+            .FirstOrDefault(panel => panel.MaxWidth >= 1000);
+        _settingsContentPanel ??= FindDescendants<StackPanel>(SettingsPage)
+            .FirstOrDefault(panel => panel.MaxWidth >= 900);
+
+        if (_settingsContentPanel is not null)
+        {
+            _settingsClientGrid ??= FindDescendants<Grid>(_settingsContentPanel)
+                .FirstOrDefault(grid => grid.ColumnDefinitions.Count == 3);
+            _settingsRefreshGrid ??= FindDescendants<Grid>(_settingsContentPanel)
+                .FirstOrDefault(grid =>
+                    grid.ColumnDefinitions.Count == 2 &&
+                    grid.ColumnDefinitions[0].Width.IsAbsolute &&
+                    grid.ColumnDefinitions[0].Width.Value >= 200);
+            _settingsRefreshNumberBox ??= FindDescendants<NumberBox>(_settingsContentPanel).FirstOrDefault();
+        }
 
         if (_connectionsHeader is null)
         {
@@ -161,7 +185,29 @@ public sealed partial class MainWindow
         };
     }
 
-    private void ApplyConnectionsLayout(double width, bool stacked, bool narrow)
+    private void ApplyWidePageAlignment()
+    {
+        StretchScrollablePage(_dashboardContentPanel);
+        StretchScrollablePage(_settingsContentPanel);
+    }
+
+    private static void StretchScrollablePage(StackPanel? panel)
+    {
+        if (panel is null) return;
+
+        panel.MaxWidth = double.PositiveInfinity;
+        panel.Width = double.NaN;
+        panel.HorizontalAlignment = HorizontalAlignment.Stretch;
+
+        var scrollViewer = FindAncestor<ScrollViewer>(panel);
+        if (scrollViewer is not null)
+        {
+            scrollViewer.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+            scrollViewer.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
+        }
+    }
+
+    private void ApplyConnectionsLayout(double width, bool stacked)
     {
         ConfigureHeader(
             _connectionsHeader,
@@ -171,32 +217,33 @@ public sealed partial class MainWindow
 
         if (_connectionsSplitGrid is not null && _connectionsListPanel is not null && _connectionsDetailsPanel is not null)
         {
+            _connectionsSplitGrid.ColumnDefinitions.Clear();
+            _connectionsSplitGrid.RowDefinitions.Clear();
+
             if (stacked)
             {
-                _connectionsSplitGrid.ColumnDefinitions.Clear();
+                _connectionsSplitGrid.ColumnSpacing = 0;
+                _connectionsSplitGrid.RowSpacing = 12;
                 _connectionsSplitGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-                _connectionsSplitGrid.RowDefinitions.Clear();
-                _connectionsSplitGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(narrow ? 180 : 220) });
-                _connectionsSplitGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(12) });
-                _connectionsSplitGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+                _connectionsSplitGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(30, GridUnitType.Star) });
+                _connectionsSplitGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(70, GridUnitType.Star) });
 
                 Grid.SetColumn(_connectionsListPanel, 0);
                 Grid.SetRow(_connectionsListPanel, 0);
                 Grid.SetColumn(_connectionsDetailsPanel, 0);
-                Grid.SetRow(_connectionsDetailsPanel, 2);
+                Grid.SetRow(_connectionsDetailsPanel, 1);
             }
             else
             {
-                _connectionsSplitGrid.RowDefinitions.Clear();
-                _connectionsSplitGrid.ColumnDefinitions.Clear();
-                _connectionsSplitGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(340) });
-                _connectionsSplitGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(12) });
-                _connectionsSplitGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                _connectionsSplitGrid.RowSpacing = 0;
+                _connectionsSplitGrid.ColumnSpacing = 12;
+                _connectionsSplitGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(30, GridUnitType.Star) });
+                _connectionsSplitGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(70, GridUnitType.Star) });
 
                 Grid.SetRow(_connectionsListPanel, 0);
                 Grid.SetColumn(_connectionsListPanel, 0);
                 Grid.SetRow(_connectionsDetailsPanel, 0);
-                Grid.SetColumn(_connectionsDetailsPanel, 2);
+                Grid.SetColumn(_connectionsDetailsPanel, 1);
             }
         }
 
@@ -224,12 +271,12 @@ public sealed partial class MainWindow
         if (width >= 900)
         {
             _logsFilterGrid.RowSpacing = 0;
-            _logsFilterGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(260) });
-            _logsFilterGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(220) });
-            _logsFilterGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(120) });
-            _logsFilterGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            _logsFilterGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            _logsFilterGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            _logsFilterGrid.ColumnSpacing = 10;
+            _logsFilterGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(30, GridUnitType.Star) });
+            _logsFilterGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(28, GridUnitType.Star) });
+            _logsFilterGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(16, GridUnitType.Star) });
+            _logsFilterGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(13, GridUnitType.Star) });
+            _logsFilterGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(13, GridUnitType.Star) });
 
             for (var index = 0; index < controls.Length; index++)
             {
@@ -240,6 +287,7 @@ public sealed partial class MainWindow
             return;
         }
 
+        _logsFilterGrid.ColumnSpacing = 10;
         _logsFilterGrid.RowSpacing = 8;
         if (veryNarrow)
         {
@@ -293,8 +341,9 @@ public sealed partial class MainWindow
         if (width >= 820)
         {
             _diagnosticsBody.RowSpacing = 0;
-            _diagnosticsBody.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            _diagnosticsBody.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            _diagnosticsBody.ColumnSpacing = 12;
+            _diagnosticsBody.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(50, GridUnitType.Star) });
+            _diagnosticsBody.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(50, GridUnitType.Star) });
             Grid.SetRow(_diagnosticsDoctorPanel, 0);
             Grid.SetColumn(_diagnosticsDoctorPanel, 0);
             Grid.SetRow(_diagnosticsHealthPanel, 0);
@@ -302,14 +351,14 @@ public sealed partial class MainWindow
             return;
         }
 
-        _diagnosticsBody.RowSpacing = 0;
+        _diagnosticsBody.ColumnSpacing = 0;
+        _diagnosticsBody.RowSpacing = 12;
         _diagnosticsBody.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        _diagnosticsBody.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        _diagnosticsBody.RowDefinitions.Add(new RowDefinition { Height = new GridLength(12) });
-        _diagnosticsBody.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        _diagnosticsBody.RowDefinitions.Add(new RowDefinition { Height = new GridLength(50, GridUnitType.Star) });
+        _diagnosticsBody.RowDefinitions.Add(new RowDefinition { Height = new GridLength(50, GridUnitType.Star) });
         Grid.SetRow(_diagnosticsDoctorPanel, 0);
         Grid.SetColumn(_diagnosticsDoctorPanel, 0);
-        Grid.SetRow(_diagnosticsHealthPanel, 2);
+        Grid.SetRow(_diagnosticsHealthPanel, 1);
         Grid.SetColumn(_diagnosticsHealthPanel, 0);
     }
 
@@ -325,6 +374,7 @@ public sealed partial class MainWindow
         if (width >= 800)
         {
             _dashboardCardsGrid.RowSpacing = 0;
+            _dashboardCardsGrid.ColumnSpacing = 12;
             for (var index = 0; index < 3; index++)
             {
                 _dashboardCardsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -334,6 +384,8 @@ public sealed partial class MainWindow
             return;
         }
 
+        _dashboardCardsGrid.ColumnSpacing = 0;
+        _dashboardCardsGrid.RowSpacing = 12;
         for (var index = 0; index < 3; index++)
         {
             _dashboardCardsGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -341,7 +393,28 @@ public sealed partial class MainWindow
             Grid.SetColumn(cards[index], 0);
         }
         _dashboardCardsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        _dashboardCardsGrid.RowSpacing = 12;
+    }
+
+    private void ApplySettingsLayout()
+    {
+        if (_settingsClientGrid is not null && _settingsClientGrid.ColumnDefinitions.Count == 3)
+        {
+            _settingsClientGrid.ColumnDefinitions[0].Width = new GridLength(28, GridUnitType.Star);
+            _settingsClientGrid.ColumnDefinitions[1].Width = new GridLength(72, GridUnitType.Star);
+            _settingsClientGrid.ColumnDefinitions[2].Width = GridLength.Auto;
+        }
+
+        if (_settingsRefreshGrid is not null && _settingsRefreshGrid.ColumnDefinitions.Count == 2)
+        {
+            _settingsRefreshGrid.ColumnDefinitions[0].Width = new GridLength(28, GridUnitType.Star);
+            _settingsRefreshGrid.ColumnDefinitions[1].Width = new GridLength(72, GridUnitType.Star);
+        }
+
+        if (_settingsRefreshNumberBox is not null)
+        {
+            _settingsRefreshNumberBox.Width = double.NaN;
+            _settingsRefreshNumberBox.HorizontalAlignment = HorizontalAlignment.Stretch;
+        }
     }
 
     private static void ConfigureHeader(
