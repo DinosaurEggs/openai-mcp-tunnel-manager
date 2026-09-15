@@ -22,10 +22,6 @@
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Remove="MainWindow.xaml.cs" />
-    <Page Remove="MainWindow.xaml" />
-  </ItemGroup>
-  <ItemGroup>
     <ProjectReference Include="..\OpenAITunnelManager.Core\OpenAITunnelManager.Core.csproj" />
     <ProjectReference Include="..\OpenAITunnelManager.Infrastructure\OpenAITunnelManager.Infrastructure.csproj" />
   </ItemGroup>

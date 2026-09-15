@@ -191,8 +191,8 @@ public sealed partial class MainWindow
     private void ConnectionsList_RightTapped(object sender, RightTappedRoutedEventArgs e)
     {
         if (e.OriginalSource is not DependencyObject source) return;
-        if (ConnectionsList.ContainerFromElement(source) is ListViewItem container)
-            ConnectionsList.SelectedItem = container.Content;
+        var container = FindAncestor<ListViewItem>(source);
+        if (container is not null) ConnectionsList.SelectedItem = container.Content;
     }
 
     private async void BrowseTunnelClient_Click(object sender, RoutedEventArgs e)
@@ -274,6 +274,17 @@ public sealed partial class MainWindow
         var viewer = FindDescendant<ScrollViewer>(LogTextBox);
         if (viewer is null) return;
         viewer.ChangeView(viewer.HorizontalOffset, viewer.ScrollableHeight, null, disableAnimation: true);
+    }
+
+    private static T? FindAncestor<T>(DependencyObject current) where T : DependencyObject
+    {
+        DependencyObject? node = current;
+        while (node is not null)
+        {
+            if (node is T match) return match;
+            node = VisualTreeHelper.GetParent(node);
+        }
+        return null;
     }
 
     private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject

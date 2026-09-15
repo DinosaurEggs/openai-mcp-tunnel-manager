@@ -30,6 +30,48 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Enforce pure WinUI source tree
+        shell: pwsh
+        run: |
+          $pythonFiles = Get-ChildItem -Recurse -File | Where-Object {
+            $_.Extension -eq '.py' -or
+            $_.Name -eq 'pyproject.toml' -or
+            $_.Name -like 'requirements*.txt'
+          }
+          if ($pythonFiles) {
+            $pythonFiles | ForEach-Object { Write-Host "Forbidden Python artifact: $($_.FullName)" }
+            throw 'rewrite/csharp-winui3 must not contain Python source/configuration files.'
+          }
+
+          $patterns = @(
+            'System\.Windows\.Forms',
+            'System\.Windows\.Controls',
+            'System\.Windows\.Media',
+            '<UseWindowsForms>\s*true\s*</UseWindowsForms>',
+            '<UseWPF>\s*true\s*</UseWPF>',
+            'PresentationFramework',
+            'PresentationCore',
+            'WindowsFormsIntegration',
+            'Microsoft\.Xaml\.Behaviors\.Wpf',
+            'Wpf\.Ui'
+          )
+          $files = Get-ChildItem src,tests -Recurse -File | Where-Object {
+            $_.Extension -in @('.cs', '.csproj', '.xaml', '.props', '.targets')
+          }
+          $violations = @()
+          foreach ($file in $files) {
+            $text = Get-Content $file.FullName -Raw
+            foreach ($pattern in $patterns) {
+              if ($text -match $pattern) {
+                $violations += "$($file.FullName): $pattern"
+              }
+            }
+          }
+          if ($violations.Count -gt 0) {
+            $violations | ForEach-Object { Write-Host "Forbidden desktop-stack reference: $_" }
+            throw 'Only WinUI 3 / Windows App SDK UI code is allowed.'
+          }
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v6
         with:
