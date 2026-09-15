@@ -61,7 +61,7 @@
 | 应用启动/异常日志 | `<program>\logs\app.log` | startup smoke |
 | Manager 本机配置/日志不写 AppData | `AppContext.BaseDirectory` | settings/log implementation |
 | 不强制覆盖 tunnel-client Profile/State 目录 | 默认继承环境，仅显式 override | 行为测试 |
-| 无 Python / WinForms / WPF | 纯 C# + WinUI 3 | CI 静态硬门禁 |
+| 无 Python / WinForms / WPF | 纯 C# + WinUI 3；源码与发布目录双重检查 | CI 静态 + Artifact 硬门禁 |
 
 ## 发布门禁
 
@@ -73,5 +73,6 @@
 4. Windows Credential Manager 集成测试；
 5. x64 / ARM64 self-contained publish；
 6. EXE、PRI、Microsoft.UI.Xaml 和图标完整性检查；
-7. x64 实际启动 5 秒 smoke test；
-8. 第二实例重定向并退出 smoke test。
+7. 发布目录不得包含 WinForms/WPF Runtime DLL 或 Python 残留；
+8. x64 实际启动 5 秒 smoke test；
+9. 第二实例重定向并退出 smoke test。
