@@ -1,10 +1,15 @@
 using System.Text;
+using System.Text.RegularExpressions;
 using OpenAITunnelManager.Core.Models;
 
 namespace OpenAITunnelManager.Infrastructure.TunnelClient;
 
 public sealed partial class TunnelClientOperations
 {
+    private static readonly Regex ProfileNamePattern = new(
+        @"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
     public async Task CreateProfileAsync(ProfileSpec spec, CancellationToken cancellationToken = default)
     {
         var errors = spec.Validate();
@@ -18,6 +23,27 @@ public sealed partial class TunnelClientOperations
             ? ["--mcp-server-url", spec.McpTarget.Trim()]
             : ["--mcp-command", spec.McpTarget.Trim()]);
         await RunAsync(args, false, cancellationToken, TimeSpan.FromSeconds(30));
+    }
+
+    public async Task ImportProfileAsync(string name, string sourcePath, CancellationToken cancellationToken = default)
+    {
+        name = name.Trim();
+        if (!ProfileNamePattern.IsMatch(name)) throw new ArgumentException("导入文件名不是有效的 Profile 名称", nameof(name));
+        if (string.IsNullOrWhiteSpace(sourcePath) || !File.Exists(sourcePath)) throw new FileNotFoundException("要导入的 Profile 文件不存在", sourcePath);
+        await RunAsync(["profiles", "add", name, "--from-file", Path.GetFullPath(sourcePath)], false, cancellationToken, TimeSpan.FromSeconds(30));
+    }
+
+    public async Task ExportProfileAsync(string name, string expectedPath, string destinationPath, CancellationToken cancellationToken = default)
+    {
+        var actual = await VerifyProfileEntryAsync(name, expectedPath, cancellationToken);
+        if (string.IsNullOrWhiteSpace(destinationPath)) throw new ArgumentException("导出路径不能为空", nameof(destinationPath));
+        var destination = Path.GetFullPath(destinationPath);
+        var directory = Path.GetDirectoryName(destination);
+        if (!string.IsNullOrWhiteSpace(directory)) Directory.CreateDirectory(directory);
+        await using var source = new FileStream(actual, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 64 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
+        await using var output = new FileStream(destination, FileMode.Create, FileAccess.Write, FileShare.None, 64 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
+        await source.CopyToAsync(output, cancellationToken);
+        await output.FlushAsync(cancellationToken);
     }
 
     public async Task<string> ReadProfileTextAsync(string name, string expectedPath, CancellationToken cancellationToken = default)
