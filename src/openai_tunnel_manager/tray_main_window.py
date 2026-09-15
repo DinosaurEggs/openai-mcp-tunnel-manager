@@ -6,21 +6,17 @@ import tkinter as tk
 from typing import Any, Callable
 
 from .autostart import set_windows_startup
+from .icon_resources import load_pil_icon
 from .main_window import SettingsDialog
 from .optimized_main_window import OptimizedMainWindow
 
 if os.name == "nt":
     try:
         import pystray
-        from PIL import Image, ImageDraw
     except ImportError:  # pragma: no cover - packaging/runtime guard
         pystray = None
-        Image = None
-        ImageDraw = None
 else:  # pragma: no cover - this application targets Windows
     pystray = None
-    Image = None
-    ImageDraw = None
 
 
 def _walk_widgets(widget: tk.Misc):
@@ -53,14 +49,7 @@ class TrayMainWindow(OptimizedMainWindow):
 
     @staticmethod
     def _create_tray_image():
-        if Image is None or ImageDraw is None:
-            raise RuntimeError("Pillow 未安装，无法创建系统托盘图标")
-        image = Image.new("RGBA", (64, 64), (24, 29, 38, 255))
-        draw = ImageDraw.Draw(image)
-        draw.rounded_rectangle((5, 5, 59, 59), radius=13, fill=(49, 112, 198, 255))
-        draw.line((18, 22, 32, 32, 46, 22), fill=(255, 255, 255, 255), width=5)
-        draw.line((18, 42, 32, 32, 46, 42), fill=(255, 255, 255, 255), width=5)
-        return image
+        return load_pil_icon(64)
 
     def _dispatch_to_ui(self, callback: Callable[[], None]) -> None:
         if self._quitting:

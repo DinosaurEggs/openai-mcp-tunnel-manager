@@ -26,7 +26,12 @@ if ($LASTEXITCODE -ne 0) { throw "Verification failed; package not created." }
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller installation failed." }
 
 Remove-Item -Recurse -Force build, dist -ErrorAction SilentlyContinue
+& $python .\tools\build_icon.py
+if ($LASTEXITCODE -ne 0) { throw "Icon generation failed." }
+
 & $python -m PyInstaller --noconfirm --clean --windowed --onefile --collect-submodules pystray `
+    --icon build\app_icon.ico `
+    --add-data "src\openai_tunnel_manager\assets\app_icon.jpg;openai_tunnel_manager\assets" `
     --name OpenAITunnelManager --paths src launcher.py
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed." }
 
