@@ -23,6 +23,7 @@ public sealed partial class MainWindow : Window
     private TaskbarIcon? _trayIcon;
     private bool _initialized;
     private bool _allowClose;
+    private bool _shutdownInProgress;
 
     public ConnectionsViewModel ViewModel { get; }
 
@@ -33,7 +34,6 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
         RootGrid.DataContext = ViewModel;
         ConnectionsList.RightTapped += ConnectionsList_RightTapped;
-        ConfigureProfileTransferFlyout();
         ConfigureUiPolish();
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
@@ -50,9 +50,6 @@ public sealed partial class MainWindow : Window
 
         try
         {
-            // Window size/position is applied once by App using a percentage of the current
-            // display work area before activation. Do not apply a fixed physical-pixel size
-            // here, otherwise WinUI can perform its first Measure pass against stale metrics.
             var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico");
             if (File.Exists(iconPath)) AppWindow.SetIcon(iconPath);
         }
@@ -75,7 +72,6 @@ public sealed partial class MainWindow : Window
         if (Navigation.SettingsItem is NavigationViewItem settingsItem) settingsItem.Content = "设置";
         AppLog.Info("MainWindow loaded; initializing settings and tunnel-client state");
 
-        // Tray availability is independent of tunnel-client health/configuration.
         SetupTrayIcon();
 
         try
@@ -145,9 +141,6 @@ public sealed partial class MainWindow : Window
         DiagnosticsPage.Visibility = tag == "diagnostics" ? Visibility.Visible : Visibility.Collapsed;
         SettingsPage.Visibility = tag == "settings" ? Visibility.Visible : Visibility.Collapsed;
 
-        // Visibility changes can realize a previously-collapsed ScrollViewer only after this
-        // event returns. Always request a post-navigation responsive pass instead of relying
-        // on the user to trigger SizeChanged by resizing the window.
         RequestResponsiveLayout();
         RequestUiPolish();
 
@@ -172,9 +165,6 @@ public sealed partial class MainWindow : Window
         if (!_initialized || ViewModel.SelectedConnection is null) return;
         ViewModel.RestoreSelectedLogCache();
 
-        // Selecting an item must not query tunnel-client. Inventory/status refresh is now
-        // explicit: once during application entry (when a client path is configured), after
-        // explicit operations, or when the user presses Refresh.
         if (LogsPage.Visibility != Visibility.Visible) return;
 
         try
@@ -243,9 +233,15 @@ public sealed partial class MainWindow : Window
             return;
         }
 
+        if (!_allowClose)
+        {
+            args.Cancel = true;
+            if (!_shutdownInProgress) _ = ExitApplicationAsync();
+            return;
+        }
+
         _logTimer.Stop();
         DisposeTray();
-        _ = ViewModel.ShutdownAsync();
     }
 
     public void RestoreFromExternalActivation() => RestoreFromTray();
@@ -261,11 +257,23 @@ public sealed partial class MainWindow : Window
 
     private async Task ExitApplicationAsync()
     {
-        _allowClose = true;
+        if (_shutdownInProgress) return;
+        _shutdownInProgress = true;
         _logTimer.Stop();
-        await ViewModel.ShutdownAsync();
-        DisposeTray();
-        Close();
+        try
+        {
+            await ViewModel.ShutdownAsync();
+        }
+        catch (Exception exception)
+        {
+            AppLog.Error("Application shutdown cleanup failed", exception);
+        }
+        finally
+        {
+            _allowClose = true;
+            DisposeTray();
+            Close();
+        }
     }
 
     private void DisposeTray()
