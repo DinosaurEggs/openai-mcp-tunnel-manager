@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "openai-mcp-tunnel-manager"
-version = "0.3.0"
+version = "1.0.0"
 description = "Windows desktop manager for OpenAI tunnel-client MCP runtimes"
 readme = "README.md"
 requires-python = ">=3.11"

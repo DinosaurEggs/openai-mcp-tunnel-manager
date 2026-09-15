@@ -18,7 +18,8 @@ $python = (Resolve-Path ".venv\Scripts\python.exe").Path
 & $python -m pip install -r .\requirements.txt
 if ($LASTEXITCODE -ne 0) { throw "Runtime dependency installation failed." }
 
-# Hard verification gate. On Windows this also executes a real Credential Manager round-trip test.
+# Hard verification gate. On Windows this also executes real single-instance and
+# Credential Manager round-trip tests before any EXE is produced.
 & $python .\verify.py
 if ($LASTEXITCODE -ne 0) { throw "Verification failed; package not created." }
 
@@ -31,6 +32,7 @@ if ($LASTEXITCODE -ne 0) { throw "Icon generation failed." }
 
 & $python -m PyInstaller --noconfirm --clean --windowed --onefile --collect-submodules pystray `
     --icon build\app_icon.ico `
+    --version-file tools\version_info.txt `
     --add-data "src\openai_tunnel_manager\assets\app_icon.jpg;openai_tunnel_manager\assets" `
     --name OpenAITunnelManager --paths src launcher.py
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed." }
@@ -42,4 +44,4 @@ if ($TunnelClientPath) {
     Copy-Item ".\tunnel-client.exe" "dist\tunnel-client.exe" -Force
 }
 
-Write-Host "Built after successful verification: dist\OpenAITunnelManager.exe"
+Write-Host "Built OpenAI MCP Tunnel Manager v1.0.0: dist\OpenAITunnelManager.exe"

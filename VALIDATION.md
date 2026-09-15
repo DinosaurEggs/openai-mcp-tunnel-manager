@@ -1,110 +1,87 @@
 # Validation record
 
-Release: `0.3.0`
+Release: `1.0.0`
 Date: `2026-09-15`
 
-This record describes the checks performed on the source package before delivery.
+This record describes the release gates for OpenAI MCP Tunnel Manager 1.0.0. The authoritative executable gate is `python verify.py` on Windows, followed by PyInstaller packaging in `.github/workflows/build-windows.yml`.
 
-## Automated checks
+## Required gates
 
-The complete test suite contains **70 tests**. The process-level tunnel-client tests are executed in deterministic groups in this delivery environment because long single commands can exceed the harness transport timeout.
+A release is not published unless all of the following complete successfully in the same Windows GitHub Actions job:
 
-- Non-tunnel-client core/GUI/process group: **49 passed**.
-- TunnelClient integration group: **20 passed** (all methods covered in exhaustive groups).
-- Native Windows Credential Manager group: **1 skipped on Linux** by design.
-- Total: **70 tests; 69 passed; 0 failed; 1 skipped on Linux**.
+- Runtime dependencies install successfully.
+- `python verify.py` completes with no required test failures.
+- The application icon is generated successfully.
+- PyInstaller produces the single-file `dist/OpenAITunnelManager.exe`.
+- GitHub Package creation succeeds.
+- GitHub Packages publication succeeds (duplicate versions are treated idempotently).
+- Only then may the GitHub Release be created and the EXE uploaded.
 
-On Windows, `verify.ps1` / `build.ps1` execute the Credential Manager test instead of skipping it.
+Release publishing is additionally restricted to `master` push commits whose message starts with `Release v` and whose declared version matches the project version.
 
-Additional gates:
+## Version consistency
 
-- `python -m compileall` for `src`, `tests`, and `launcher.py`.
-- Tkinter launcher smoke under Xvfb; GUI must remain alive during the smoke interval and emit no stderr.
-- Production dependency audit: runtime imports use Python standard library only.
-- Secret scan for OpenAI-key-shaped literals.
-- Unsafe execution scan for `shell=True`, `os.system`, `eval`, and `exec` in production sources.
-- External editor invocation scan: no Notepad / `$EDITOR` / `$VISUAL` launch path in production behavior.
-- Source ZIP cleanliness and CRC validation.
-- Fresh ZIP extraction followed by the same grouped test gate, compile check, static scans, and GUI smoke.
+`tests.test_version` verifies that release metadata agrees across:
+
+- `src/openai_tunnel_manager/__init__.py`
+- `pyproject.toml`
+- `README.md`
+- `VALIDATION.md`
+- `RELEASE_NOTES.md`
+- `tools/version_info.txt`
+- `package/OpenAITunnelManager.Package.csproj`
+
+The PyInstaller build consumes `tools/version_info.txt`, so Windows Explorer file properties report version 1.0.0 for the EXE.
+
+## Windows single-instance gate
+
+`tests.test_single_instance` runs a real Windows named-object round trip:
+
+1. A primary guard acquires a unique Named Mutex.
+2. A second guard using the same name must fail to become primary.
+3. The second guard signals the shared Named Event.
+4. The primary listener must receive that activation signal.
+5. All Windows handles and the listener thread are closed cleanly.
+
+The production startup path creates the single-instance guard before Tk, so a second EXE launch does not flash a second GUI. The activation callback is routed through the existing UI event queue before restoring/focusing the Tk window.
 
 ## tunnel-client source-of-truth audit
 
-Verified behavior:
+Verified architecture:
 
 - Inventory comes from `tunnel-client profiles list --json` and `tunnel-client runtimes list --json`.
 - Runtime state comes from `tunnel-client runtimes status <alias> --json`.
-- Existing profiles appear when application settings contain no tunnel definitions.
-- Profiles/runtimes added or removed externally are reflected on refresh.
-- App settings persist GUI-local preferences only; Tunnel ID, MCP target, Health URL, log path, runtime status and official Profile contents are not app-owned configuration.
-- Profile creation uses `tunnel-client init`.
-- Profile import uses `profiles add --from-file`.
-- GUI Profile editing saves through `profiles add <name> --from-file <temp> --force`, using tunnel-client validation before replacement.
-- Doctor uses the official listed Profile or Runtime profile file.
-- Runtime reconnect reconstructs required values from official Runtime/Profile data.
-- Same-name Profile/Runtime entities stay distinct internally.
-- Custom profile-dir paths are respected; same names alone do not cause false merges.
-- Multiple Runtime aliases referencing one Profile are retained independently.
-- Shared Profile credentials are not deleted when removing only one Runtime alias.
-- Profile symlink deletion removes the named symlink entry, not its target.
+- External Profile / Runtime changes are reflected after refresh.
+- Application settings persist GUI-local preferences only.
+- Profile creation and editing continue to use tunnel-client validation.
+- Runtime reconnect derives required values from official Runtime / Profile data.
+- Same-name Profile / Runtime entities stay distinct internally.
+- Custom profile directories and shared Profile references remain supported.
 
-## GUI editor coverage
+## GUI coverage
 
-Verified behavior:
+The Windows GUI gate covers, among other behavior:
 
-- Existing Profile edit opens a centered internal GUI window; no external TXT/Notepad editor is invoked.
-- Editor contains Common / Advanced / Local settings tabs.
-- Common fields safely update recognized Tunnel ID and main MCP URL/command values.
-- Advanced YAML/JSON remains available inside the GUI so unknown fields and comments are preserved.
-- Local page manages enabled/auto-connect/auto-reconnect and optional Runtime API Key storage.
-- Invalid edited Profile content is rejected by tunnel-client and the original Profile remains unchanged.
+- Internal Profile editing rather than external TXT/Notepad editing.
+- State-sensitive Start / Stop / Restart actions.
+- Configuration list status labels and right-click Edit / Delete behavior.
+- Configuration and log "open location" actions.
+- Persistent Windows system tray behavior.
+- Log auto-refresh, filtering, incremental rendering and horizontal scroll preservation.
+- Health-detail compatibility for both newer and older tunnel-client runtimes.
 
-## Runtime action coverage
+## Health compatibility
 
-Verified behavior:
+Base health continues to use the established `/healthz` and `/readyz` contract.
 
-- The “Open official UI” action is absent.
-- Stopped/configured state: Start enabled, Stop and Restart disabled.
-- Starting/in-flight operation: conflicting runtime actions are disabled.
-- Running/Ready state: Start disabled, Stop and Restart enabled.
-- Manual Stop suppresses auto-reconnect.
-- Restart aborts if Stop fails.
+Detailed health is requested only when Runtime status advertises `health_details_url` and/or `mcp_health_url`. Older runtimes that omit these fields are reported as not supporting detailed health instead of being shown as failed because `/health` routes return HTTP 404.
 
-## Runtime log coverage
+## Credential gate
 
-Verified behavior:
+On Windows, `tests.test_windows_credentials` performs a real Windows Credential Manager write/read/delete round trip. Packaging stops if the required Windows gate fails.
 
-- Runtime log path is read from official runtime status (`log_path` and supported nested equivalents).
-- GUI foreground `run --profile` stdout/stderr is written to a Runtime log file.
-- Manual Start automatically switches to the Log tab.
-- Started Profile log content is visible in the GUI through a real child-process integration test.
-- GUI and core use the single `read_log_tail()` API; the old missing-method failure (`TunnelClient` has no `tail_log`) is eliminated and no duplicate log-tail API remains.
-- Log reading runs in a background worker.
-- Tail reads are bounded by bytes and line count.
-- Missing log files return a clear Chinese error.
-- Auto refresh can be paused; manual refresh remains available.
-- Search and DEBUG/INFO/WARN/ERROR filtering work on the in-memory tail.
-- Copy-visible-log and export actions are covered.
-- After Stop, the last known log path remains available and recent log content can still be viewed.
+## Packaging and publication
 
-## Integration coverage
+The release artifact is a single-file Windows GUI executable with the project icon and Windows file/product version resource.
 
-The process-level fake `tunnel-client` verifies:
-
-- `profiles list/add`, `init`, `doctor`, and Profile lifecycle.
-- `runtimes connect/list/status/stop/rm` and JSON parsing.
-- Runtime API key delivery through environment references rather than plaintext CLI secrets.
-- Ready, starting, stopped, stale, and non-zero-with-valid-JSON status handling.
-- `/healthz` URL normalization before detailed Health requests.
-- GUI startup with a pre-existing tunnel-client Profile and no app-side tunnel inventory.
-- External Runtime creation appearing after GUI refresh.
-- GUI Start -> child process -> Ready.
-- GUI Start -> foreground log file -> visible log page.
-- Chinese labels, centered dialogs and strict missing-binary handling.
-
-## Windows gate
-
-`build.ps1` runs the full test gate before PyInstaller. On Windows, `test_windows_credentials.py` performs a real write/read/delete round-trip against Windows Credential Manager. Packaging aborts on any required test failure.
-
-## Environment limitation
-
-The delivery environment is Linux, so a Windows `.exe` is not falsely marked as locally verified. The source package, Windows build script, and Windows GitHub Actions workflow are included; the Windows build path performs its own verification before packaging.
+The GitHub Packages artifact is a NuGet package named `OpenAITunnelManager.Windows` containing the same `OpenAITunnelManager.exe` under `tools/` plus the project README. The GitHub Release contains the directly downloadable EXE.

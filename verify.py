@@ -45,6 +45,8 @@ def main() -> int:
         "tests.test_status_parser",
         "tests.test_settings_store",
         "tests.test_health",
+        "tests.test_single_instance",
+        "tests.test_version",
     ])
 
     # Tk tests need a display on Unix-like CI runners.
