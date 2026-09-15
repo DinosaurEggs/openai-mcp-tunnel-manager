@@ -8,6 +8,7 @@ on:
     paths:
       - "src/OpenAITunnelManager.**/**"
       - "Directory.Build.props"
+      - "Directory.Build.targets"
       - "Directory.Packages.props"
       - "global.json"
       - "OpenAITunnelManager.slnx"
@@ -57,12 +58,23 @@ jobs:
           --no-restore
           -o artifacts/${{ matrix.rid }}
 
-      - name: Verify published executable
+      - name: Verify published runtime files
         shell: pwsh
         run: |
-          $exe = "artifacts/${{ matrix.rid }}/OpenAITunnelManager.exe"
-          if (-not (Test-Path $exe)) {
-            throw "Published executable not found: $exe"
+          $output = "artifacts/${{ matrix.rid }}"
+          $required = @(
+            "OpenAITunnelManager.exe",
+            "OpenAITunnelManager.pri",
+            "Microsoft.UI.Xaml.dll"
+          )
+
+          foreach ($file in $required) {
+            $path = Join-Path $output $file
+            if (-not (Test-Path $path)) {
+              Write-Host "Published root files:"
+              Get-ChildItem $output -File | Select-Object -ExpandProperty Name | Sort-Object
+              throw "Required published file not found: $path"
+            }
           }
 
       - name: Smoke test x64 startup
@@ -73,6 +85,7 @@ jobs:
           $workingDirectory = Split-Path $exe
           $env:LOCALAPPDATA = Join-Path $env:RUNNER_TEMP "OpenAITunnelManagerSmoke"
           New-Item -ItemType Directory -Force -Path $env:LOCALAPPDATA | Out-Null
+          $startedAt = Get-Date
 
           $process = Start-Process -FilePath $exe -WorkingDirectory $workingDirectory -PassThru
           Start-Sleep -Seconds 5
@@ -83,7 +96,17 @@ jobs:
               Write-Host "----- app.log -----"
               Get-Content $log
               Write-Host "-------------------"
+            } else {
+              Write-Host "No managed app.log was created; dumping recent Windows Application events."
             }
+
+            Write-Host "----- Windows Application events -----"
+            Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = $startedAt.AddSeconds(-2) } -ErrorAction SilentlyContinue |
+              Where-Object { $_.Message -match 'OpenAITunnelManager|Microsoft\.UI\.Xaml|WindowsAppRuntime' } |
+              Select-Object TimeCreated, Id, ProviderName, LevelDisplayName, Message |
+              Format-List
+            Write-Host "--------------------------------------"
+
             throw "Published x64 application exited during startup with code $($process.ExitCode)"
           }
 
