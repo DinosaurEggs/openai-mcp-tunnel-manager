@@ -35,6 +35,7 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
         RootGrid.DataContext = ViewModel;
         ConnectionsList.RightTapped += ConnectionsList_RightTapped;
+        ConfigureProfileTransferFlyout();
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
         _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
