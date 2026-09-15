@@ -59,8 +59,12 @@ public partial class App : Application
     {
         try
         {
+            var baseDirectory = Path.GetFullPath(AppContext.BaseDirectory);
+            ConfigurePortableStorage(baseDirectory);
+
             var host = Microsoft.Extensions.Hosting.Host
                 .CreateDefaultBuilder()
+                .UseContentRoot(baseDirectory)
                 .ConfigureServices(static services =>
                 {
                     services.AddSingleton(new TunnelClientOptions());
@@ -78,6 +82,28 @@ public partial class App : Application
             AppLog.Fatal("Generic Host creation failed", exception);
             throw;
         }
+    }
+
+    private static void ConfigurePortableStorage(string baseDirectory)
+    {
+        var profileDirectory = Path.Combine(baseDirectory, "config", "profiles");
+        var stateDirectory = Path.Combine(baseDirectory, "state");
+
+        Directory.CreateDirectory(profileDirectory);
+        Directory.CreateDirectory(stateDirectory);
+
+        Environment.CurrentDirectory = baseDirectory;
+        Environment.SetEnvironmentVariable(
+            "TUNNEL_CLIENT_PROFILE_DIR",
+            profileDirectory,
+            EnvironmentVariableTarget.Process);
+        Environment.SetEnvironmentVariable(
+            "TUNNEL_CLIENT_STATE_DIR",
+            stateDirectory,
+            EnvironmentVariableTarget.Process);
+
+        AppLog.Info(
+            $"Portable storage configured | AppDir={baseDirectory} | Profiles={profileDirectory} | State={stateDirectory} | Log={AppLog.LogFilePath}");
     }
 
     private static void OnUnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
