@@ -4,7 +4,7 @@ namespace OpenAITunnelManager.Core.Models;
 
 public sealed class AppSettings
 {
-    public int SchemaVersion { get; set; } = 1;
+    public int SchemaVersion { get; set; } = 2;
     public string TunnelClientPath { get; set; } = string.Empty;
     public bool CloseToTray { get; set; } = true;
     public bool StartWithWindows { get; set; }
