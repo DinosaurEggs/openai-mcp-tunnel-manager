@@ -5,28 +5,14 @@ public sealed class AppDataPaths
     public static AppDataPaths Current { get; } = new();
 
     public AppDataPaths()
-        : this(AppContext.BaseDirectory, Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData))
+        : this(AppContext.BaseDirectory)
     {
     }
 
-    public AppDataPaths(string baseDirectory, string localApplicationData)
+    public AppDataPaths(string baseDirectory)
     {
         BaseDirectory = Path.GetFullPath(baseDirectory);
-        PortableFlagPath = Path.Combine(BaseDirectory, "portable.flag");
-        PortableRequested = File.Exists(PortableFlagPath);
-
-        var usePortable = PortableRequested && IsDirectoryWritable(BaseDirectory);
-        if (PortableRequested && !usePortable)
-        {
-            PortableFallbackReason = "检测到 portable.flag，但程序目录不可写，已回退到 LocalAppData";
-        }
-
-        var localRoot = string.IsNullOrWhiteSpace(localApplicationData)
-            ? Path.Combine(BaseDirectory, ".local")
-            : Path.Combine(localApplicationData, "OpenAITunnelManager");
-
-        RootDirectory = usePortable ? BaseDirectory : Path.GetFullPath(localRoot);
-        IsPortable = usePortable;
+        RootDirectory = BaseDirectory;
         ConfigDirectory = Path.Combine(RootDirectory, "config");
         LogsDirectory = Path.Combine(RootDirectory, "logs");
         StateDirectory = Path.Combine(RootDirectory, "state");
@@ -48,24 +34,4 @@ public sealed class AppDataPaths
     public string ForegroundStateDirectory { get; }
     public string SettingsPath { get; }
     public string ManagerLogPath { get; }
-    public string PortableFlagPath { get; }
-    public bool PortableRequested { get; }
-    public bool IsPortable { get; }
-    public string PortableFallbackReason { get; } = string.Empty;
-
-    private static bool IsDirectoryWritable(string directory)
-    {
-        try
-        {
-            var probe = Path.Combine(directory, $".openai-mcp-tunnel-manager-write-{Guid.NewGuid():N}.tmp");
-            using (File.Create(probe, 1, FileOptions.DeleteOnClose))
-            {
-            }
-            return true;
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or NotSupportedException)
-        {
-            return false;
-        }
-    }
 }
