@@ -44,16 +44,30 @@ public sealed partial class MainWindow
     {
         if (VisualTreeHelper.GetParent(textBox) is not StackPanel parent) return;
 
-        var index = parent.Children.IndexOf(textBox);
+        var index = -1;
+        for (var i = 0; i < parent.Children.Count; i++)
+        {
+            if (!ReferenceEquals(parent.Children[i], textBox)) continue;
+            index = i;
+            break;
+        }
         if (index < 0) return;
 
         parent.Children.RemoveAt(index);
 
-        textBox.Header = isProfileDirectory
-            ? "Profile 目录覆盖（TUNNEL_CLIENT_PROFILE_DIR）"
-            : "State 目录覆盖（TUNNEL_CLIENT_STATE_DIR）";
+        var label = new TextBlock
+        {
+            Text = isProfileDirectory
+                ? "Profile 目录覆盖（TUNNEL_CLIENT_PROFILE_DIR）"
+                : "State 目录覆盖（TUNNEL_CLIENT_STATE_DIR）",
+            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
+            TextWrapping = TextWrapping.Wrap
+        };
+
+        textBox.Header = null;
         textBox.IsReadOnly = true;
         textBox.HorizontalAlignment = HorizontalAlignment.Stretch;
+        textBox.VerticalAlignment = VerticalAlignment.Center;
         textBox.MinWidth = 0;
         textBox.Width = double.NaN;
         textBox.PlaceholderText = "未覆盖：继承 tunnel-client 当前环境 / 默认目录";
@@ -61,7 +75,7 @@ public sealed partial class MainWindow
         var browse = new Button
         {
             Content = "选择目录",
-            VerticalAlignment = VerticalAlignment.Bottom,
+            VerticalAlignment = VerticalAlignment.Center,
             Tag = isProfileDirectory ? "profile" : "state"
         };
         browse.Click += BrowseDirectoryOverride_Click;
@@ -69,7 +83,7 @@ public sealed partial class MainWindow
         var clear = new Button
         {
             Content = "清除",
-            VerticalAlignment = VerticalAlignment.Bottom,
+            VerticalAlignment = VerticalAlignment.Center,
             Tag = isProfileDirectory ? "profile" : "state"
         };
         clear.Click += ClearDirectoryOverride_Click;
@@ -91,7 +105,14 @@ public sealed partial class MainWindow
         row.Children.Add(browse);
         row.Children.Add(clear);
 
-        parent.Children.Insert(index, row);
+        var field = new StackPanel
+        {
+            Spacing = 6,
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+        field.Children.Add(label);
+        field.Children.Add(row);
+        parent.Children.Insert(index, field);
     }
 
     private async void BrowseDirectoryOverride_Click(object sender, RoutedEventArgs e)
