@@ -217,7 +217,7 @@ public sealed partial class MainWindow
 
         if (_logsFilterGrid is null || _logsFilterGrid.Children.Count < 5) return;
 
-        var controls = _logsFilterGrid.Children.Cast<UIElement>().Take(5).ToArray();
+        var controls = _logsFilterGrid.Children.OfType<FrameworkElement>().Take(5).ToArray();
         _logsFilterGrid.RowDefinitions.Clear();
         _logsFilterGrid.ColumnDefinitions.Clear();
 
