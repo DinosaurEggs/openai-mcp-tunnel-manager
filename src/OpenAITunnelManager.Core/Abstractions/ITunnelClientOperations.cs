@@ -6,6 +6,7 @@ public interface ITunnelClientOperations
 {
     string ResolveExecutablePath();
     Task<TunnelClientCapabilities> GetCapabilitiesAsync(CancellationToken cancellationToken = default);
+    Task<TunnelConnection> GetStatusAsync(TunnelConnection connection, CancellationToken cancellationToken = default);
     Task CreateProfileAsync(ProfileSpec spec, CancellationToken cancellationToken = default);
     Task<string> ReadProfileTextAsync(string name, string expectedPath, CancellationToken cancellationToken = default);
     Task SaveProfileTextAsync(string name, string expectedPath, string text, CancellationToken cancellationToken = default);
