@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import os
+import subprocess
 import tkinter as tk
+from pathlib import Path
 from tkinter import ttk
 
 from .main_window import MainWindow
@@ -57,8 +60,12 @@ class OptimizedMainWindow(MainWindow):
         ).pack(side="left", padx=(0, 8))
 
         ttk.Button(controls, text="立即刷新", command=self.refresh_log).pack(side="left", padx=(0, 6))
-        ttk.Button(controls, text="复制可见日志", command=self.copy_visible_log).pack(side="right", padx=(6, 0))
-        ttk.Button(controls, text="导出日志", command=self.export_log).pack(side="right")
+        self.open_log_location_button = ttk.Button(
+            controls,
+            text="打开日志位置",
+            command=self.open_log_location,
+        )
+        self.open_log_location_button.pack(side="right")
 
         self.log_path_var = tk.StringVar(value="日志文件：-")
         ttk.Label(frame, textvariable=self.log_path_var, wraplength=760).grid(
@@ -82,6 +89,33 @@ class OptimizedMainWindow(MainWindow):
         self.log_horizontal_scrollbar = x_scroll
         self.log_frame = frame
         return text
+
+    def _open_file_location(self, path: str, label: str) -> None:
+        raw = str(path or "").strip()
+        if not raw:
+            self._error(f"当前没有可用的{label}")
+            return
+        target = Path(raw).expanduser()
+        try:
+            target = target.resolve(strict=False)
+        except OSError:
+            pass
+        if not target.exists():
+            self._error(f"{label}不存在：{target}")
+            return
+        if os.name != "nt":
+            self._error("打开文件所在位置目前仅支持 Windows")
+            return
+        try:
+            if target.is_dir():
+                os.startfile(str(target))
+            else:
+                subprocess.Popen(["explorer.exe", f"/select,{target}"])
+        except OSError as exc:
+            self._error(f"打开{label}位置失败：{exc}")
+
+    def open_log_location(self) -> None:
+        self._open_file_location(self._current_log_path, "日志文件")
 
     def _schedule_log_render(self) -> None:
         if self._log_render_after:
@@ -156,8 +190,6 @@ class OptimizedMainWindow(MainWindow):
             self.log_text.insert("end-1c", delta)
             self.log_text.configure(state="disabled")
             if follow_tail:
-                # Text.see("end") also scrolls horizontally to the end of the
-                # longest line. Move only the vertical viewport instead.
                 self.log_text.yview_moveto(1.0)
             self._restore_horizontal_log_position(horizontal)
         except tk.TclError:
@@ -206,8 +238,6 @@ class OptimizedMainWindow(MainWindow):
             self.log_text.replace("1.0", "end", rendered)
             self.log_text.configure(state="disabled")
             if follow_tail or self._last_rendered_text is None:
-                # Keep auto-follow vertical-only; never override the user's
-                # horizontal scrollbar position.
                 self.log_text.yview_moveto(1.0)
             self._restore_horizontal_log_position(horizontal)
         except tk.TclError:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import threading
 import tkinter as tk
+from tkinter import ttk
 from typing import Any, Callable
 
 from .autostart import set_windows_startup
@@ -47,14 +48,76 @@ class TrayMainWindow(OptimizedMainWindow):
         self._tray_thread: threading.Thread | None = None
         super().__init__(*args, **kwargs)
 
-        # The tray icon represents the running application, not only the hidden
-        # window state. Keep it visible for the entire process lifetime even
-        # when closing the window is configured to exit the application.
         if os.name == "nt":
             try:
                 self._start_tray()
             except Exception as exc:
                 self.status_var.set(f"系统托盘不可用：{exc}")
+
+    def _build_ui(self) -> None:
+        super()._build_ui()
+
+        # Remove legacy Profile import/export controls from the toolbar.
+        kept_profile_buttons: list[ttk.Button] = []
+        preference_button: ttk.Button | None = None
+        for button in self.profile_buttons:
+            text = str(button.cget("text"))
+            if text in {"导入 Profile", "导出 Profile"}:
+                button.destroy()
+                continue
+            kept_profile_buttons.append(button)
+            if text == "本机偏好 / 密钥":
+                preference_button = button
+        self.profile_buttons = kept_profile_buttons
+
+        # Remove the old large refresh button below the list.
+        for widget in list(_walk_widgets(self.root)):
+            if isinstance(widget, ttk.Button) and str(widget.cget("text")) == "从 tunnel-client 重新读取":
+                widget.destroy()
+
+        # Put the compact refresh action directly beside local preferences.
+        if preference_button is not None:
+            self.refresh_button = ttk.Button(
+                preference_button.master,
+                text="刷新",
+                command=lambda: self.refresh_inventory(force=True),
+            )
+            self.refresh_button.pack(side="left", padx=(0, 6), after=preference_button)
+            self.profile_buttons.append(self.refresh_button)
+
+        self.doctor_button.configure(text="诊断")
+        self.config_location_button = ttk.Button(
+            self.doctor_button.master,
+            text="打开配置位置",
+            command=self.open_config_location,
+            state="disabled",
+        )
+        self.config_location_button.pack(side="left", padx=(0, 6), after=self.doctor_button)
+        self.action_buttons.append(self.config_location_button)
+
+    def _profile_path_for_item(self, item) -> str:
+        status = self.statuses.get(self._item_key(item))
+        return (
+            (status.profile_path if status else "")
+            or item.profile_path
+            or item.runtime_profile_path
+            or ""
+        )
+
+    def open_config_location(self) -> None:
+        item = self.selected_item()
+        if not item:
+            self._error("请先选择一个配置")
+            return
+        self._open_file_location(self._profile_path_for_item(item), "配置文件")
+
+    def _update_action_states(self, *args, **kwargs) -> None:
+        super()._update_action_states(*args, **kwargs)
+        if not hasattr(self, "config_location_button"):
+            return
+        item = self.selected_item()
+        can_open = bool(self.binary_ok and item and self._profile_path_for_item(item))
+        self.config_location_button.configure(state="normal" if can_open else "disabled")
 
     @staticmethod
     def _create_tray_image():
@@ -130,13 +193,10 @@ class TrayMainWindow(OptimizedMainWindow):
             self.quit()
             return
         try:
-            # Normally already running from __init__, but retry here if tray
-            # initialization previously failed or was interrupted.
             self._start_tray()
             self.root.withdraw()
             self.status_var.set("已最小化到系统托盘")
         except Exception as exc:
-            # Do not unexpectedly terminate the manager if a tray backend fails.
             self.status_var.set(f"系统托盘不可用：{exc}；已最小化到任务栏")
             try:
                 self.root.iconify()
@@ -153,8 +213,6 @@ class TrayMainWindow(OptimizedMainWindow):
         for key, value in dlg.result.items():
             setattr(self.settings, key, value)
 
-        # close_to_tray only controls the close-button behavior. The tray icon
-        # stays visible while the process is alive in either mode.
         self.client.binary_path = self.settings.binary_path
         self.store.save(self.settings)
         self._schedule_refresh()
