@@ -7,8 +7,20 @@ using OpenAITunnelManager.Infrastructure.TunnelClient;
 
 namespace OpenAITunnelManager.App.ViewModels;
 
+public sealed record ProfileEditorData(
+    string Name,
+    string Path,
+    string Text,
+    string TunnelId,
+    string TargetKind,
+    string TargetValue,
+    ProfilePreference Preference,
+    bool HasSavedSecret);
+
 public partial class ConnectionsViewModel : ObservableObject
 {
+    private static readonly int[] ReconnectDelaysMs = [1000, 2000, 5000, 10000, 30000, 60000];
+
     private readonly ITunnelClientService _inventory;
     private readonly ITunnelClientOperations _operations;
     private readonly ISettingsStore _settingsStore;
@@ -16,6 +28,7 @@ public partial class ConnectionsViewModel : ObservableObject
     private readonly IAutostartService _autostart;
     private readonly TunnelClientOptions _options;
     private readonly HashSet<string> _manualStopped = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _reconnectScheduled = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, int> _reconnectAttempts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _lastLogPaths = new(StringComparer.OrdinalIgnoreCase);
     private bool _initialAutoConnectApplied;
@@ -55,27 +68,36 @@ public partial class ConnectionsViewModel : ObservableObject
     [ObservableProperty] public partial string LogSearch { get; set; } = string.Empty;
     [ObservableProperty] public partial string LogLevel { get; set; } = "全部";
     [ObservableProperty] public partial bool LogAutoRefresh { get; set; } = true;
+    [ObservableProperty] public partial bool LogWrap { get; set; }
     [ObservableProperty] public partial string CurrentLogPath { get; set; } = string.Empty;
     [ObservableProperty] public partial string DiagnosticText { get; set; } = string.Empty;
     [ObservableProperty] public partial string HealthText { get; set; } = string.Empty;
 
-    public bool CanStartSelected => IsClientAvailable && !IsBusy && SelectedConnection is { ProcessRunning: false };
+    public bool CanStartSelected => IsClientAvailable && !IsBusy && SelectedConnection is { ProcessRunning: false } item && (item.HasRuntime || item.HasProfile);
     public bool CanStopSelected => IsClientAvailable && !IsBusy && SelectedConnection is { ProcessRunning: true };
     public bool CanRestartSelected => CanStopSelected;
     public bool CanEditSelected => IsClientAvailable && !IsBusy && SelectedConnection is { ProfileListed: true, HasProfile: true };
     public bool CanDeleteSelected => IsClientAvailable && !IsBusy && SelectedConnection is not null;
     public bool CanDiagnoseSelected => IsClientAvailable && !IsBusy && SelectedConnection is not null;
+    public bool CanOpenConfigSelected => SelectedConnection is { HasProfile: true };
+    public bool CanOpenLogSelected => !string.IsNullOrWhiteSpace(CurrentLogPath);
     public string SettingsPath => _settingsStore.SettingsPath;
+    public int TotalCount => Connections.Count;
+    public int ActiveCount => Connections.Count(static item => item.ProcessRunning);
+    public int HealthyCount => Connections.Count(static item => item.ProcessRunning && item.Healthy && item.Ready);
+    public int ProblemCount => Connections.Count(static item => item.State is RuntimeState.Error or RuntimeState.Stale || (item.ProcessRunning && (!item.Healthy || !item.Ready)));
 
     partial void OnSelectedConnectionChanged(TunnelConnection? value)
     {
         if (value is not null && _lastLogPaths.TryGetValue(value.Identity, out var path)) CurrentLogPath = path;
         else CurrentLogPath = value?.LogPath ?? string.Empty;
+        HealthText = string.Empty;
         NotifyActionState();
     }
 
     partial void OnIsBusyChanged(bool value) => NotifyActionState();
     partial void OnIsClientAvailableChanged(bool value) => NotifyActionState();
+    partial void OnCurrentLogPathChanged(string value) => OnPropertyChanged(nameof(CanOpenLogSelected));
     partial void OnLogSearchChanged(string value) => RenderLog();
     partial void OnLogLevelChanged(string value) => RenderLog();
 
@@ -116,8 +138,9 @@ public partial class ConnectionsViewModel : ObservableObject
             }
             Connections.Clear();
             foreach (var item in items) Connections.Add(item);
-            SelectedConnection = Connections.FirstOrDefault(item => item.Identity == selectedIdentity) ?? Connections.FirstOrDefault();
+            SelectedConnection = Connections.FirstOrDefault(item => string.Equals(item.Identity, selectedIdentity, StringComparison.OrdinalIgnoreCase)) ?? Connections.FirstOrDefault();
             StatusMessage = Connections.Count == 0 ? "未发现 Profile 或 Runtime" : $"已从 tunnel-client 读取 {Connections.Count} 个配置/运行实例";
+            NotifyOverviewState();
         }
         catch (Exception exception)
         {
@@ -136,10 +159,31 @@ public partial class ConnectionsViewModel : ObservableObject
             _initialAutoConnectApplied = true;
             await ApplyAutoConnectAsync();
         }
-        await EvaluateAutoReconnectAsync();
+        EvaluateAutoReconnect();
     }
 
     private bool CanRefresh() => !IsBusy;
+
+    public async Task RefreshSelectedStatusAsync()
+    {
+        var item = SelectedConnection;
+        if (item is null || !IsClientAvailable || IsBusy) return;
+        try
+        {
+            var status = await _operations.GetStatusAsync(item);
+            ReplaceConnection(status);
+            if (!string.IsNullOrWhiteSpace(status.LogPath))
+            {
+                _lastLogPaths[status.Identity] = status.LogPath;
+                CurrentLogPath = status.LogPath;
+            }
+            NotifyOverviewState();
+        }
+        catch (Exception exception)
+        {
+            StatusMessage = exception.Message;
+        }
+    }
 
     public async Task SaveSettingsAsync()
     {
@@ -154,13 +198,110 @@ public partial class ConnectionsViewModel : ObservableObject
         _autostart.SetEnabled(StartWithWindows);
         await _settingsStore.SaveAsync(Settings);
         ApplySettingsToOptions();
+        _initialAutoConnectApplied = false;
         StatusMessage = $"设置已保存：{SettingsPath}";
         await RefreshAsync();
     }
 
     public void SetTunnelClientPath(string path) => TunnelClientPath = path;
-
     private void ApplySettingsToOptions() => _options.Apply(Settings);
+
+    [RelayCommand(CanExecute = nameof(CanStart))]
+    private Task StartSelectedAsync() => SelectedConnection is null ? Task.CompletedTask : StartItemAsync(SelectedConnection, manual: true);
+    private bool CanStart() => CanStartSelected;
+
+    [RelayCommand(CanExecute = nameof(CanStop))]
+    private Task StopSelectedAsync() => SelectedConnection is null ? Task.CompletedTask : StopItemAsync(SelectedConnection, manual: true);
+    private bool CanStop() => CanStopSelected;
+
+    [RelayCommand(CanExecute = nameof(CanRestart))]
+    private async Task RestartSelectedAsync()
+    {
+        var item = SelectedConnection;
+        if (item is null) return;
+        _manualStopped.Remove(item.Identity);
+        IsBusy = true;
+        StatusMessage = $"正在重启 {item.Name}...";
+        try
+        {
+            var secret = ReadSavedSecret(item);
+            await _operations.RestartAsync(item, secret);
+            _reconnectAttempts.Remove(item.Identity);
+            await RefreshAfterOperationAsync(item.Identity, $"{item.Name} 已重启");
+        }
+        catch (Exception exception)
+        {
+            StatusMessage = $"重启失败：{exception.Message}";
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+    private bool CanRestart() => CanRestartSelected;
+
+    public async Task CreateProfileAsync(ProfileSpec spec, string? secret, ProfilePreference preference)
+    {
+        EnsureClientAvailable();
+        IsBusy = true;
+        StatusMessage = $"正在创建 Profile：{spec.Name}";
+        try
+        {
+            await _operations.CreateProfileAsync(spec);
+            Settings.ProfilePreferences[$"profile:{spec.Name.Trim()}"] = preference;
+            if (!string.IsNullOrWhiteSpace(secret)) _credentials.Set(spec.Name.Trim(), secret);
+            await _settingsStore.SaveAsync(Settings);
+            await RefreshAfterOperationAsync($"profile:{spec.Name.Trim()}", $"Profile 已创建：{spec.Name.Trim()}");
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    public async Task<ProfileEditorData> LoadSelectedProfileAsync()
+    {
+        var item = SelectedConnection ?? throw new InvalidOperationException("请先选择一个配置");
+        if (!item.ProfileListed || !item.HasProfile) throw new InvalidOperationException("当前项目没有可编辑的 profiles list Profile");
+        var text = await _operations.ReadProfileTextAsync(item.ProfileName, item.ProfilePath);
+        var metadata = ProfileDocumentEditor.ReadMetadata(text);
+        return new ProfileEditorData(
+            item.ProfileName,
+            item.ProfilePath,
+            text,
+            metadata.TunnelId,
+            metadata.TargetKind,
+            metadata.TargetValue,
+            GetSelectedPreferenceCopy(),
+            HasSavedSecret(item));
+    }
+
+    public async Task SaveSelectedProfileAsync(
+        ProfileEditorData original,
+        string rawText,
+        string tunnelId,
+        string targetValue,
+        ProfilePreference preference,
+        string? newSecret,
+        bool deleteSecret)
+    {
+        var item = SelectedConnection ?? throw new InvalidOperationException("请先选择一个配置");
+        if (!string.Equals(item.ProfileName, original.Name, StringComparison.Ordinal) || !string.Equals(item.ProfilePath, original.Path, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("当前选择的 Profile 已变化，请重新打开编辑器");
+        var updated = ProfileDocumentEditor.ApplyCommonFields(rawText, original.TunnelId, original.TargetKind, original.TargetValue, tunnelId.Trim(), targetValue.Trim());
+        IsBusy = true;
+        try
+        {
+            await _operations.SaveProfileTextAsync(item.ProfileName, item.ProfilePath, updated);
+            await SavePreferenceForItemAsync(item, preference, newSecret, deleteSecret);
+            await RefreshAfterOperationAsync(item.Identity, $"Profile 已保存：{item.ProfileName}");
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
 
     public ProfilePreference GetSelectedPreferenceCopy()
     {
@@ -169,9 +310,14 @@ public partial class ConnectionsViewModel : ObservableObject
         return new ProfilePreference { Enabled = pref.Enabled, AutoConnect = pref.AutoConnect, AutoReconnect = pref.AutoReconnect };
     }
 
-    public async Task SaveSelectedPreferenceAsync(ProfilePreference preference, string? newSecret = null, bool deleteSecret = false)
+    public Task SaveSelectedPreferenceAsync(ProfilePreference preference, string? newSecret = null, bool deleteSecret = false)
     {
         var item = SelectedConnection ?? throw new InvalidOperationException("请先选择一个配置");
+        return SavePreferenceForItemAsync(item, preference, newSecret, deleteSecret);
+    }
+
+    private async Task SavePreferenceForItemAsync(TunnelConnection item, ProfilePreference preference, string? newSecret, bool deleteSecret)
+    {
         Settings.ProfilePreferences[item.Identity] = preference;
         if (deleteSecret)
         {
@@ -185,6 +331,132 @@ public partial class ConnectionsViewModel : ObservableObject
         StatusMessage = $"已保存 {item.Name} 的本机偏好";
     }
 
+    public async Task DeleteSelectedAsync()
+    {
+        var original = SelectedConnection ?? throw new InvalidOperationException("请先选择一个配置");
+        EnsureClientAvailable();
+        IsBusy = true;
+        try
+        {
+            var fresh = await _inventory.GetConnectionsAsync();
+            var current = fresh.FirstOrDefault(item => string.Equals(item.Identity, original.Identity, StringComparison.OrdinalIgnoreCase));
+            if (current is null && original.HasRuntime) throw new InvalidOperationException("列表已发生变化，请刷新后重试");
+            var target = current ?? original;
+            var sharedProfile = target.HasProfile && fresh.Any(item =>
+                !string.Equals(item.Identity, target.Identity, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(item.ProfileName, target.ProfileName, StringComparison.OrdinalIgnoreCase));
+            var profileDeleted = false;
+
+            if (target.HasRuntime)
+            {
+                var status = await _operations.GetStatusAsync(target);
+                if (status.ProcessRunning) await _operations.StopAsync(status);
+                await _operations.RemoveRuntimeAsync(target.RuntimeAlias);
+            }
+
+            if (target.ProfileListed && target.HasProfile && !sharedProfile)
+            {
+                await _operations.DeleteProfileAsync(target.ProfileName, target.ProfilePath);
+                profileDeleted = true;
+            }
+
+            if (profileDeleted)
+            {
+                foreach (var id in CredentialIds(original)) _credentials.Delete(id);
+            }
+            else if (original.HasRuntime)
+            {
+                _credentials.Delete(original.RuntimeAlias);
+            }
+
+            Settings.ProfilePreferences.Remove(original.Identity);
+            Settings.ProfilePreferences.Remove(original.Name);
+            if (profileDeleted && original.HasProfile)
+            {
+                Settings.ProfilePreferences.Remove($"profile:{original.ProfileName}");
+                Settings.ProfilePreferences.Remove(original.ProfileName);
+            }
+            await _settingsStore.SaveAsync(Settings);
+            _manualStopped.Remove(original.Identity);
+            _reconnectAttempts.Remove(original.Identity);
+            _reconnectScheduled.Remove(original.Identity);
+            await RefreshAfterOperationAsync(null, $"已删除：{original.Name}");
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanDiagnose))]
+    private async Task DiagnoseSelectedAsync()
+    {
+        var item = SelectedConnection;
+        if (item is null) return;
+        IsBusy = true;
+        DiagnosticText = "正在运行 tunnel-client doctor --explain ...";
+        try
+        {
+            DiagnosticText = await _operations.DoctorAsync(item, ReadSavedSecret(item));
+            StatusMessage = $"{item.Name} 诊断完成";
+        }
+        catch (Exception exception)
+        {
+            DiagnosticText = $"诊断失败：{Environment.NewLine}{exception.Message}";
+            StatusMessage = exception.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+    private bool CanDiagnose() => CanDiagnoseSelected;
+
+    [RelayCommand]
+    public async Task RefreshLogAsync()
+    {
+        var item = SelectedConnection;
+        if (item is null)
+        {
+            RawLog = VisibleLog = string.Empty;
+            CurrentLogPath = string.Empty;
+            return;
+        }
+        var path = !string.IsNullOrWhiteSpace(item.LogPath) ? item.LogPath : _lastLogPaths.GetValueOrDefault(item.Identity, string.Empty);
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            CurrentLogPath = string.Empty;
+            if (string.IsNullOrWhiteSpace(RawLog)) VisibleLog = string.Empty;
+            return;
+        }
+        CurrentLogPath = path;
+        _lastLogPaths[item.Identity] = path;
+        try
+        {
+            RawLog = await _operations.ReadLogTailAsync(path);
+            RenderLog();
+        }
+        catch (Exception exception)
+        {
+            VisibleLog = $"读取日志失败：{exception.Message}";
+        }
+    }
+
+    [RelayCommand]
+    public async Task RefreshHealthAsync()
+    {
+        var item = SelectedConnection;
+        if (item is null) { HealthText = string.Empty; return; }
+        try
+        {
+            HealthText = await _operations.GetDetailedHealthAsync(item);
+        }
+        catch (Exception exception)
+        {
+            HealthText = $"读取 Health 失败：{exception.Message}";
+        }
+    }
+
     public bool HasSavedSecret(TunnelConnection item) => ReadSavedSecret(item) is not null;
 
     public string? ReadSavedSecret(TunnelConnection item)
@@ -195,6 +467,135 @@ public partial class ConnectionsViewModel : ObservableObject
             if (!string.IsNullOrEmpty(secret)) return secret;
         }
         return null;
+    }
+
+    public string GetSelectedConfigPath()
+    {
+        var item = SelectedConnection;
+        return item?.ProfilePath ?? item?.RuntimeProfilePath ?? string.Empty;
+    }
+
+    public async Task ShutdownAsync() => await _operations.ShutdownForegroundProfilesAsync();
+
+    private async Task StartItemAsync(TunnelConnection item, bool manual)
+    {
+        EnsureClientAvailable();
+        var pref = FindPreference(item) ?? new ProfilePreference();
+        if (!pref.Enabled)
+        {
+            if (manual) throw new InvalidOperationException("此配置已在本机偏好中禁用");
+            return;
+        }
+        _manualStopped.Remove(item.Identity);
+        IsBusy = true;
+        StatusMessage = $"正在启动 {item.Name}...";
+        try
+        {
+            await _operations.StartAsync(item, ReadSavedSecret(item));
+            _reconnectAttempts.Remove(item.Identity);
+            await RefreshAfterOperationAsync(item.Identity, $"{item.Name} 启动命令已完成");
+        }
+        catch (Exception exception)
+        {
+            StatusMessage = $"启动失败：{exception.Message}";
+            if (manual) throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task StopItemAsync(TunnelConnection item, bool manual)
+    {
+        EnsureClientAvailable();
+        if (manual) _manualStopped.Add(item.Identity);
+        _reconnectAttempts.Remove(item.Identity);
+        _reconnectScheduled.Remove(item.Identity);
+        IsBusy = true;
+        StatusMessage = $"正在停止 {item.Name}...";
+        try
+        {
+            await _operations.StopAsync(item);
+            if (!string.IsNullOrWhiteSpace(item.LogPath)) _lastLogPaths[item.Identity] = item.LogPath;
+            await RefreshAfterOperationAsync(item.Identity, $"{item.Name} 已停止");
+        }
+        catch (Exception exception)
+        {
+            StatusMessage = $"停止失败：{exception.Message}";
+            if (manual) throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task RefreshAfterOperationAsync(string? identity, string completedMessage)
+    {
+        var previous = SelectedConnection;
+        var items = await _inventory.GetConnectionsAsync();
+        var refreshed = new List<TunnelConnection>();
+        foreach (var item in items)
+        {
+            var status = await _operations.GetStatusAsync(item);
+            if (!string.IsNullOrWhiteSpace(status.LogPath)) _lastLogPaths[status.Identity] = status.LogPath;
+            refreshed.Add(status);
+        }
+        Connections.Clear();
+        foreach (var item in refreshed) Connections.Add(item);
+        SelectedConnection = identity is null
+            ? Connections.FirstOrDefault()
+            : Connections.FirstOrDefault(item => string.Equals(item.Identity, identity, StringComparison.OrdinalIgnoreCase)) ?? Connections.FirstOrDefault();
+        StatusMessage = completedMessage;
+        NotifyOverviewState();
+        if (SelectedConnection is not null && _lastLogPaths.TryGetValue(SelectedConnection.Identity, out var path)) CurrentLogPath = path;
+    }
+
+    private async Task ApplyAutoConnectAsync()
+    {
+        foreach (var item in Connections.ToArray())
+        {
+            var pref = FindPreference(item);
+            if (pref is not { Enabled: true, AutoConnect: true } || item.ProcessRunning || _manualStopped.Contains(item.Identity)) continue;
+            await StartItemAsync(item, manual: false);
+        }
+    }
+
+    private void EvaluateAutoReconnect()
+    {
+        foreach (var item in Connections.ToArray())
+        {
+            var pref = FindPreference(item);
+            if (pref is not { Enabled: true, AutoReconnect: true } || _manualStopped.Contains(item.Identity)) continue;
+            if (item.ProcessRunning || item.State is RuntimeState.Configured or RuntimeState.Starting or RuntimeState.Unknown) continue;
+            if (_reconnectScheduled.Contains(item.Identity)) continue;
+            var attempt = _reconnectAttempts.GetValueOrDefault(item.Identity);
+            if (attempt >= ReconnectDelaysMs.Length)
+            {
+                StatusMessage = $"{item.Name} 自动重连已暂停，请运行诊断检查";
+                continue;
+            }
+            _reconnectAttempts[item.Identity] = attempt + 1;
+            _reconnectScheduled.Add(item.Identity);
+            var delay = ReconnectDelaysMs[attempt];
+            StatusMessage = $"{item.Name} 将在 {delay / 1000} 秒后自动重连";
+            _ = ScheduleReconnectAsync(item, delay);
+        }
+    }
+
+    private async Task ScheduleReconnectAsync(TunnelConnection item, int delayMs)
+    {
+        try
+        {
+            await Task.Delay(delayMs);
+            if (_manualStopped.Contains(item.Identity) || !Connections.Any(candidate => string.Equals(candidate.Identity, item.Identity, StringComparison.OrdinalIgnoreCase))) return;
+            await StartItemAsync(item, manual: false);
+        }
+        finally
+        {
+            _reconnectScheduled.Remove(item.Identity);
+        }
     }
 
     private ProfilePreference? FindPreference(TunnelConnection item)
@@ -222,11 +623,45 @@ public partial class ConnectionsViewModel : ObservableObject
 
     private static string CredentialWriteId(TunnelConnection item) => CredentialIds(item).First();
 
+    private void ReplaceConnection(TunnelConnection updated)
+    {
+        var existing = Connections.FirstOrDefault(item => string.Equals(item.Identity, updated.Identity, StringComparison.OrdinalIgnoreCase));
+        if (existing is null) return;
+        var index = Connections.IndexOf(existing);
+        Connections[index] = updated;
+        if (SelectedConnection is not null && string.Equals(SelectedConnection.Identity, updated.Identity, StringComparison.OrdinalIgnoreCase)) SelectedConnection = updated;
+    }
+
+    private void EnsureClientAvailable()
+    {
+        _ = _operations.ResolveExecutablePath();
+        IsClientAvailable = true;
+    }
+
     private void NotifyActionState()
     {
-        OnPropertyChanged(nameof(CanStartSelected)); OnPropertyChanged(nameof(CanStopSelected)); OnPropertyChanged(nameof(CanRestartSelected));
-        OnPropertyChanged(nameof(CanEditSelected)); OnPropertyChanged(nameof(CanDeleteSelected)); OnPropertyChanged(nameof(CanDiagnoseSelected));
-        RefreshCommand.NotifyCanExecuteChanged(); StartSelectedCommand.NotifyCanExecuteChanged(); StopSelectedCommand.NotifyCanExecuteChanged(); RestartSelectedCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(CanStartSelected));
+        OnPropertyChanged(nameof(CanStopSelected));
+        OnPropertyChanged(nameof(CanRestartSelected));
+        OnPropertyChanged(nameof(CanEditSelected));
+        OnPropertyChanged(nameof(CanDeleteSelected));
+        OnPropertyChanged(nameof(CanDiagnoseSelected));
+        OnPropertyChanged(nameof(CanOpenConfigSelected));
+        OnPropertyChanged(nameof(CanOpenLogSelected));
+        RefreshCommand.NotifyCanExecuteChanged();
+        StartSelectedCommand.NotifyCanExecuteChanged();
+        StopSelectedCommand.NotifyCanExecuteChanged();
+        RestartSelectedCommand.NotifyCanExecuteChanged();
+        DiagnoseSelectedCommand.NotifyCanExecuteChanged();
+    }
+
+    private void NotifyOverviewState()
+    {
+        OnPropertyChanged(nameof(TotalCount));
+        OnPropertyChanged(nameof(ActiveCount));
+        OnPropertyChanged(nameof(HealthyCount));
+        OnPropertyChanged(nameof(ProblemCount));
+        NotifyActionState();
     }
 
     private void RenderLog()
