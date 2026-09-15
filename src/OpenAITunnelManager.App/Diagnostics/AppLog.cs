@@ -55,14 +55,6 @@ internal static class AppLog
         }
     }
 
-    private static string BuildLogFilePath()
-    {
-        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        if (string.IsNullOrWhiteSpace(localAppData))
-        {
-            localAppData = Path.GetTempPath();
-        }
-
-        return Path.Combine(localAppData, "OpenAITunnelManager", "logs", "app.log");
-    }
+    private static string BuildLogFilePath() =>
+        Path.Combine(AppContext.BaseDirectory, "logs", "app.log");
 }
