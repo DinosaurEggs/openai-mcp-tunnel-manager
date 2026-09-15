@@ -40,12 +40,21 @@ class TraySettingsDialog(SettingsDialog):
 
 
 class TrayMainWindow(OptimizedMainWindow):
-    """Optimized main window with a real Windows notification-area icon."""
+    """Optimized main window with a persistent Windows notification-area icon."""
 
     def __init__(self, *args, **kwargs) -> None:
         self._tray_icon: Any | None = None
         self._tray_thread: threading.Thread | None = None
         super().__init__(*args, **kwargs)
+
+        # The tray icon represents the running application, not only the hidden
+        # window state. Keep it visible for the entire process lifetime even
+        # when closing the window is configured to exit the application.
+        if os.name == "nt":
+            try:
+                self._start_tray()
+            except Exception as exc:
+                self.status_var.set(f"系统托盘不可用：{exc}")
 
     @staticmethod
     def _create_tray_image():
@@ -121,6 +130,8 @@ class TrayMainWindow(OptimizedMainWindow):
             self.quit()
             return
         try:
+            # Normally already running from __init__, but retry here if tray
+            # initialization previously failed or was interrupted.
             self._start_tray()
             self.root.withdraw()
             self.status_var.set("已最小化到系统托盘")
@@ -142,9 +153,8 @@ class TrayMainWindow(OptimizedMainWindow):
         for key, value in dlg.result.items():
             setattr(self.settings, key, value)
 
-        if not self.settings.close_to_tray:
-            self._stop_tray()
-
+        # close_to_tray only controls the close-button behavior. The tray icon
+        # stays visible while the process is alive in either mode.
         self.client.binary_path = self.settings.binary_path
         self.store.save(self.settings)
         self._schedule_refresh()

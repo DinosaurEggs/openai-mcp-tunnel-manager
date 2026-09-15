@@ -133,16 +133,33 @@ class OptimizedMainWindow(MainWindow):
             and self._last_render_level == "全部"
         )
 
+    def _horizontal_log_position(self) -> float:
+        try:
+            start, _end = self.log_text.xview()
+        except (tk.TclError, ValueError):
+            return 0.0
+        return start
+
+    def _restore_horizontal_log_position(self, start: float) -> None:
+        try:
+            self.log_text.xview_moveto(max(0.0, min(1.0, start)))
+        except tk.TclError:
+            pass
+
     def _append_log_delta(self, delta: str, full_value: str) -> None:
         if not delta:
             return
         follow_tail = self._is_log_at_bottom()
+        horizontal = self._horizontal_log_position()
         try:
             self.log_text.configure(state="normal")
             self.log_text.insert("end-1c", delta)
             self.log_text.configure(state="disabled")
             if follow_tail:
-                self.log_text.see("end")
+                # Text.see("end") also scrolls horizontally to the end of the
+                # longest line. Move only the vertical viewport instead.
+                self.log_text.yview_moveto(1.0)
+            self._restore_horizontal_log_position(horizontal)
         except tk.TclError:
             return
 
@@ -183,12 +200,16 @@ class OptimizedMainWindow(MainWindow):
             return
 
         follow_tail = self._is_log_at_bottom()
+        horizontal = self._horizontal_log_position()
         try:
             self.log_text.configure(state="normal")
             self.log_text.replace("1.0", "end", rendered)
             self.log_text.configure(state="disabled")
             if follow_tail or self._last_rendered_text is None:
-                self.log_text.see("end")
+                # Keep auto-follow vertical-only; never override the user's
+                # horizontal scrollbar position.
+                self.log_text.yview_moveto(1.0)
+            self._restore_horizontal_log_position(horizontal)
         except tk.TclError:
             return
 

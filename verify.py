@@ -48,7 +48,7 @@ def main() -> int:
     ])
 
     # Tk tests need a display on Unix-like CI runners.
-    run(["tests.test_gui"], gui=True)
+    run(["tests.test_gui", "tests.test_ui_enhancements"], gui=True)
     run(["tests.test_gui_real_cli"], gui=True)
 
     # Keep process-level tunnel-client cases isolated. This avoids one long-lived
