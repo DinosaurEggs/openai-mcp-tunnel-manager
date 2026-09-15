@@ -28,7 +28,9 @@ public sealed partial class MainWindow
     private Border? _diagnosticsDoctorPanel;
     private Border? _diagnosticsHealthPanel;
     private Grid? _dashboardCardsGrid;
+    private ScrollViewer? _dashboardScrollViewer;
     private StackPanel? _dashboardContentPanel;
+    private ScrollViewer? _settingsScrollViewer;
     private StackPanel? _settingsContentPanel;
     private Grid? _settingsClientGrid;
     private Grid? _settingsRefreshGrid;
@@ -41,23 +43,49 @@ public sealed partial class MainWindow
 
         RootGrid.SizeChanged += ResponsiveRoot_SizeChanged;
         RootGrid.Loaded += ResponsiveRoot_Loaded;
-        DispatcherQueue.TryEnqueue(ApplyResponsiveLayout);
+        Navigation.SelectionChanged += ResponsiveNavigation_SelectionChanged;
+
+        // Apply page-wide stretch before the first Measure/Arrange pass.  The previous
+        // implementation waited for a non-zero ActualWidth, so MaxWidth on overview/settings
+        // survived the first frame and was only removed after the user resized the window.
+        CacheResponsiveElements();
+        ApplyWidePageAlignment();
+        ApplySettingsLayout();
+        RequestResponsiveLayout();
     }
 
-    private void ResponsiveRoot_Loaded(object sender, RoutedEventArgs e) => ApplyResponsiveLayout();
+    private void ResponsiveRoot_Loaded(object sender, RoutedEventArgs e) => RequestResponsiveLayout();
 
     private void ResponsiveRoot_SizeChanged(object sender, SizeChangedEventArgs e) => ApplyResponsiveLayout();
+
+    private void ResponsiveNavigation_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args) =>
+        RequestResponsiveLayout();
+
+    private void RequestResponsiveLayout()
+    {
+        // The first callback runs after the current navigation/load event.  The second one
+        // runs after WinUI has had another chance to Measure/Arrange newly-visible content.
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            ApplyResponsiveLayout();
+            DispatcherQueue.TryEnqueue(ApplyResponsiveLayout);
+        });
+    }
 
     private void ApplyResponsiveLayout()
     {
         CacheResponsiveElements();
+
+        // These rules do not depend on ActualWidth and must always run, including the very
+        // first frame where RootGrid/NavigationView may not have completed layout yet.
+        ApplyWidePageAlignment();
+        ApplySettingsLayout();
 
         var contentWidth = ConnectionsPage.ActualWidth;
         if (contentWidth <= 1) contentWidth = Math.Max(0, RootGrid.ActualWidth - 64);
         if (contentWidth <= 1) return;
 
         var stackedConnections = contentWidth < 900;
-        var narrow = contentWidth < 620;
         var veryNarrow = contentWidth < 520;
         var bucket = contentWidth switch
         {
@@ -74,12 +102,10 @@ public sealed partial class MainWindow
         }
 
         ApplyContentPadding(contentWidth);
-        ApplyWidePageAlignment();
         ApplyConnectionsLayout(contentWidth, stackedConnections);
         ApplyLogsLayout(contentWidth, veryNarrow);
         ApplyDiagnosticsLayout(contentWidth);
         ApplyDashboardLayout(contentWidth);
-        ApplySettingsLayout();
 
         if (RootGrid.ActualWidth < 1080)
         {
@@ -91,10 +117,12 @@ public sealed partial class MainWindow
     {
         _contentGrid ??= VisualTreeHelper.GetParent(ConnectionsPage) as Grid;
 
-        _dashboardContentPanel ??= FindDescendants<StackPanel>(DashboardPage)
-            .FirstOrDefault(panel => panel.MaxWidth >= 1000);
-        _settingsContentPanel ??= FindDescendants<StackPanel>(SettingsPage)
-            .FirstOrDefault(panel => panel.MaxWidth >= 900);
+        // Use the logical page children instead of VisualTree traversal for the two
+        // ScrollViewer pages.  They can be discovered before they are visible/measured.
+        _dashboardScrollViewer ??= DashboardPage.Children.OfType<ScrollViewer>().FirstOrDefault();
+        _dashboardContentPanel ??= _dashboardScrollViewer?.Content as StackPanel;
+        _settingsScrollViewer ??= SettingsPage.Children.OfType<ScrollViewer>().FirstOrDefault();
+        _settingsContentPanel ??= _settingsScrollViewer?.Content as StackPanel;
 
         if (_settingsContentPanel is not null)
         {
@@ -187,11 +215,11 @@ public sealed partial class MainWindow
 
     private void ApplyWidePageAlignment()
     {
-        StretchScrollablePage(_dashboardContentPanel);
-        StretchScrollablePage(_settingsContentPanel);
+        StretchScrollablePage(_dashboardScrollViewer, _dashboardContentPanel);
+        StretchScrollablePage(_settingsScrollViewer, _settingsContentPanel);
     }
 
-    private static void StretchScrollablePage(StackPanel? panel)
+    private static void StretchScrollablePage(ScrollViewer? scrollViewer, StackPanel? panel)
     {
         if (panel is null) return;
 
@@ -199,9 +227,9 @@ public sealed partial class MainWindow
         panel.Width = double.NaN;
         panel.HorizontalAlignment = HorizontalAlignment.Stretch;
 
-        var scrollViewer = FindAncestor<ScrollViewer>(panel);
         if (scrollViewer is not null)
         {
+            scrollViewer.HorizontalAlignment = HorizontalAlignment.Stretch;
             scrollViewer.HorizontalContentAlignment = HorizontalAlignment.Stretch;
             scrollViewer.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
         }
