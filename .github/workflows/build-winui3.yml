@@ -77,28 +77,23 @@ jobs:
             }
           }
 
-      - name: Upload ${{ matrix.rid }} artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: ${{ matrix.artifact }}
-          path: artifacts/${{ matrix.rid }}/
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Diagnostic smoke test on Windows Server runner
+      - name: Smoke test x64 startup
         if: matrix.rid == 'win-x64'
-        continue-on-error: true
         shell: pwsh
         run: |
           $exe = (Resolve-Path "artifacts/win-x64/OpenAITunnelManager.exe").Path
           $workingDirectory = Split-Path $exe
           $startedAt = Get-Date
+          $log = Join-Path $workingDirectory "logs\app.log"
+
+          if (Test-Path $log) {
+            Remove-Item $log -Force
+          }
 
           $process = Start-Process -FilePath $exe -WorkingDirectory $workingDirectory -PassThru
           Start-Sleep -Seconds 5
 
           if ($process.HasExited) {
-            $log = Join-Path $workingDirectory "logs\app.log"
             if (Test-Path $log) {
               Write-Host "----- app.log -----"
               Get-Content $log
@@ -114,7 +109,27 @@ jobs:
               Format-List
             Write-Host "--------------------------------------"
 
-            throw "Windows Server diagnostic launch exited with code $($process.ExitCode)"
+            throw "Published x64 application exited during startup with code $($process.ExitCode)"
+          }
+
+          if (Test-Path $log) {
+            $logContent = Get-Content $log -Raw
+            Write-Host "----- app.log -----"
+            Write-Host $logContent
+            Write-Host "-------------------"
+
+            if ($logContent -match '\[FATAL\]') {
+              Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+              throw "Published x64 application logged a FATAL startup error"
+            }
           }
 
           Stop-Process -Id $process.Id -Force
+
+      - name: Upload ${{ matrix.rid }} artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact }}
+          path: artifacts/${{ matrix.rid }}/
+          if-no-files-found: error
+          retention-days: 14
