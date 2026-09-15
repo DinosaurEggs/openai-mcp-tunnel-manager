@@ -1,6 +1,5 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media;
 using Windows.Storage.Pickers;
 
 namespace OpenAITunnelManager.App;
@@ -9,10 +8,9 @@ public sealed partial class MainWindow
 {
     private void ConfigureProfileTransferFlyout()
     {
-        if (ConnectionsList.ContextFlyout is not MenuFlyout menu) return;
-        menu.Items.Add(new MenuFlyoutSeparator());
-        menu.Items.Add(new MenuFlyoutItem { Text = "导入 Profile...", Command = new CommunityToolkit.Mvvm.Input.RelayCommand(() => _ = ImportProfileAsync()) });
-        menu.Items.Add(new MenuFlyoutItem { Text = "导出所选 Profile...", Command = new CommunityToolkit.Mvvm.Input.RelayCommand(() => _ = ExportSelectedProfileAsync()) });
+        // Python 1.0.0's optimized UI intentionally keeps the configuration-list
+        // context menu limited to Edit/Delete. Keep the transfer workflows available
+        // for a future secondary command surface without changing that interaction.
     }
 
     private async Task ImportProfileAsync()
