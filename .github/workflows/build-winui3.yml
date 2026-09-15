@@ -12,20 +12,63 @@ on:
       - "global.json"
       - "OpenAITunnelManager.slnx"
       - ".github/workflows/build-winui3.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: winui3-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: x64
+            rid: win-x64
+            artifact: OpenAITunnelManager-win-x64
+          - platform: ARM64
+            rid: win-arm64
+            artifact: OpenAITunnelManager-win-arm64
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v6
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.401
 
       - name: Restore
-        run: dotnet restore OpenAITunnelManager.slnx
+        run: dotnet restore src/OpenAITunnelManager.App/OpenAITunnelManager.App.csproj -r ${{ matrix.rid }}
 
-      - name: Build WinUI 3 x64
-        run: dotnet build src/OpenAITunnelManager.App/OpenAITunnelManager.App.csproj -c Release -p:Platform=x64 -r win-x64 --no-restore
+      - name: Publish ${{ matrix.rid }}
+        run: >-
+          dotnet publish src/OpenAITunnelManager.App/OpenAITunnelManager.App.csproj
+          -c Release
+          -p:Platform=${{ matrix.platform }}
+          -r ${{ matrix.rid }}
+          --self-contained true
+          --no-restore
+          -o artifacts/${{ matrix.rid }}
+
+      - name: Verify published executable
+        shell: pwsh
+        run: |
+          $exe = "artifacts/${{ matrix.rid }}/OpenAITunnelManager.exe"
+          if (-not (Test-Path $exe)) {
+            throw "Published executable not found: $exe"
+          }
+
+      - name: Upload ${{ matrix.rid }} artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact }}
+          path: artifacts/${{ matrix.rid }}/
+          if-no-files-found: error
+          retention-days: 14
