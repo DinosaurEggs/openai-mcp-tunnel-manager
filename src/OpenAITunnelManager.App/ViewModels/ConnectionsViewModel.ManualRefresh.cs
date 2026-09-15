@@ -23,9 +23,9 @@ public partial class ConnectionsViewModel
             return;
         }
 
-        // One inventory/status load when the application is entered with an explicitly
-        // configured tunnel-client. Further inventory refreshes are user-triggered (Refresh)
-        // or are performed after explicit start/stop/edit/delete operations.
+        // Inventory is loaded once at application entry. RuntimeMonitor subsequently checks
+        // only known connection status; inventory is refreshed manually or after explicit CRUD/lifecycle actions.
         await RefreshAsync();
+        StartRuntimeMonitor();
     }
 }
