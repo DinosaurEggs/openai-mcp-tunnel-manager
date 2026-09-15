@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Text;
+using OpenAITunnelManager.Infrastructure.Settings;
 
 namespace OpenAITunnelManager.App.Diagnostics;
 
@@ -9,8 +10,7 @@ internal static class AppLog
     private const int BackupCount = 3;
     private static readonly object Sync = new();
 
-    public static string LogFilePath { get; private set; } =
-        Path.Combine(AppContext.BaseDirectory, "logs", "app.log");
+    public static string LogFilePath { get; private set; } = AppDataPaths.Current.ManagerLogPath;
 
     public static void Configure(string logFilePath)
     {
@@ -25,7 +25,11 @@ internal static class AppLog
     {
         Write(
             "INFO",
-            $"Process started | OS={Environment.OSVersion} | Arch={RuntimeInformation.ProcessArchitecture} | .NET={Environment.Version} | BaseDir={AppContext.BaseDirectory}");
+            $"Process started | OS={Environment.OSVersion} | Arch={RuntimeInformation.ProcessArchitecture} | .NET={Environment.Version} | BaseDir={AppContext.BaseDirectory} | DataRoot={AppDataPaths.Current.RootDirectory} | Portable={AppDataPaths.Current.IsPortable}");
+        if (!string.IsNullOrWhiteSpace(AppDataPaths.Current.PortableFallbackReason))
+        {
+            Info(AppDataPaths.Current.PortableFallbackReason);
+        }
     }
 
     public static void Info(string message) => Write("INFO", message);
