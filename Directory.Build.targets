@@ -1,0 +1,20 @@
+<Project>
+  <!--
+    Work around WindowsAppSDK issue #6720: for unpackaged WinUI apps, dotnet publish
+    can generate the application PRI during build but omit it from the publish output.
+    Missing the app PRI causes Microsoft.UI.Xaml.dll to fail-fast with 0xC000027B
+    before managed App startup.
+  -->
+  <Target Name="AddUnpackagedProjectPriToPublish"
+          BeforeTargets="ComputeResolvedFilesToPublishList"
+          DependsOnTargets="$(GenerateProjectPriFile)"
+          Condition="'$(UseWinUI)' == 'true' and '$(WindowsPackageType)' == 'None'">
+    <ItemGroup>
+      <ResolvedFileToPublish Include="$(ProjectPriFullPath)"
+                             Condition="Exists('$(ProjectPriFullPath)')">
+        <RelativePath>$(ProjectPriFileName)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
+</Project>
