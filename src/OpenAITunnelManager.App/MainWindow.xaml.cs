@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using OpenAITunnelManager.App.Diagnostics;
 using OpenAITunnelManager.App.ViewModels;
 using Windows.Graphics;
 
@@ -12,19 +13,41 @@ public sealed partial class MainWindow : Window
 
     public MainWindow(ConnectionsViewModel viewModel)
     {
+        AppLog.Info("MainWindow construction started");
+
         ViewModel = viewModel;
         InitializeComponent();
         RootGrid.DataContext = ViewModel;
 
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
-        SystemBackdrop = new MicaBackdrop();
-        AppWindow.Resize(new SizeInt32(1200, 760));
+
+        try
+        {
+            SystemBackdrop = new MicaBackdrop();
+        }
+        catch (Exception exception)
+        {
+            AppLog.Error("Mica backdrop initialization failed; continuing without Mica", exception);
+        }
+
+        try
+        {
+            AppWindow.Resize(new SizeInt32(1200, 760));
+        }
+        catch (Exception exception)
+        {
+            AppLog.Error("Initial window resize failed; continuing with system default size", exception);
+        }
+
+        AppLog.Info("MainWindow construction completed");
     }
 
     private async void RootGrid_Loaded(object sender, RoutedEventArgs e)
     {
+        AppLog.Info("MainWindow loaded; refreshing tunnel-client state");
         await ViewModel.RefreshAsync();
+        AppLog.Info($"Initial tunnel-client refresh completed: {ViewModel.StatusMessage}");
     }
 
     private void Navigation_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
