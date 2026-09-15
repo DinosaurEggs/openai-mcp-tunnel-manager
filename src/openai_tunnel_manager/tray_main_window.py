@@ -9,6 +9,7 @@ from typing import Any, Callable
 from .autostart import set_windows_startup
 from .icon_resources import load_pil_icon
 from .main_window import SettingsDialog
+from .models import RuntimeState
 from .optimized_main_window import OptimizedMainWindow
 
 if os.name == "nt":
@@ -75,6 +76,8 @@ class TrayMainWindow(OptimizedMainWindow):
             if isinstance(widget, ttk.Button) and str(widget.cget("text")) == "从 tunnel-client 重新读取":
                 widget.destroy()
 
+        self._style_config_sidebar()
+
         # Put the compact refresh action directly beside local preferences.
         if preference_button is not None:
             self.refresh_button = ttk.Button(
@@ -94,6 +97,47 @@ class TrayMainWindow(OptimizedMainWindow):
         )
         self.config_location_button.pack(side="left", padx=(0, 6), after=self.doctor_button)
         self.action_buttons.append(self.config_location_button)
+
+    def _style_config_sidebar(self) -> None:
+        """Make the configuration list read like a compact desktop sidebar."""
+        sidebar = self.listbox.master
+        try:
+            sidebar.configure(padding=(12, 10, 10, 10), width=310)
+        except tk.TclError:
+            pass
+
+        self.config_list_title: ttk.Label | None = None
+        for widget in sidebar.winfo_children():
+            if isinstance(widget, ttk.Label):
+                try:
+                    if str(widget.cget("text")) == "tunnel-client 配置 / 运行实例":
+                        widget.configure(text="配置列表", font=("Segoe UI", 10, "bold"))
+                        self.config_list_title = widget
+                        break
+                except tk.TclError:
+                    continue
+
+        self.listbox.configure(
+            width=36,
+            activestyle="none",
+            relief="flat",
+            borderwidth=0,
+            highlightthickness=0,
+            selectborderwidth=0,
+            font=("Segoe UI", 10),
+        )
+        self.listbox.grid_configure(row=1, column=0, sticky="nsew", pady=(5, 0))
+
+        sidebar.columnconfigure(0, weight=1)
+        sidebar.columnconfigure(1, weight=0)
+        self.config_list_scrollbar = ttk.Scrollbar(sidebar, orient="vertical", command=self.listbox.yview)
+        self.config_list_scrollbar.grid(row=1, column=1, sticky="ns", pady=(5, 0), padx=(5, 0))
+        self.listbox.configure(yscrollcommand=self.config_list_scrollbar.set)
+
+    def _list_label(self, item, state: RuntimeState) -> str:
+        started = state in {RuntimeState.STARTING, RuntimeState.RUNNING, RuntimeState.READY}
+        status = "已启动" if started else "已停止"
+        return f"  [{status}]  {item.name}"
 
     def _profile_path_for_item(self, item) -> str:
         status = self.statuses.get(self._item_key(item))

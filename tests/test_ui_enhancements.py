@@ -65,6 +65,13 @@ class UiEnhancementTests(unittest.TestCase):
         walk(self.root)
         return buttons
 
+    def _tray_window(self) -> TrayMainWindow:
+        with patch.object(TrayMainWindow, "_start_tray"):
+            window = TrayMainWindow(self.root, self.store, self.creds, self.client)
+        self.win = window
+        self.pump(0.1)
+        return window
+
     def test_log_refresh_preserves_horizontal_scroll_position(self) -> None:
         self.win = OptimizedMainWindow(self.root, self.store, self.creds, self.client)
         self.pump(0.1)
@@ -91,9 +98,7 @@ class UiEnhancementTests(unittest.TestCase):
         self.assertAlmostEqual(self.win.log_text.xview()[0], before_replace, delta=0.01)
 
     def test_ui_controls_are_reorganized(self) -> None:
-        with patch.object(TrayMainWindow, "_start_tray"):
-            self.win = TrayMainWindow(self.root, self.store, self.creds, self.client)
-        self.pump(0.1)
+        self._tray_window()
 
         buttons = self._buttons()
         texts = [str(button.cget("text")) for button in buttons]
@@ -116,10 +121,26 @@ class UiEnhancementTests(unittest.TestCase):
         actions_order = [str(widget.cget("text")) for widget in self.win.doctor_button.master.pack_slaves() if isinstance(widget, ttk.Button)]
         self.assertEqual(actions_order.index("打开配置位置"), actions_order.index("诊断") + 1)
 
+    def test_configuration_sidebar_is_compact_and_status_first(self) -> None:
+        self._tray_window()
+
+        self.assertIsNotNone(self.win.config_list_title)
+        self.assertEqual(str(self.win.config_list_title.cget("text")), "配置列表")
+        self.assertTrue(hasattr(self.win, "config_list_scrollbar"))
+
+        initial = self.win.listbox.get(0).strip()
+        self.assertEqual(initial, "[已停止]  idea")
+        self.assertNotIn("Profile + 运行实例", initial)
+        self.assertNotIn("运行实例", initial)
+
+        self.client.running = True
+        self.win.refresh_selected()
+        self.pump(0.35)
+        running = self.win.listbox.get(0).strip()
+        self.assertEqual(running, "[已启动]  idea")
+
     def test_open_location_actions_use_selected_paths(self) -> None:
-        with patch.object(TrayMainWindow, "_start_tray"):
-            self.win = TrayMainWindow(self.root, self.store, self.creds, self.client)
-        self.pump(0.1)
+        self._tray_window()
 
         with patch.object(self.win, "_open_file_location") as open_location:
             self.win.open_config_location()
