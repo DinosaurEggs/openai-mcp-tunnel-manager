@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import tkinter as tk
 
-from .main_window import MainWindow
+from .optimized_main_window import OptimizedMainWindow
 
 
 def main() -> int:
     root = tk.Tk()
-    MainWindow(root)
+    OptimizedMainWindow(root)
     root.mainloop()
     return 0
 
