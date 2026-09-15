@@ -15,14 +15,11 @@ public sealed partial class TunnelClientOperations : ITunnelClientOperations
     private readonly SemaphoreSlim _capabilitiesGate = new(1, 1);
     private CapabilityCache? _capabilityCache;
 
-    public TunnelClientOperations(
-        TunnelClientOptions options,
-        ITunnelClientService inventory,
-        TunnelClientProcessRunner runner)
+    public TunnelClientOperations(TunnelClientOptions options, ITunnelClientService inventory)
     {
         _options = options;
         _inventory = inventory;
-        _runner = runner;
+        _runner = new TunnelClientProcessRunner(options);
     }
 
     public string ResolveExecutablePath() => _options.ResolveExecutablePath();
