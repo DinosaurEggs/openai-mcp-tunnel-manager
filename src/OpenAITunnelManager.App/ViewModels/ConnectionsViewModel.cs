@@ -11,16 +11,16 @@ public partial class ConnectionsViewModel(ITunnelClientService tunnelClient) : O
     public ObservableCollection<TunnelConnection> Connections { get; } = [];
 
     [ObservableProperty]
-    private TunnelConnection? selectedConnection;
+    public partial TunnelConnection? SelectedConnection { get; set; }
 
     [ObservableProperty]
-    private string clientVersion = "未检测";
+    public partial string ClientVersion { get; set; } = "未检测";
 
     [ObservableProperty]
-    private string statusMessage = "正在读取 tunnel-client...";
+    public partial string StatusMessage { get; set; } = "正在读取 tunnel-client...";
 
     [ObservableProperty]
-    private bool isBusy;
+    public partial bool IsBusy { get; set; }
 
     public bool CanStopSelected => SelectedConnection is { HasRuntime: true, ProcessRunning: true } && !IsBusy;
 
