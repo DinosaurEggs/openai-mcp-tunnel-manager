@@ -34,6 +34,31 @@ public sealed record TunnelConnection(
     int? ProcessId,
     string Error)
 {
+    public TunnelConnection(
+        string Name,
+        string ProfileName,
+        string ProfilePath,
+        string RuntimeAlias,
+        string RuntimeProfileName,
+        string RuntimeProfilePath,
+        string TunnelId,
+        string TargetKind,
+        string TargetValue,
+        RuntimeState State,
+        bool ProcessRunning,
+        bool Healthy,
+        bool Ready,
+        string HealthUrl,
+        string LogPath,
+        int? ProcessId,
+        string Error)
+        : this(
+            Name, ProfileName, ProfilePath, !string.IsNullOrWhiteSpace(ProfileName) && !string.IsNullOrWhiteSpace(ProfilePath),
+            RuntimeAlias, RuntimeProfileName, RuntimeProfilePath, TunnelId, TargetKind, TargetValue, State,
+            ProcessRunning, Healthy, Ready, HealthUrl, string.Empty, string.Empty, LogPath, ProcessId, Error)
+    {
+    }
+
     public bool HasRuntime => !string.IsNullOrWhiteSpace(RuntimeAlias);
     public bool HasProfile => !string.IsNullOrWhiteSpace(ProfileName) && !string.IsNullOrWhiteSpace(ProfilePath);
 
