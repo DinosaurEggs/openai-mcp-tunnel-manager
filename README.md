@@ -187,6 +187,7 @@ GitHub Actions 会执行：
 -> Windows Credential Manager 测试
 -> x64 / ARM64 publish
 -> PRI / WinUI Runtime / 图标完整性检查
+-> 发布目录 WinForms / WPF / Python 残留检查
 -> x64 实际启动 smoke test
 -> 单实例重定向 smoke test
 -> 上传 Artifact
