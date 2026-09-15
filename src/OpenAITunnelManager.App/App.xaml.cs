@@ -13,6 +13,7 @@ namespace OpenAITunnelManager.App;
 public partial class App : Application
 {
     private Window? _window;
+    private bool _pendingRedirectedActivation;
 
     public static IHost Host { get; } = CreateHost();
 
@@ -45,12 +46,28 @@ public partial class App : Application
             AppLog.Info("MainWindow resolved");
             _window.Activate();
             AppLog.Info("MainWindow activated");
+            if (_pendingRedirectedActivation)
+            {
+                _pendingRedirectedActivation = false;
+                HandleRedirectedActivation();
+            }
         }
         catch (Exception exception)
         {
             AppLog.Fatal("Application launch failed", exception);
             throw;
         }
+    }
+
+    internal void HandleRedirectedActivation()
+    {
+        if (_window is not MainWindow window)
+        {
+            _pendingRedirectedActivation = true;
+            return;
+        }
+
+        window.DispatcherQueue.TryEnqueue(window.RestoreFromExternalActivation);
     }
 
     private static IHost CreateHost()
