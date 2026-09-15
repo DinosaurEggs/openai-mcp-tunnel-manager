@@ -31,6 +31,7 @@ public sealed partial class MainWindow
         CacheResponsiveElements();
         ConfigureAdvancedDirectoryPickers();
         CollapseObsoleteInventoryRefreshSetting();
+        NormalizeRemainingResponsiveLayouts();
 
         foreach (var button in FindDescendants<Button>(RootGrid))
         {
