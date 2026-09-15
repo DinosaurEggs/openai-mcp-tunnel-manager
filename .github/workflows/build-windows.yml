@@ -23,7 +23,7 @@ jobs:
         run: |
           pip install "pyinstaller>=6.11,<7"
           pyinstaller --noconfirm --clean --windowed --onefile --name OpenAITunnelManager --paths src launcher.py
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
-          name: OpenAITunnelManager-windows
           path: dist/OpenAITunnelManager.exe
+          archive: false
