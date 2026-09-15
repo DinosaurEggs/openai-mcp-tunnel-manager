@@ -15,8 +15,7 @@
 | Manager 配置不保存 Tunnel ID/MCP target/API Key | schema 2 `config/settings.json` | 设置测试 |
 | 旧 Python settings/tunnels[] 单向迁移 | 保留本机偏好、清除旧 Tunnel 定义 | 兼容测试 |
 | 损坏 settings 保留 `.broken` | `JsonSettingsStore` | 兼容测试 |
-| 默认使用 Windows 用户数据目录 | `%LOCALAPPDATA%\OpenAITunnelManager` | AppDataPaths 测试 |
-| 支持便携模式 | EXE 同目录 `portable.flag`，不可写则回退 LocalAppData | AppDataPaths 测试 |
+| Manager 配置/日志/状态只写程序目录 | `<EXE>\config` / `<EXE>\logs` / `<EXE>\state`，不使用 LocalAppData，不自动回退 | AppDataPaths 测试 + startup smoke |
 | 新建 Profile | `tunnel-client init` | CLI 集成测试 |
 | GUI 编辑 Profile | WinUI ContentDialog | Profile 文档测试 |
 | 高级 YAML/JSON 保留 | `ProfileDocumentEditor` 只更新 common fields | 行为测试 |
@@ -75,7 +74,7 @@
 | Windows 单实例 | WinAppSDK AppInstance | CI secondary-instance smoke |
 | 第二实例恢复已有窗口 | activation redirect + foreground | CI smoke |
 | EXE/窗口/托盘统一图标 | AppIcon.ico/png | publish file gate |
-| 应用启动/异常日志 | Manager data `logs\app.log` | startup smoke |
+| 应用启动/异常日志 | `<EXE>\logs\app.log` | startup smoke |
 | 不强制覆盖 tunnel-client Profile/State 目录 | 默认继承环境，仅显式 override | 行为测试 |
 | Responsive 只有一套规则 | named XAML elements + Narrow/Compact/Wide | UI audit |
 | Profile Import / Export 不属于最终产品 | UI / ViewModel / operations / tests 全部删除 | 源码检查 |
@@ -89,7 +88,7 @@
 1. 纯 WinUI / 无 Python 源码检查；
 2. xUnit 行为与兼容测试；
 3. C# fake tunnel-client 真实子进程集成测试；
-4. process cancellation / timeout、Health 安全、portable storage 测试；
+4. process cancellation / timeout、Health 安全、程序目录存储测试；
 5. Windows Credential Manager 集成测试；
 6. x64 / ARM64 self-contained publish；
 7. EXE、PRI、Microsoft.UI.Xaml 和图标完整性检查；
