@@ -257,25 +257,14 @@ public sealed partial class MainWindow
             picker.FileTypeFilter.Add(".exe");
             WinRT.Interop.InitializeWithWindow.Initialize(picker, _hwnd);
             var file = await picker.PickSingleFileAsync();
-            if (file is not null) ViewModel.SetTunnelClientPath(file.Path);
-        }
-        catch (Exception exception)
-        {
-            await ShowErrorAsync($"选择 tunnel-client 失败：{exception.Message}");
-        }
-    }
+            if (file is null) return;
 
-    private async void SaveSettings_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            await ViewModel.SaveSettingsAsync();
-            ResetTimers();
+            await ViewModel.ApplyTunnelClientPathAsync(file.Path);
             MissingClientInfo.IsOpen = !ViewModel.IsClientAvailable;
         }
         catch (Exception exception)
         {
-            await ShowErrorAsync(exception.Message);
+            await ShowErrorAsync($"选择 tunnel-client 失败：{exception.Message}");
         }
     }
 
