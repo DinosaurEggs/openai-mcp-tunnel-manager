@@ -11,37 +11,34 @@ public sealed partial class MainWindow
         var windowWidth = RootGrid.ActualWidth > 1 ? RootGrid.ActualWidth : 1000d;
         var windowHeight = RootGrid.ActualHeight > 1 ? RootGrid.ActualHeight : 800d;
 
-        // Width is owned only by the dialog host. The editor itself stretches inside it.
-        var desiredDialogWidth = Math.Clamp(windowWidth * 0.62, 600d, 860d);
-        var dialogWidth = Math.Min(desiredDialogWidth, Math.Max(360d, windowWidth - 64d));
-        var contentWidth = Math.Max(0d, dialogWidth - 48d);
-
-        // ContentDialog still needs vertical room for its title area, template padding and
-        // fixed footer buttons. Previously the body itself was capped at 720 epx, which made
-        // both create/edit dialogs unnecessarily short on large windows and clipped the
-        // credential section against the footer. Allocate the body from the actual window
-        // height instead and reserve chrome space explicitly.
-        var dialogMaxHeight = Math.Max(480d, windowHeight * 0.92);
-        var chromeReserve = Math.Clamp(windowHeight * 0.18, 160d, 220d);
-        var contentHeight = Math.Max(320d, dialogMaxHeight - chromeReserve);
+        // Primary layout follows the current window proportionally. Small component spacing,
+        // padding and control metrics remain numeric inside the editor itself.
+        var dialogWidth = windowWidth * 0.66;
+        var dialogMaxHeight = windowHeight * 0.88;
+        var contentWidth = dialogWidth * 0.94;
+        var contentMaxHeight = windowHeight * 0.70;
 
         editor.Width = double.NaN;
         editor.Height = double.NaN;
         editor.MinWidth = 0;
         editor.MinHeight = 0;
         editor.MaxWidth = double.PositiveInfinity;
-        editor.MaxHeight = double.PositiveInfinity;
+        editor.MaxHeight = contentMaxHeight;
         editor.HorizontalAlignment = HorizontalAlignment.Stretch;
-        editor.VerticalAlignment = VerticalAlignment.Stretch;
+        editor.VerticalAlignment = VerticalAlignment.Top;
 
+        // Do not give the host a fixed height. The basic form should occupy only its natural
+        // height so the credential section does not leave a large blank area underneath. When
+        // the window is smaller than the form, the editor MaxHeight constrains the body and the
+        // page's own ScrollViewer handles the overflow.
         var host = new Grid
         {
             Width = contentWidth,
-            Height = contentHeight,
             MinWidth = 0,
             MinHeight = 0,
+            MaxHeight = contentMaxHeight,
             HorizontalAlignment = HorizontalAlignment.Stretch,
-            VerticalAlignment = VerticalAlignment.Stretch
+            VerticalAlignment = VerticalAlignment.Top
         };
         host.Children.Add(editor);
 
@@ -60,8 +57,6 @@ public sealed partial class MainWindow
             MaxHeight = dialogMaxHeight
         };
 
-        // Override the template limits for this editor only. The body remains internally
-        // scrollable, while the title and footer always stay inside the dialog bounds.
         dialog.Resources["ContentDialogMinWidth"] = dialogWidth;
         dialog.Resources["ContentDialogMaxWidth"] = dialogWidth;
         dialog.Resources["ContentDialogMaxHeight"] = dialogMaxHeight;
