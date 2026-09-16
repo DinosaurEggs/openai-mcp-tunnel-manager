@@ -13,7 +13,6 @@ public sealed partial class MainWindow
         _uiPolishConfigured = true;
         ConfigureItemOnlyContextMenu();
         ConfigureDashboardState();
-        ConfigureSupplementalLayout();
         RequestUiPolish();
     }
 
@@ -56,7 +55,6 @@ public sealed partial class MainWindow
         NormalizeHeaderActions(ConnectionsHeaderActions);
         NormalizeHeaderActions(LogsHeaderActions);
         NormalizeHeaderActions(DiagnosticsHeaderActions);
-        RequestSupplementalLayout();
     }
 
     private void NormalizeNavigationPaneToggle()
