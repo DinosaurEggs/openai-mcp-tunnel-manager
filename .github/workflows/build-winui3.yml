@@ -3,6 +3,7 @@ name: WinUI 3 build
 on:
   push:
     branches:
+      - master
       - rewrite/csharp-winui3
   pull_request:
     paths:
@@ -40,7 +41,7 @@ jobs:
           }
           if ($pythonFiles) {
             $pythonFiles | ForEach-Object { Write-Host "Forbidden Python artifact: $($_.FullName)" }
-            throw 'rewrite/csharp-winui3 must not contain Python source/configuration files.'
+            throw 'The WinUI source tree must not contain Python source/configuration files.'
           }
 
           $patterns = @(
