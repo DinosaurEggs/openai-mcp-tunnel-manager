@@ -61,6 +61,7 @@ public sealed partial class MainWindow : Window
         _logTimer = DispatcherQueue.CreateTimer();
         _logTimer.Interval = TimeSpan.FromSeconds(1);
         _logTimer.Tick += LogTimer_Tick;
+        InitializeAnsiLogViewer();
         AppWindow.Closing += AppWindow_Closing;
         AppLog.Info("MainWindow construction completed");
     }
