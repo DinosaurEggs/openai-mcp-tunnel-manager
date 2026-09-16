@@ -6,12 +6,6 @@ namespace OpenAITunnelManager.App;
 
 public sealed partial class MainWindow
 {
-    private void ConfigureAdvancedDirectoryPickers()
-    {
-        // The settings page is now defined directly in XAML. Kept as a no-op so older
-        // polish initialization remains harmless.
-    }
-
     private async void BrowseDirectoryOverride_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not Button { Tag: string kind }) return;
