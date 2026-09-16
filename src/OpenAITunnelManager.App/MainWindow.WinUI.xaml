@@ -443,19 +443,12 @@
                     <Grid x:Name="SettingsPage" Visibility="Collapsed">
                         <ScrollViewer x:Name="SettingsScrollViewer" VerticalScrollBarVisibility="Auto" HorizontalContentAlignment="Stretch">
                             <StackPanel x:Name="SettingsContentPanel" Spacing="18" HorizontalAlignment="Stretch">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <StackPanel Spacing="4">
-                                        <TextBlock Text="设置" Style="{StaticResource TitleTextBlockStyle}" />
-                                        <TextBlock Text="Manager 本机设置；不会复制 tunnel-client 的 Tunnel 配置" Opacity="0.7" TextWrapping="Wrap" />
-                                    </StackPanel>
-                                    <Button Grid.Column="1" Content="保存设置" Click="SaveSettings_Click" VerticalAlignment="Center" />
-                                </Grid>
+                                <StackPanel Spacing="4">
+                                    <TextBlock Text="设置" Style="{StaticResource TitleTextBlockStyle}" />
+                                    <TextBlock Text="Manager 本机设置；修改后立即应用" Opacity="0.7" TextWrapping="Wrap" />
+                                </StackPanel>
 
-                                <InfoBar x:Name="MissingClientInfo" IsOpen="True" IsClosable="False" Severity="Warning" Title="tunnel-client" Message="如果未检测到 tunnel-client，请选择 tunnel-client.exe 后保存。" />
+                                <InfoBar x:Name="MissingClientInfo" IsOpen="True" IsClosable="False" Severity="Warning" Title="tunnel-client" Message="如果未检测到 tunnel-client，请选择 tunnel-client.exe。" />
 
                                 <TextBlock Text="常规设置" FontSize="16" FontWeight="SemiBold" Margin="0,2,0,-4" />
                                 <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="10">
@@ -470,7 +463,7 @@
                                                 <TextBlock Text="tunnel-client" FontWeight="SemiBold" />
                                                 <TextBlock Text="选择要管理的 tunnel-client.exe" Opacity="0.65" FontSize="12" />
                                             </StackPanel>
-                                            <TextBox Grid.Column="1" Text="{Binding TunnelClientPath, Mode=TwoWay}" PlaceholderText="tunnel-client.exe 完整路径" />
+                                            <TextBox Grid.Column="1" Text="{Binding TunnelClientPath}" IsReadOnly="True" PlaceholderText="tunnel-client.exe 完整路径" />
                                             <Button Grid.Column="2" Content="浏览" Click="BrowseTunnelClient_Click" />
                                         </Grid>
                                         <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}" />
@@ -505,7 +498,7 @@
                                                 <TextBlock Text="关闭到系统托盘" FontWeight="SemiBold" />
                                                 <TextBlock Text="关闭主窗口后，Manager 继续在后台运行" Opacity="0.65" FontSize="12" />
                                             </StackPanel>
-                                            <ToggleSwitch Grid.Column="1" IsOn="{Binding CloseToTray, Mode=TwoWay}" />
+                                            <ToggleSwitch Grid.Column="1" Tag="closeToTray" IsOn="{Binding CloseToTray, Mode=TwoWay}" Toggled="ImmediateSettingToggle_Toggled" />
                                         </Grid>
                                         <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}" />
                                         <Grid Padding="18">
@@ -517,7 +510,7 @@
                                                 <TextBlock Text="Windows 登录时启动" FontWeight="SemiBold" />
                                                 <TextBlock Text="使用当前 EXE 注册用户级启动项" Opacity="0.65" FontSize="12" />
                                             </StackPanel>
-                                            <ToggleSwitch Grid.Column="1" IsOn="{Binding StartWithWindows, Mode=TwoWay}" />
+                                            <ToggleSwitch Grid.Column="1" Tag="startWithWindows" IsOn="{Binding StartWithWindows, Mode=TwoWay}" Toggled="ImmediateSettingToggle_Toggled" />
                                         </Grid>
                                     </StackPanel>
                                 </Border>
