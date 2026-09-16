@@ -124,7 +124,9 @@ public sealed partial class MainWindow
             Grid.SetColumn(ConnectionsDetailsPanel, 1);
         }
 
-        var stackActions = bucket != "wide";
+        // Compact still has enough horizontal room for the lifecycle toolbar. Only the true
+        // one-column narrow layout stacks these actions vertically.
+        var stackActions = bucket == "narrow";
         ConnectionsPrimaryActions.Orientation = stackActions ? Orientation.Vertical : Orientation.Horizontal;
         ConnectionsPrimaryActions.HorizontalAlignment = stackActions ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
         foreach (var button in ConnectionsPrimaryActions.Children.OfType<Button>())
@@ -205,9 +207,6 @@ public sealed partial class MainWindow
 
     private void ApplyDashboardLayout(string bucket)
     {
-        // The dashboard always consumes 100% of the NavigationView content viewport.
-        // Only the card arrangement changes at responsive breakpoints; small card dimensions
-        // remain numeric so they do not grow vertically with a large window.
         DashboardContentPanel.Width = double.NaN;
         DashboardContentPanel.MaxWidth = double.PositiveInfinity;
         DashboardContentPanel.HorizontalAlignment = HorizontalAlignment.Stretch;
@@ -271,6 +270,9 @@ public sealed partial class MainWindow
 
     private void ApplySettingsLayout(string bucket)
     {
+        ApplySettingsHeaderLayout(bucket == "narrow");
+        ApplyDirectoryOverrideLayout(bucket == "narrow");
+
         SettingsClientGrid.RowDefinitions.Clear();
         SettingsClientGrid.ColumnDefinitions.Clear();
         if (bucket == "narrow")
@@ -300,6 +302,84 @@ public sealed partial class MainWindow
             Grid.SetRow(normalChildren[index], 0);
             Grid.SetColumn(normalChildren[index], index);
             Grid.SetColumnSpan(normalChildren[index], 1);
+        }
+    }
+
+    private void ApplySettingsHeaderLayout(bool narrow)
+    {
+        var header = SettingsContentPanel.Children.OfType<Grid>().FirstOrDefault();
+        if (header is null) return;
+        var title = header.Children.OfType<StackPanel>().FirstOrDefault();
+        var saveButton = header.Children.OfType<Button>().FirstOrDefault();
+        if (title is null || saveButton is null) return;
+
+        header.RowDefinitions.Clear();
+        header.ColumnDefinitions.Clear();
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        if (narrow)
+        {
+            header.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            header.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            Grid.SetRow(title, 0); Grid.SetColumn(title, 0);
+            Grid.SetRow(saveButton, 1); Grid.SetColumn(saveButton, 0);
+            saveButton.HorizontalAlignment = HorizontalAlignment.Left;
+            saveButton.Margin = new Thickness(0, 10, 0, 0);
+            return;
+        }
+
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        Grid.SetRow(title, 0); Grid.SetColumn(title, 0);
+        Grid.SetRow(saveButton, 0); Grid.SetColumn(saveButton, 1);
+        saveButton.HorizontalAlignment = HorizontalAlignment.Right;
+        saveButton.Margin = new Thickness(0);
+    }
+
+    private void ApplyDirectoryOverrideLayout(bool narrow)
+    {
+        foreach (var grid in FindDescendants<Grid>(SettingsContentPanel))
+        {
+            var buttons = grid.Children
+                .OfType<Button>()
+                .Where(static button => button.Tag is string tag && (tag == "profile" || tag == "state"))
+                .ToArray();
+            var textBox = grid.Children.OfType<TextBox>().FirstOrDefault();
+            if (buttons.Length != 2 || textBox is null) continue;
+
+            grid.RowDefinitions.Clear();
+            grid.ColumnDefinitions.Clear();
+            grid.ColumnSpacing = 8;
+
+            if (narrow)
+            {
+                grid.RowSpacing = 8;
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                Grid.SetRow(textBox, 0); Grid.SetColumn(textBox, 0); Grid.SetColumnSpan(textBox, 2);
+                for (var index = 0; index < buttons.Length; index++)
+                {
+                    Grid.SetRow(buttons[index], 1);
+                    Grid.SetColumn(buttons[index], index);
+                    Grid.SetColumnSpan(buttons[index], 1);
+                    buttons[index].HorizontalAlignment = HorizontalAlignment.Stretch;
+                }
+                continue;
+            }
+
+            grid.RowSpacing = 0;
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            Grid.SetRow(textBox, 0); Grid.SetColumn(textBox, 0); Grid.SetColumnSpan(textBox, 1);
+            for (var index = 0; index < buttons.Length; index++)
+            {
+                Grid.SetRow(buttons[index], 0);
+                Grid.SetColumn(buttons[index], index + 1);
+                Grid.SetColumnSpan(buttons[index], 1);
+                buttons[index].HorizontalAlignment = HorizontalAlignment.Left;
+            }
         }
     }
 
