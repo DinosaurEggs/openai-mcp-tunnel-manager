@@ -141,7 +141,7 @@ public sealed partial class MainWindow
                 {
                     if (editor.CommonTargetSupported)
                     {
-                        _ = ProfileDocumentEditor.ApplyCommonFields(
+                        ProfileDocumentEditor.ApplyCommonFields(
                             editor.RawText,
                             data.TunnelId,
                             data.TargetKind,
@@ -151,7 +151,7 @@ public sealed partial class MainWindow
                     }
                     else
                     {
-                        _ = ProfileDocumentEditor.ReadMetadata(editor.RawText);
+                        ProfileDocumentEditor.ReadMetadata(editor.RawText);
                     }
                 }
                 catch (Exception exception)
