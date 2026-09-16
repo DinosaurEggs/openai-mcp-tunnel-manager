@@ -50,7 +50,6 @@ public sealed partial class MainWindow
         DashboardReadyCount.Text = ViewModel.Connections.Count(item => item.ProcessRunning && item.Ready).ToString();
         DashboardProfileCount.Text = ViewModel.Connections.Count(item => item.ProfileListed).ToString();
         DashboardRuntimeCount.Text = ViewModel.Connections.Count(item => item.HasRuntime).ToString();
-        DashboardForegroundCountText.Text = ViewModel.Connections.Count(item => item.ProcessRunning && !item.HasRuntime && item.HasProfile).ToString();
 
         DashboardSystemStatusText.Text = ViewModel.IsClientAvailable ? "系统正常" : "需要处理";
         DashboardClientStatusText.Text = ViewModel.IsClientAvailable ? "可用" : "不可用";
