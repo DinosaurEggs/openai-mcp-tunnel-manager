@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 
 namespace OpenAITunnelManager.App;
@@ -14,7 +15,7 @@ public sealed partial class MainWindow
         _itemContextMenuConfigured = true;
 
         // A ContextFlyout on ListView itself also opens when the user right-clicks the
-        // empty surface.  Configuration commands are target-specific, so only create the
+        // empty surface. Configuration commands are target-specific, so only create the
         // flyout after a ListViewItem has actually been hit.
         ConnectionsList.ContextFlyout = null;
         ConnectionsList.RightTapped -= ConnectionsList_RightTapped;
@@ -48,6 +49,15 @@ public sealed partial class MainWindow
 
         flyout.Items.Add(edit);
         flyout.Items.Add(delete);
-        flyout.ShowAt(container);
+
+        // Anchor the flyout to the actual right-click position rather than the whole row.
+        // ShowAt(container) lets WinUI choose an edge of the item and makes the menu appear
+        // detached from the pointer, especially on wide list rows.
+        flyout.ShowAt(
+            ConnectionsList,
+            new FlyoutShowOptions
+            {
+                Position = e.GetPosition(ConnectionsList)
+            });
     }
 }
