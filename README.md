@@ -1,6 +1,8 @@
 # OpenAI MCP Tunnel Manager
 
-Windows 上的 `tunnel-client` 可视化管理器。`rewrite/csharp-winui3` 是完整的 C# / WinUI 3 重写版，不包含 Python、WinForms 或 WPF UI 组件。
+Windows 上的 `tunnel-client` 可视化管理器，使用 C# / WinUI 3 开发，不包含 Python、WinForms 或 WPF UI 组件。
+
+当前版本：**1.1.0**
 
 ## 技术基线
 
