@@ -13,20 +13,23 @@ public sealed partial class MainWindow
         _uiPolishConfigured = true;
         ConfigureItemOnlyContextMenu();
         ConfigureAdvancedDirectoryPickers();
+        ConfigureDashboardState();
         RequestUiPolish();
     }
 
     private void RequestUiPolish() => DispatcherQueue.TryEnqueue(ApplyUiPolish);
 
-    // Inventory polling is intentionally absent. Saving settings only ensures the
-    // independent log-view timer is active; runtime status is owned by RuntimeMonitor.
+    // Runtime status polling is intentionally absent. The only periodic UI timer is
+    // the log-view refresh timer, which remains active by design.
     private void ResetTimers() => _logTimer.Start();
 
     private void ApplyUiPolish()
     {
         ConfigureAdvancedDirectoryPickers();
 
-        foreach (var button in FindDescendants<Button>(RootGrid))
+        // Only normalize buttons owned by our page content. Do not mutate NavigationView
+        // template buttons, otherwise the built-in pane toggle icon is pushed off-center.
+        foreach (var button in FindDescendants<Button>(ContentGrid))
         {
             button.VerticalAlignment = VerticalAlignment.Center;
             button.VerticalContentAlignment = VerticalAlignment.Center;
@@ -43,19 +46,48 @@ public sealed partial class MainWindow
             }
         }
 
-        foreach (var toggle in FindDescendants<ToggleSwitch>(RootGrid))
-        {
+        NormalizeNavigationPaneToggle();
+
+        foreach (var toggle in FindDescendants<ToggleSwitch>(ContentGrid))
             toggle.VerticalAlignment = VerticalAlignment.Center;
-        }
 
-        foreach (var checkBox in FindDescendants<CheckBox>(RootGrid))
-        {
+        foreach (var checkBox in FindDescendants<CheckBox>(ContentGrid))
             checkBox.VerticalAlignment = VerticalAlignment.Center;
-        }
 
+        NormalizeHeaderActions(DashboardHeaderActions);
         NormalizeHeaderActions(ConnectionsHeaderActions);
         NormalizeHeaderActions(LogsHeaderActions);
         NormalizeHeaderActions(DiagnosticsHeaderActions);
+    }
+
+    private void NormalizeNavigationPaneToggle()
+    {
+        foreach (var button in FindDescendants<Button>(Navigation))
+        {
+            if (!button.Name.Contains("PaneToggle", StringComparison.OrdinalIgnoreCase) &&
+                !button.Name.Contains("TogglePane", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            button.Padding = new Thickness(0);
+            button.HorizontalContentAlignment = HorizontalAlignment.Center;
+            button.VerticalContentAlignment = VerticalAlignment.Center;
+
+            if (button.Content is FrameworkElement content)
+            {
+                content.HorizontalAlignment = HorizontalAlignment.Center;
+                content.VerticalAlignment = VerticalAlignment.Center;
+                content.Margin = new Thickness(0);
+            }
+
+            foreach (var icon in FindDescendants<FontIcon>(button))
+            {
+                icon.HorizontalAlignment = HorizontalAlignment.Center;
+                icon.VerticalAlignment = VerticalAlignment.Center;
+                icon.Margin = new Thickness(0);
+            }
+        }
     }
 
     private static void NormalizeHeaderActions(StackPanel panel)
@@ -63,8 +95,6 @@ public sealed partial class MainWindow
         panel.VerticalAlignment = VerticalAlignment.Center;
         panel.Spacing = 8;
         foreach (var child in panel.Children.OfType<FrameworkElement>())
-        {
             child.VerticalAlignment = VerticalAlignment.Center;
-        }
     }
 }

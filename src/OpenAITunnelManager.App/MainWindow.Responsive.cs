@@ -35,6 +35,7 @@ public sealed partial class MainWindow
 
     private void ApplyResponsiveLayout()
     {
+        StretchScrollablePage(DashboardScrollViewer, DashboardContentPanel);
         StretchScrollablePage(SettingsScrollViewer, SettingsContentPanel);
 
         var width = ContentGrid.ActualWidth;
@@ -60,6 +61,7 @@ public sealed partial class MainWindow
             _ => new Thickness(24, 20, 24, 16)
         };
 
+        ConfigureHeader(DashboardHeader, DashboardHeaderTitle, DashboardHeaderActions, width < 760);
         ConfigureHeader(ConnectionsHeader, ConnectionsHeaderTitle, ConnectionsHeaderActions, width < 760);
         ConfigureHeader(LogsHeader, LogsHeaderTitle, LogsHeaderActions, width < 860);
         ConfigureHeader(DiagnosticsHeader, DiagnosticsHeaderTitle, DiagnosticsHeaderActions, width < 860);
@@ -195,9 +197,9 @@ public sealed partial class MainWindow
     private void ApplyDashboardLayout(string bucket)
     {
         DashboardContentPanel.Width = double.NaN;
-        DashboardContentPanel.HorizontalAlignment = bucket == "wide" ? HorizontalAlignment.Center : HorizontalAlignment.Stretch;
-        DashboardContentPanel.MaxWidth = bucket == "wide" ? 1280 : double.PositiveInfinity;
-        DashboardScrollViewer.HorizontalContentAlignment = bucket == "wide" ? HorizontalAlignment.Center : HorizontalAlignment.Stretch;
+        DashboardContentPanel.HorizontalAlignment = HorizontalAlignment.Stretch;
+        DashboardContentPanel.MaxWidth = bucket == "wide" ? 1400 : double.PositiveInfinity;
+        DashboardScrollViewer.HorizontalContentAlignment = HorizontalAlignment.Stretch;
         DashboardScrollViewer.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
 
         var cards = DashboardCardsGrid.Children.OfType<Border>().ToArray();
@@ -232,12 +234,11 @@ public sealed partial class MainWindow
                 Grid.SetColumn(cards[index], index % 2);
                 Grid.SetColumnSpan(cards[index], 1);
             }
-            if (cards.Length % 2 == 1) Grid.SetColumnSpan(cards[^1], 2);
             return;
         }
 
         DashboardCardsGrid.ColumnSpacing = 0;
-        DashboardCardsGrid.RowSpacing = 12;
+        DashboardCardsGrid.RowSpacing = 8;
         DashboardCardsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         for (var index = 0; index < cards.Length; index++)
         {

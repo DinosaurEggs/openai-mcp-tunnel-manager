@@ -41,71 +41,138 @@
 
             <NavigationView.Content>
                 <Grid x:Name="ContentGrid" Padding="24,20,24,16">
-                    <!-- Overview -->
+                    <!-- Overview: global dashboard only. Connection entities belong on the Connections page. -->
                     <Grid x:Name="DashboardPage" Visibility="Collapsed">
                         <ScrollViewer x:Name="DashboardScrollViewer" VerticalScrollBarVisibility="Auto" HorizontalContentAlignment="Stretch">
                             <StackPanel x:Name="DashboardContentPanel" Spacing="20" HorizontalAlignment="Stretch">
-                                <StackPanel Spacing="4">
-                                    <TextBlock Text="概览" Style="{StaticResource TitleTextBlockStyle}" />
-                                    <TextBlock Text="当前 tunnel-client 与连接运行情况" Opacity="0.7" />
-                                </StackPanel>
+                                <Grid x:Name="DashboardHeader">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel x:Name="DashboardHeaderTitle" Spacing="4">
+                                        <TextBlock Text="概览" Style="{StaticResource TitleTextBlockStyle}" />
+                                        <TextBlock Text="查看 tunnel-client 与本机 Tunnel 运行概况" Opacity="0.7" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <StackPanel x:Name="DashboardHeaderActions" Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                        <ProgressRing Width="20" Height="20" IsActive="{Binding IsBusy}" />
+                                        <Button Command="{Binding RefreshCommand}">
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <FontIcon Glyph="&#xE72C;" FontSize="14" />
+                                                <TextBlock Text="刷新" />
+                                            </StackPanel>
+                                        </Button>
+                                    </StackPanel>
+                                </Grid>
 
-                                <InfoBar IsOpen="True" IsClosable="False" Severity="Informational" Title="状态" Message="{Binding StatusMessage}" />
+                                <Border Padding="4,2" Background="Transparent">
+                                    <Grid ColumnSpacing="10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <FontIcon Glyph="&#xE930;" FontSize="14" VerticalAlignment="Top" Margin="0,3,0,0" />
+                                        <StackPanel Grid.Column="1" Spacing="2">
+                                            <TextBlock x:Name="DashboardSystemStatusText" Text="正在初始化" FontSize="16" FontWeight="SemiBold" />
+                                            <TextBlock Text="{Binding StatusMessage}" Opacity="0.72" TextWrapping="Wrap" />
+                                            <TextBlock x:Name="DashboardLastUpdatedText" Text="最后更新 --:--:--" FontSize="12" Opacity="0.55" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
 
-                                <Grid x:Name="DashboardCardsGrid" ColumnSpacing="12">
+                                <TextBlock Text="运行概况" FontSize="18" FontWeight="SemiBold" Margin="0,4,0,-4" />
+                                <Grid x:Name="DashboardCardsGrid" ColumnSpacing="12" RowSpacing="12">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
-                                    <Border Padding="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="10">
-                                        <StackPanel Spacing="8">
-                                            <TextBlock Text="活跃连接" Opacity="0.65" />
-                                            <TextBlock Text="{Binding ActiveCount}" FontSize="30" FontWeight="SemiBold" />
-                                            <TextBlock Text="正在运行" />
+                                    <Border Padding="18" MinHeight="112" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
+                                        <StackPanel Spacing="7">
+                                            <TextBlock Text="正在运行" Opacity="0.65" />
+                                            <TextBlock x:Name="DashboardRunningCount" Text="0" FontSize="32" FontWeight="SemiBold" />
+                                            <TextBlock Text="当前活动实例" FontSize="12" Opacity="0.65" />
                                         </StackPanel>
                                     </Border>
-                                    <Border Grid.Column="1" Padding="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="10">
-                                        <StackPanel Spacing="8">
-                                            <TextBlock Text="Health" Opacity="0.65" />
-                                            <TextBlock Text="{Binding HealthyCount}" FontSize="30" FontWeight="SemiBold" />
-                                            <TextBlock Text="健康且 Ready" />
+                                    <Border Grid.Column="1" Padding="18" MinHeight="112" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
+                                        <StackPanel Spacing="7">
+                                            <TextBlock Text="Ready" Opacity="0.65" />
+                                            <TextBlock x:Name="DashboardReadyCount" Text="0" FontSize="32" FontWeight="SemiBold" />
+                                            <TextBlock Text="健康并可用" FontSize="12" Opacity="0.65" />
                                         </StackPanel>
                                     </Border>
-                                    <Border Grid.Column="2" Padding="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="10">
-                                        <StackPanel Spacing="8">
-                                            <TextBlock Text="tunnel-client" Opacity="0.65" />
-                                            <TextBlock Text="{Binding ClientVersion}" FontSize="20" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                            <TextBlock Text="版本 / 可用状态" />
+                                    <Border Grid.Column="2" Padding="18" MinHeight="112" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
+                                        <StackPanel Spacing="7">
+                                            <TextBlock Text="Profile" Opacity="0.65" />
+                                            <TextBlock x:Name="DashboardProfileCount" Text="0" FontSize="32" FontWeight="SemiBold" />
+                                            <TextBlock Text="本机配置" FontSize="12" Opacity="0.65" />
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Grid.Column="3" Padding="18" MinHeight="112" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
+                                        <StackPanel Spacing="7">
+                                            <TextBlock Text="Runtime" Opacity="0.65" />
+                                            <TextBlock x:Name="DashboardRuntimeCount" Text="0" FontSize="32" FontWeight="SemiBold" />
+                                            <TextBlock Text="Runtime Alias" FontSize="12" Opacity="0.65" />
                                         </StackPanel>
                                     </Border>
                                 </Grid>
 
-                                <Border Padding="18" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="10">
-                                    <StackPanel Spacing="12">
-                                        <Grid>
-                                            <TextBlock Text="当前连接" FontSize="18" FontWeight="SemiBold" />
-                                            <TextBlock HorizontalAlignment="Right" Text="{Binding TotalCount}" Opacity="0.65" />
+                                <TextBlock Text="tunnel-client" FontSize="18" FontWeight="SemiBold" Margin="0,4,0,-4" />
+                                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
+                                    <StackPanel>
+                                        <Grid Padding="18,14" ColumnSpacing="20">
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="2*" /></Grid.ColumnDefinitions>
+                                            <TextBlock Text="状态" Opacity="0.65" />
+                                            <TextBlock x:Name="DashboardClientStatusText" Grid.Column="1" Text="检测中" HorizontalAlignment="Right" FontWeight="SemiBold" />
                                         </Grid>
-                                        <ItemsControl ItemsSource="{Binding Connections}">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                                                    <Grid Padding="4,8" ColumnSpacing="12" RowSpacing="3">
-                                                        <Grid.ColumnDefinitions>
-                                                            <ColumnDefinition Width="*" />
-                                                            <ColumnDefinition Width="Auto" />
-                                                        </Grid.ColumnDefinitions>
-                                                        <Grid.RowDefinitions>
-                                                            <RowDefinition Height="Auto" />
-                                                            <RowDefinition Height="Auto" />
-                                                        </Grid.RowDefinitions>
-                                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                                        <TextBlock Grid.Column="1" Text="{Binding StateText}" HorizontalAlignment="Right" />
-                                                        <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding SourceText}" Opacity="0.65" TextTrimming="CharacterEllipsis" />
-                                                    </Grid>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
+                                        <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}" />
+                                        <Grid Padding="18,14" ColumnSpacing="20">
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="2*" /></Grid.ColumnDefinitions>
+                                            <TextBlock Text="版本" Opacity="0.65" />
+                                            <TextBlock x:Name="DashboardClientVersionText" Grid.Column="1" Text="未检测" HorizontalAlignment="Right" TextTrimming="CharacterEllipsis" MaxLines="1" />
+                                        </Grid>
+                                        <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}" />
+                                        <Grid Padding="18,14" ColumnSpacing="20">
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="2*" /></Grid.ColumnDefinitions>
+                                            <TextBlock Text="可执行文件" Opacity="0.65" />
+                                            <TextBlock x:Name="DashboardClientPathText" Grid.Column="1" Text="未配置" HorizontalAlignment="Right" TextTrimming="CharacterEllipsis" MaxLines="1" />
+                                        </Grid>
+                                        <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}" />
+                                        <Grid Padding="18,14" ColumnSpacing="20">
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="2*" /></Grid.ColumnDefinitions>
+                                            <TextBlock Text="状态刷新" Opacity="0.65" />
+                                            <TextBlock Grid.Column="1" Text="手动刷新 / 生命周期操作" HorizontalAlignment="Right" />
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+
+                                <TextBlock Text="Manager" FontSize="18" FontWeight="SemiBold" Margin="0,4,0,-4" />
+                                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Margin="0,0,0,8">
+                                    <StackPanel>
+                                        <Grid Padding="18,14" ColumnSpacing="20">
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="2*" /></Grid.ColumnDefinitions>
+                                            <TextBlock Text="前台 Profile" Opacity="0.65" />
+                                            <TextBlock x:Name="DashboardForegroundCountText" Grid.Column="1" Text="0" HorizontalAlignment="Right" />
+                                        </Grid>
+                                        <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}" />
+                                        <Grid Padding="18,14" ColumnSpacing="20">
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="2*" /></Grid.ColumnDefinitions>
+                                            <TextBlock Text="Windows 登录启动" Opacity="0.65" />
+                                            <TextBlock x:Name="DashboardStartupText" Grid.Column="1" Text="已关闭" HorizontalAlignment="Right" />
+                                        </Grid>
+                                        <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}" />
+                                        <Grid Padding="18,14" ColumnSpacing="20">
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="2*" /></Grid.ColumnDefinitions>
+                                            <TextBlock Text="关闭到系统托盘" Opacity="0.65" />
+                                            <TextBlock x:Name="DashboardTrayText" Grid.Column="1" Text="已开启" HorizontalAlignment="Right" />
+                                        </Grid>
+                                        <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}" />
+                                        <Grid Padding="18,14" ColumnSpacing="20">
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="2*" /></Grid.ColumnDefinitions>
+                                            <TextBlock Text="凭据存储" Opacity="0.65" />
+                                            <TextBlock Grid.Column="1" Text="Windows Credential Manager" HorizontalAlignment="Right" />
+                                        </Grid>
                                     </StackPanel>
                                 </Border>
                             </StackPanel>
@@ -185,7 +252,9 @@
                                 <Grid>
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="12" />
+                                        <RowDefinition Height="10" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="8" />
                                         <RowDefinition Height="*" />
                                     </Grid.RowDefinitions>
 
@@ -203,28 +272,27 @@
                                         </Border>
                                     </Grid>
 
-                                    <TabView x:Name="ConnectionTabs" Grid.Row="2" IsAddTabButtonVisible="False" CanDragTabs="False" CanReorderTabs="False" SelectionChanged="ConnectionTabs_SelectionChanged">
+                                    <StackPanel x:Name="ConnectionsPrimaryActions" Grid.Row="2" Orientation="Horizontal" Spacing="8">
+                                        <Button Content="启动" Command="{Binding StartSelectedCommand}" IsEnabled="{Binding CanStartSelected}" />
+                                        <Button Content="停止" Command="{Binding StopSelectedCommand}" IsEnabled="{Binding CanStopSelected}" />
+                                        <Button Content="重启" Command="{Binding RestartSelectedCommand}" IsEnabled="{Binding CanRestartSelected}" />
+                                        <Button Content="编辑 Profile" IsEnabled="{Binding CanEditSelected}" Click="EditProfile_Click" />
+                                        <Button Content="更多" IsEnabled="{Binding CanDeleteSelected}">
+                                            <Button.Flyout>
+                                                <MenuFlyout>
+                                                    <MenuFlyoutItem Text="本机偏好 / 密钥" Click="EditPreference_Click" />
+                                                    <MenuFlyoutItem Text="打开配置位置" IsEnabled="{Binding CanOpenConfigSelected}" Click="OpenConfigLocation_Click" />
+                                                    <MenuFlyoutSeparator />
+                                                    <MenuFlyoutItem Text="删除" Click="DeleteSelected_Click" />
+                                                </MenuFlyout>
+                                            </Button.Flyout>
+                                        </Button>
+                                    </StackPanel>
+
+                                    <TabView x:Name="ConnectionTabs" Grid.Row="4" IsAddTabButtonVisible="False" CanDragTabs="False" CanReorderTabs="False" SelectionChanged="ConnectionTabs_SelectionChanged">
                                         <TabViewItem Header="常规" IsClosable="False">
                                             <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                                                 <StackPanel Spacing="18" Padding="2,8,2,4">
-                                                    <StackPanel x:Name="ConnectionsPrimaryActions" Orientation="Horizontal" Spacing="8">
-                                                        <Button Content="启动" Command="{Binding StartSelectedCommand}" IsEnabled="{Binding CanStartSelected}" />
-                                                        <Button Content="停止" Command="{Binding StopSelectedCommand}" IsEnabled="{Binding CanStopSelected}" />
-                                                        <Button Content="重启" Command="{Binding RestartSelectedCommand}" IsEnabled="{Binding CanRestartSelected}" />
-                                                        <Button Content="编辑 Profile" IsEnabled="{Binding CanEditSelected}" Click="EditProfile_Click" />
-                                                        <Button Content="更多" IsEnabled="{Binding CanDeleteSelected}">
-                                                            <Button.Flyout>
-                                                                <MenuFlyout>
-                                                                    <MenuFlyoutItem Text="本机偏好 / 密钥" Click="EditPreference_Click" />
-                                                                    <MenuFlyoutItem Text="打开配置位置" IsEnabled="{Binding CanOpenConfigSelected}" Click="OpenConfigLocation_Click" />
-                                                                    <MenuFlyoutSeparator />
-                                                                    <MenuFlyoutItem Text="删除" Click="DeleteSelected_Click" />
-                                                                </MenuFlyout>
-                                                            </Button.Flyout>
-                                                        </Button>
-                                                    </StackPanel>
-
-                                                    <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}" />
                                                     <TextBlock Text="基本信息" FontSize="16" FontWeight="SemiBold" />
                                                     <Grid x:Name="ConnectionInfoGrid" ColumnSpacing="20" RowSpacing="10">
                                                         <Grid.ColumnDefinitions>
@@ -277,11 +345,6 @@
                                                         <TextBlock Grid.Row="3" Text="Health URL" Opacity="0.65" />
                                                         <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SelectedConnection.HealthUrl}" TextWrapping="Wrap" />
                                                     </Grid>
-
-                                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                                        <Button Content="查看日志" Click="ShowLogs_Click" />
-                                                        <Button Content="查看诊断" Click="ShowDiagnostics_Click" />
-                                                    </StackPanel>
                                                 </StackPanel>
                                             </ScrollViewer>
                                         </TabViewItem>
