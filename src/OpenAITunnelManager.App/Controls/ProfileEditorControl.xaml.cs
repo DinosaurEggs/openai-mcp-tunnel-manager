@@ -14,7 +14,18 @@ public sealed partial class ProfileEditorControl : UserControl
 
     public ProfileEditorControl()
     {
-        InitializeComponent();
+        // XAML properties such as ComboBox.SelectedIndex can raise SelectionChanged while
+        // InitializeComponent is still constructing later named controls. Suppress all editor
+        // event handlers until the complete visual tree exists.
+        _initializing = true;
+        try
+        {
+            InitializeComponent();
+        }
+        finally
+        {
+            _initializing = false;
+        }
     }
 
     public string ProfileName => ProfileNameBox.Text.Trim();
@@ -131,6 +142,7 @@ public sealed partial class ProfileEditorControl : UserControl
 
     private void EditorTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        if (_initializing) return;
         if (_createMode && EditorTabs.SelectedIndex == 1 && !_advancedEdited)
         {
             SyncCreateRawFromBasic();
