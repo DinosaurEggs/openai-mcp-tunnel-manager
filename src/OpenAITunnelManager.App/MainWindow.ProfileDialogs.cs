@@ -54,11 +54,7 @@ public sealed partial class MainWindow
         RootGrid.SizeChanged += RootGrid_ProfileModalSizeChanged;
         _profileModalOverlay!.Visibility = Visibility.Visible;
 
-        DispatcherQueue.TryEnqueue(() =>
-        {
-            editor.ResetInitialViewport();
-        });
-
+        DispatcherQueue.TryEnqueue(editor.ResetInitialViewport);
         return _profileModalCompletion.Task;
     }
 
@@ -126,7 +122,6 @@ public sealed partial class MainWindow
 
         var cancelButton = new Button
         {
-            Grid.ColumnProperty = 1,
             Content = "取消",
             HorizontalAlignment = HorizontalAlignment.Stretch,
             HorizontalContentAlignment = HorizontalAlignment.Center
