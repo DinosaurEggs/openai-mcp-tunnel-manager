@@ -143,9 +143,7 @@ public sealed partial class MainWindow
             var file = await picker.PickSingleFileAsync();
             if (file is null) return;
 
-            ViewModel.SetTunnelClientPath(file.Path);
-            await ViewModel.SaveSettingsAsync();
-            ResetTimers();
+            await ViewModel.ApplyTunnelClientPathAsync(file.Path);
             UpdateEmptyStates();
         }
         catch (Exception exception)
