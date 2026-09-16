@@ -72,6 +72,45 @@ jobs:
             throw 'Only WinUI 3 / Windows App SDK UI code is allowed.'
           }
 
+          $removedFiles = @(
+            'src/OpenAITunnelManager.App/ViewModels/ConnectionsViewModel.Logs.cs',
+            'src/OpenAITunnelManager.App/ViewModels/ConnectionsViewModel.RuntimeMonitor.cs',
+            'src/OpenAITunnelManager.App/MainWindow.LayoutAudit.cs',
+            'src/OpenAITunnelManager.App/MainWindow.AdvancedSettings.cs'
+          )
+          foreach ($removedFile in $removedFiles) {
+            if (Test-Path $removedFile) {
+              throw "Removed feature file must not be restored: $removedFile"
+            }
+          }
+
+          $removedPatterns = @(
+            '\bRawLog\b',
+            '\bVisibleLog\b',
+            '\bRefreshLogAsync\b',
+            '\bRefreshLogIncrementalAsync\b',
+            '\bRestoreSelectedLogCache\b',
+            '\bShowLogs_Click\b',
+            '\bShowDiagnostics_Click\b',
+            'Profile Import',
+            'Profile Export',
+            '复制可见日志',
+            '导出日志'
+          )
+          $removedViolations = @()
+          foreach ($file in $files) {
+            $text = Get-Content $file.FullName -Raw
+            foreach ($pattern in $removedPatterns) {
+              if ($text -match $pattern) {
+                $removedViolations += "$($file.FullName): $pattern"
+              }
+            }
+          }
+          if ($removedViolations.Count -gt 0) {
+            $removedViolations | ForEach-Object { Write-Host "Removed feature residue: $_" }
+            throw 'Removed features must be deleted from source, not hidden or kept as legacy backends.'
+          }
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v6
         with:
