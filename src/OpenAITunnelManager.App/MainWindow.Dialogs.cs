@@ -26,27 +26,11 @@ public sealed partial class MainWindow
         viewer.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
         viewer.MinWidth = 0;
 
-        // Dialog content follows the current window instead of using fixed pixel heights.
-        // ContentDialog still applies its own platform maximums; this only ensures a large
-        // editor becomes scrollable before it can push buttons/title out of view.
         if (RootGrid.ActualHeight > 1)
         {
             viewer.MaxHeight = RootGrid.ActualHeight * 0.72;
         }
 
         return viewer;
-    }
-
-    private void ConfigureProfileTextEditor(TextBox editor)
-    {
-        editor.HorizontalAlignment = HorizontalAlignment.Stretch;
-        editor.MinWidth = 0;
-        editor.Width = double.NaN;
-        editor.Height = double.NaN;
-        if (RootGrid.ActualHeight > 1)
-        {
-            editor.MinHeight = RootGrid.ActualHeight * 0.24;
-            editor.MaxHeight = RootGrid.ActualHeight * 0.42;
-        }
     }
 }
