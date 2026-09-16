@@ -82,7 +82,9 @@ public sealed partial class MainWindow
         panel.HorizontalAlignment = HorizontalAlignment.Stretch;
         scrollViewer.HorizontalAlignment = HorizontalAlignment.Stretch;
         scrollViewer.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+        scrollViewer.HorizontalScrollMode = ScrollMode.Disabled;
         scrollViewer.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
+        scrollViewer.ZoomMode = ZoomMode.Disabled;
     }
 
     private void ApplyConnectionsLayout(string bucket)
@@ -95,8 +97,8 @@ public sealed partial class MainWindow
             ConnectionsSplitGrid.ColumnSpacing = 0;
             ConnectionsSplitGrid.RowSpacing = 12;
             ConnectionsSplitGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            ConnectionsSplitGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(230) });
-            ConnectionsSplitGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            ConnectionsSplitGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(3, GridUnitType.Star) });
+            ConnectionsSplitGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(7, GridUnitType.Star) });
             Grid.SetRow(ConnectionsListPanel, 0);
             Grid.SetColumn(ConnectionsListPanel, 0);
             Grid.SetRow(ConnectionsDetailsPanel, 1);
@@ -106,9 +108,16 @@ public sealed partial class MainWindow
         {
             ConnectionsSplitGrid.RowSpacing = 0;
             ConnectionsSplitGrid.ColumnSpacing = 12;
-            var listShare = bucket == "compact" ? 36 : 30;
-            ConnectionsSplitGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(listShare, GridUnitType.Star) });
-            ConnectionsSplitGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(100 - listShare, GridUnitType.Star) });
+            if (bucket == "compact")
+            {
+                ConnectionsSplitGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(9, GridUnitType.Star) });
+                ConnectionsSplitGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(16, GridUnitType.Star) });
+            }
+            else
+            {
+                ConnectionsSplitGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(3, GridUnitType.Star) });
+                ConnectionsSplitGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(7, GridUnitType.Star) });
+            }
             Grid.SetRow(ConnectionsListPanel, 0);
             Grid.SetColumn(ConnectionsListPanel, 0);
             Grid.SetRow(ConnectionsDetailsPanel, 0);
@@ -196,15 +205,26 @@ public sealed partial class MainWindow
 
     private void ApplyDashboardLayout(string bucket)
     {
+        // The dashboard always consumes 100% of the NavigationView content viewport.
+        // Only the card arrangement changes at responsive breakpoints; small card dimensions
+        // remain numeric so they do not grow vertically with a large window.
         DashboardContentPanel.Width = double.NaN;
+        DashboardContentPanel.MaxWidth = double.PositiveInfinity;
         DashboardContentPanel.HorizontalAlignment = HorizontalAlignment.Stretch;
-        DashboardContentPanel.MaxWidth = bucket == "wide" ? 1400 : double.PositiveInfinity;
         DashboardScrollViewer.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+        DashboardScrollViewer.HorizontalScrollMode = ScrollMode.Disabled;
         DashboardScrollViewer.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
 
         var cards = DashboardCardsGrid.Children.OfType<Border>().ToArray();
+        DashboardCardsGrid.Width = double.NaN;
+        DashboardCardsGrid.HorizontalAlignment = HorizontalAlignment.Stretch;
         DashboardCardsGrid.RowDefinitions.Clear();
         DashboardCardsGrid.ColumnDefinitions.Clear();
+        foreach (var card in cards)
+        {
+            card.MinWidth = 0;
+            card.HorizontalAlignment = HorizontalAlignment.Stretch;
+        }
 
         if (bucket == "wide")
         {
