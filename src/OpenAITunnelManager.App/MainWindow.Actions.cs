@@ -290,26 +290,6 @@ public sealed partial class MainWindow
         Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{Path.GetFullPath(path)}\"") { UseShellExecute = true });
     }
 
-    private void LogWrap_Changed(object sender, RoutedEventArgs e)
-    {
-        var wrap = LogWrapCheckBox.IsChecked == true;
-        LogTextBox.TextWrapping = wrap ? TextWrapping.Wrap : TextWrapping.NoWrap;
-        ScrollViewer.SetHorizontalScrollBarVisibility(LogTextBox, wrap ? ScrollBarVisibility.Disabled : ScrollBarVisibility.Auto);
-    }
-
-    private double CaptureLogHorizontalOffset() =>
-        FindDescendant<ScrollViewer>(LogTextBox)?.HorizontalOffset ?? 0d;
-
-    private void RestoreLogViewport(double horizontalOffset, bool followVertical)
-    {
-        var viewer = FindDescendant<ScrollViewer>(LogTextBox);
-        if (viewer is null) return;
-        var verticalOffset = followVertical && ViewModel.LogAutoRefresh
-            ? viewer.ScrollableHeight
-            : viewer.VerticalOffset;
-        viewer.ChangeView(horizontalOffset, verticalOffset, null, disableAnimation: true);
-    }
-
     private static T? FindAncestor<T>(DependencyObject current) where T : DependencyObject
     {
         DependencyObject? node = current;
@@ -317,19 +297,6 @@ public sealed partial class MainWindow
         {
             if (node is T match) return match;
             node = VisualTreeHelper.GetParent(node);
-        }
-        return null;
-    }
-
-    private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
-    {
-        var count = VisualTreeHelper.GetChildrenCount(root);
-        for (var index = 0; index < count; index++)
-        {
-            var child = VisualTreeHelper.GetChild(root, index);
-            if (child is T match) return match;
-            var nested = FindDescendant<T>(child);
-            if (nested is not null) return nested;
         }
         return null;
     }
