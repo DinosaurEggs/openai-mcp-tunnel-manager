@@ -11,9 +11,22 @@ namespace OpenAITunnelManager.App;
 public sealed partial class MainWindow
 {
     private AnsiLogViewerControl? _ansiLogViewer;
+    private bool _ansiLogAttachHooksConfigured;
+    private bool _ansiLogFilterReady;
 
     private void InitializeAnsiLogViewer()
     {
+        HideLogPathFooter();
+
+        // TabView can defer non-selected content. Register a retry before checking the visual
+        // parent so entering the log tab always gets another chance to attach the viewer.
+        if (!_ansiLogAttachHooksConfigured)
+        {
+            _ansiLogAttachHooksConfigured = true;
+            LogTextBox.Loaded += LegacyLogTextBox_Loaded;
+            ConnectionTabs.SelectionChanged += EnsureAnsiLogViewerOnTabChanged;
+        }
+
         if (_ansiLogViewer is not null) return;
         if (VisualTreeHelper.GetParent(LogTextBox) is not Border host) return;
 
@@ -24,7 +37,7 @@ public sealed partial class MainWindow
         };
         host.Child = viewer;
         _ansiLogViewer = viewer;
-        viewer.SetFilter(ViewModel.LogSearch, ViewModel.LogLevel);
+        _ansiLogFilterReady = false;
         viewer.SetWrap(ViewModel.LogWrap);
 
         // The ANSI viewer owns log file I/O. Keep the existing one-second timer, but detach the
@@ -42,8 +55,35 @@ public sealed partial class MainWindow
         if (refreshButton is not null)
         {
             refreshButton.Command = null;
+            refreshButton.Click -= AnsiLogManualRefresh_Click;
             refreshButton.Click += AnsiLogManualRefresh_Click;
         }
+
+        LogTextBox.Loaded -= LegacyLogTextBox_Loaded;
+
+        if (IsLogTabSelected()) _ = RefreshAnsiLogAsync(forceReload: false);
+    }
+
+    private void LegacyLogTextBox_Loaded(object sender, RoutedEventArgs e) =>
+        DispatcherQueue.TryEnqueue(InitializeAnsiLogViewer);
+
+    private void EnsureAnsiLogViewerOnTabChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!IsLogTabSelected() || _ansiLogViewer is not null) return;
+        DispatcherQueue.TryEnqueue(InitializeAnsiLogViewer);
+    }
+
+    private void HideLogPathFooter()
+    {
+        if (VisualTreeHelper.GetParent(LogsHeader) is not Grid logRoot) return;
+
+        foreach (var child in logRoot.Children.OfType<TextBlock>())
+        {
+            if (Grid.GetRow(child) == 6) child.Visibility = Visibility.Collapsed;
+        }
+
+        if (logRoot.RowDefinitions.Count > 5) logRoot.RowDefinitions[5].Height = new GridLength(0);
+        if (logRoot.RowDefinitions.Count > 6) logRoot.RowDefinitions[6].Height = new GridLength(0);
     }
 
     private async void AnsiLogTimer_Tick(DispatcherQueueTimer sender, object args)
@@ -55,6 +95,7 @@ public sealed partial class MainWindow
     private async void AnsiLogSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (!_initialized || !IsLogTabSelected()) return;
+        _ansiLogFilterReady = false;
         await RefreshAnsiLogAsync(forceReload: false);
     }
 
@@ -75,7 +116,10 @@ public sealed partial class MainWindow
         if (viewer is null) return;
         if (e.PropertyName is nameof(ViewModel.LogSearch) or nameof(ViewModel.LogLevel))
         {
-            viewer.SetFilter(ViewModel.LogSearch, ViewModel.LogLevel);
+            // Do not schedule a filter rebuild before a cursor exists. The previous implementation
+            // did this during startup; its delayed Clear() could run after a manual refresh and make
+            // freshly rendered logs disappear about 200 ms later.
+            if (_ansiLogFilterReady) viewer.SetFilter(ViewModel.LogSearch, ViewModel.LogLevel);
         }
         else if (e.PropertyName == nameof(ViewModel.LogWrap))
         {
@@ -86,10 +130,17 @@ public sealed partial class MainWindow
     private async Task RefreshAnsiLogAsync(bool forceReload)
     {
         var viewer = _ansiLogViewer;
-        if (viewer is null) return;
+        if (viewer is null)
+        {
+            InitializeAnsiLogViewer();
+            viewer = _ansiLogViewer;
+            if (viewer is null) return;
+        }
+
         var item = ViewModel.SelectedConnection;
         if (item is null)
         {
+            _ansiLogFilterReady = false;
             viewer.Clear();
             return;
         }
@@ -99,6 +150,7 @@ public sealed partial class MainWindow
             : ViewModel.CurrentLogPath;
         if (string.IsNullOrWhiteSpace(path))
         {
+            _ansiLogFilterReady = false;
             viewer.Clear();
             return;
         }
@@ -106,6 +158,14 @@ public sealed partial class MainWindow
         try
         {
             await viewer.ShowLogAsync(item.Identity, path, forceReload);
+
+            // Apply the current search/level only after at least one real parsed line exists.
+            // Error placeholder lines use a negative sequence and must remain visible.
+            if (viewer.VisibleLines.Any(static line => line.Sequence >= 0))
+            {
+                _ansiLogFilterReady = true;
+                viewer.SetFilter(ViewModel.LogSearch, ViewModel.LogLevel);
+            }
         }
         catch (Exception exception)
         {
