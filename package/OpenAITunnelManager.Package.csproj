@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <PackageId>OpenAITunnelManager.Windows</PackageId>
+    <PackageVersion>$(Version)</PackageVersion>
+    <Authors>DinosaurEggs</Authors>
+    <Description>Self-contained Windows x64 and ARM64 builds of OpenAI MCP Tunnel Manager.</Description>
+    <RepositoryUrl>https://github.com/DinosaurEggs/openai-mcp-tunnel-manager</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="../artifacts/win-x64/**/*" Pack="true" PackagePath="tools/win-x64/%(RecursiveDir)%(Filename)%(Extension)" />
+    <None Include="../artifacts/win-arm64/**/*" Pack="true" PackagePath="tools/win-arm64/%(RecursiveDir)%(Filename)%(Extension)" />
+    <None Include="../README.md" Pack="true" PackagePath="README.md" />
+  </ItemGroup>
+</Project>

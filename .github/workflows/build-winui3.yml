@@ -9,16 +9,20 @@ on:
     paths:
       - "src/OpenAITunnelManager.**/**"
       - "tests/**"
+      - "package/**"
       - "Directory.Build.props"
       - "Directory.Build.targets"
       - "Directory.Packages.props"
       - "global.json"
       - "OpenAITunnelManager.slnx"
+      - "README.md"
+      - "RELEASE_NOTES.md"
       - ".github/workflows/build-winui3.yml"
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+  packages: write
 
 concurrency:
   group: winui3-${{ github.workflow }}-${{ github.ref }}
@@ -272,3 +276,124 @@ jobs:
           path: artifacts/${{ matrix.rid }}/
           if-no-files-found: error
           retention-days: 14
+
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master' && startsWith(github.event.head_commit.message, 'Release v')
+    needs:
+      - test
+      - build
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.401
+
+      - name: Download x64 artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: OpenAITunnelManager-win-x64
+          path: artifacts/win-x64
+
+      - name: Download ARM64 artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: OpenAITunnelManager-win-arm64
+          path: artifacts/win-arm64
+
+      - name: Validate release version
+        id: version
+        shell: pwsh
+        env:
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          $xml = [xml](Get-Content Directory.Build.props -Raw)
+          $version = [string]$xml.Project.PropertyGroup.Version
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            throw 'Version is missing from Directory.Build.props.'
+          }
+          $expected = "Release v$version"
+          if (-not $env:COMMIT_MESSAGE.StartsWith($expected)) {
+            throw "Release commit message must start with '$expected'."
+          }
+          "value=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "Release version: $version"
+
+      - name: Clean runtime-generated files
+        shell: pwsh
+        run: |
+          foreach ($rid in @('win-x64', 'win-arm64')) {
+            foreach ($directory in @('config', 'logs', 'state')) {
+              $path = Join-Path "artifacts/$rid" $directory
+              if (Test-Path $path) {
+                Remove-Item $path -Recurse -Force
+              }
+            }
+          }
+
+      - name: Pack GitHub Package
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.value }}"
+          dotnet pack package/OpenAITunnelManager.Package.csproj -c Release -o artifacts/package /p:PackageVersion=$version
+          if ($LASTEXITCODE -ne 0) { throw 'NuGet package creation failed.' }
+
+          $package = Get-ChildItem artifacts/package/OpenAITunnelManager.Windows.*.nupkg | Where-Object { $_.Name -notlike '*.symbols.nupkg' } | Select-Object -First 1
+          if (-not $package) { throw 'NuGet package was not produced.' }
+
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $archive = [System.IO.Compression.ZipFile]::OpenRead($package.FullName)
+          try {
+            $entries = @($archive.Entries | ForEach-Object { $_.FullName })
+            foreach ($required in @(
+              'tools/win-x64/OpenAITunnelManager.exe',
+              'tools/win-arm64/OpenAITunnelManager.exe',
+              'README.md'
+            )) {
+              if ($entries -notcontains $required) {
+                throw "Required package entry not found: $required"
+              }
+            }
+          }
+          finally {
+            $archive.Dispose()
+          }
+
+      - name: Publish GitHub Package
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $package = Get-ChildItem artifacts/package/OpenAITunnelManager.Windows.*.nupkg | Where-Object { $_.Name -notlike '*.symbols.nupkg' } | Select-Object -First 1
+          if (-not $package) { throw 'NuGet package not found.' }
+          dotnet nuget push $package.FullName --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" --api-key $env:GITHUB_TOKEN --skip-duplicate
+          if ($LASTEXITCODE -ne 0) { throw 'GitHub Packages publish failed.' }
+
+      - name: Create release archives
+        shell: pwsh
+        run: |
+          Compress-Archive -Path artifacts/win-x64/* -DestinationPath artifacts/OpenAITunnelManager-win-x64.zip -Force
+          Compress-Archive -Path artifacts/win-arm64/* -DestinationPath artifacts/OpenAITunnelManager-win-arm64.zip -Force
+
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = "${{ steps.version.outputs.value }}"
+          $tag = "v$version"
+          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) {
+            throw "Release $tag already exists."
+          }
+          gh release create $tag `
+            "artifacts/OpenAITunnelManager-win-x64.zip#OpenAITunnelManager-win-x64.zip" `
+            "artifacts/OpenAITunnelManager-win-arm64.zip#OpenAITunnelManager-win-arm64.zip" `
+            --repo $env:GITHUB_REPOSITORY `
+            --target $env:GITHUB_SHA `
+            --title "OpenAI MCP Tunnel Manager $tag" `
+            --notes-file RELEASE_NOTES.md
+          if ($LASTEXITCODE -ne 0) { throw 'GitHub Release publish failed.' }
