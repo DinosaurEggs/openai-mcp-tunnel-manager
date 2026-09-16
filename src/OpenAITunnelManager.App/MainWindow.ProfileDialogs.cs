@@ -14,8 +14,11 @@ public sealed partial class MainWindow
         // The host owns the editor size. Do not lock both ContentDialog and UserControl widths:
         // WinUI's ContentDialog template has its own presenter constraints and double-locking the
         // dimensions causes off-center placement and focus-time re-measurement.
-        var dialogWidth = Math.Clamp(windowWidth * 0.62, 600d, 860d);
-        var dialogHeight = Math.Clamp(windowHeight * 0.68, 500d, 720d);
+        var desiredDialogWidth = Math.Clamp(windowWidth * 0.62, 600d, 860d);
+        var dialogWidth = Math.Min(desiredDialogWidth, Math.Max(360d, windowWidth - 64d));
+        var desiredContentHeight = Math.Clamp(windowHeight * 0.68, 500d, 720d);
+        var availableContentHeight = Math.Max(260d, windowHeight * 0.94 - 180d);
+        var contentHeight = Math.Min(desiredContentHeight, availableContentHeight);
         var contentWidth = Math.Max(0d, dialogWidth - 48d);
 
         editor.Width = double.NaN;
@@ -30,7 +33,7 @@ public sealed partial class MainWindow
         var host = new Grid
         {
             Width = contentWidth,
-            Height = dialogHeight,
+            Height = contentHeight,
             MinWidth = 0,
             MinHeight = 0,
             HorizontalAlignment = HorizontalAlignment.Stretch,
@@ -58,6 +61,7 @@ public sealed partial class MainWindow
         // centered consistently instead of silently clamping to the platform default width.
         dialog.Resources["ContentDialogMinWidth"] = dialogWidth;
         dialog.Resources["ContentDialogMaxWidth"] = dialogWidth;
+        dialog.Opened += (_, _) => editor.ResetInitialViewport();
 
         return dialog;
     }
