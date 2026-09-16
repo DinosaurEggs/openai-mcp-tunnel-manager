@@ -40,6 +40,8 @@ public sealed partial class MainWindow
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
+        var titleIndex = SettingsContentPanel.Children.IndexOf(titlePanel);
+        SettingsContentPanel.Children.RemoveAt(titleIndex);
         titlePanel.HorizontalAlignment = HorizontalAlignment.Stretch;
         Grid.SetColumn(titlePanel, 0);
         header.Children.Add(titlePanel);
@@ -60,9 +62,6 @@ public sealed partial class MainWindow
         headerActions.Children.Add(save);
         Grid.SetColumn(headerActions, 1);
         header.Children.Add(headerActions);
-
-        var titleIndex = SettingsContentPanel.Children.IndexOf(titlePanel);
-        SettingsContentPanel.Children.RemoveAt(titleIndex);
         SettingsContentPanel.Children.Insert(titleIndex, header);
 
         // The old footer only showed settings.json path and another save button.
