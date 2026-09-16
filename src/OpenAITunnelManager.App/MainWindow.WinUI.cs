@@ -70,6 +70,9 @@ public sealed partial class MainWindow : Window
     {
         if (_initialized) return;
         _initialized = true;
+        // InitializeComponent normally establishes this parent relationship already. Repeat here
+        // after Loaded as an idempotent fallback in case WinUI deferred the visual parent.
+        InitializeAnsiLogViewer();
         if (Navigation.SettingsItem is NavigationViewItem settingsItem) settingsItem.Content = "设置";
         AppLog.Info("MainWindow loaded; initializing settings and tunnel-client state");
 
@@ -252,6 +255,8 @@ public sealed partial class MainWindow : Window
         }
 
         _logTimer.Stop();
+        _ansiLogViewer?.Dispose();
+        _ansiLogViewer = null;
         DisposeTray();
     }
 
@@ -282,6 +287,8 @@ public sealed partial class MainWindow : Window
         finally
         {
             _allowClose = true;
+            _ansiLogViewer?.Dispose();
+            _ansiLogViewer = null;
             DisposeTray();
             Close();
         }

@@ -47,12 +47,26 @@ public sealed record ParsedAnsiLine(
     LogSeverity Severity,
     IReadOnlyList<AnsiTextSpan>? Spans);
 
-public sealed record LogLine(
-    long Sequence,
-    string Text,
-    LogSeverity Severity,
-    IReadOnlyList<AnsiTextSpan>? Spans)
+// WinUI's generated XAML type metadata writes public properties when a model is used by a
+// DataTemplate. Keep this as a small mutable binding DTO rather than an init-only record.
+public sealed class LogLine
 {
+    public LogLine()
+    {
+    }
+
+    public LogLine(long sequence, string text, LogSeverity severity, IReadOnlyList<AnsiTextSpan>? spans)
+    {
+        Sequence = sequence;
+        Text = text;
+        Severity = severity;
+        Spans = spans;
+    }
+
+    public long Sequence { get; set; }
+    public string Text { get; set; } = string.Empty;
+    public LogSeverity Severity { get; set; }
+    public IReadOnlyList<AnsiTextSpan>? Spans { get; set; }
     public bool HasAnsi => Spans is { Count: > 0 };
 }
 
