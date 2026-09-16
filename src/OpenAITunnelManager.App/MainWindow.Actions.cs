@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using OpenAITunnelManager.App.Controls;
 using OpenAITunnelManager.Core.Models;
 using OpenAITunnelManager.Infrastructure.TunnelClient;
 using Windows.Storage.Pickers;
@@ -20,40 +21,67 @@ public sealed partial class MainWindow
             return;
         }
 
-        var name = new TextBox { Header = "Profile 名称", PlaceholderText = "my-profile", HorizontalAlignment = HorizontalAlignment.Stretch };
-        var tunnelId = new TextBox { Header = "Tunnel ID", PlaceholderText = "tunnel_ + 32 位小写十六进制字符", HorizontalAlignment = HorizontalAlignment.Stretch };
-        var type = new ComboBox { Header = "MCP 类型", SelectedIndex = 0, HorizontalAlignment = HorizontalAlignment.Stretch };
-        type.Items.Add("HTTP URL");
-        type.Items.Add("STDIO Command");
-        var target = new TextBox { Header = "MCP 地址 / 命令", PlaceholderText = "例如 http://127.0.0.1:8000/mcp", HorizontalAlignment = HorizontalAlignment.Stretch };
-        var secret = new PasswordBox { Header = "Runtime API Key", PlaceholderText = "可留空，填写后仅保存到 Windows 凭据管理器", HorizontalAlignment = HorizontalAlignment.Stretch };
-        var enabled = new CheckBox { Content = "启用此配置", IsChecked = true };
-        var autoConnect = new CheckBox { Content = "程序启动后自动连接" };
-        var autoReconnect = new CheckBox { Content = "异常停止后自动重连" };
-        var error = new TextBlock { TextWrapping = TextWrapping.Wrap, Foreground = new SolidColorBrush(Microsoft.UI.Colors.IndianRed) };
-        var panel = new StackPanel { Spacing = 10, HorizontalAlignment = HorizontalAlignment.Stretch };
-        foreach (var control in new UIElement[] { name, tunnelId, type, target, secret, enabled, autoConnect, autoReconnect, error }) panel.Children.Add(control);
-
-        var dialog = NewDialog("新建 tunnel-client Profile", panel, "创建");
+        var editor = new ProfileEditorControl();
+        editor.InitializeForCreate();
+        var dialog = NewProfileEditorDialog("新建 Profile", editor, "创建");
         ProfileSpec? spec = null;
+
         dialog.PrimaryButtonClick += (_, args) =>
         {
-            spec = new ProfileSpec(name.Text, tunnelId.Text, type.SelectedIndex == 1 ? McpType.Stdio : McpType.Http, target.Text);
+            editor.ClearValidationError();
+            spec = new ProfileSpec(editor.ProfileName, editor.TunnelId, editor.McpType, editor.TargetValue);
             var errors = spec.Validate();
-            if (errors.Count == 0) return;
-            args.Cancel = true;
-            error.Text = string.Join(Environment.NewLine, errors);
+            if (errors.Count > 0)
+            {
+                args.Cancel = true;
+                editor.ShowValidationError(string.Join(Environment.NewLine, errors));
+                return;
+            }
+
+            if (!editor.AdvancedEdited) return;
+            if (string.IsNullOrWhiteSpace(editor.RawText))
+            {
+                args.Cancel = true;
+                editor.ShowValidationError("Profile 内容不能为空", advanced: true);
+                return;
+            }
+
+            try
+            {
+                var metadata = ProfileDocumentEditor.ReadMetadata(editor.RawText);
+                if (!string.Equals(metadata.TargetKind, editor.ExpectedTargetKind, StringComparison.Ordinal))
+                {
+                    args.Cancel = true;
+                    editor.ShowValidationError(
+                        $"高级配置中的 main MCP 类型为 {metadata.TargetKind}，与基本页选择的 {editor.ExpectedTargetKind} 不一致。",
+                        advanced: true);
+                }
+            }
+            catch (Exception exception)
+            {
+                args.Cancel = true;
+                editor.ShowValidationError(exception.Message, advanced: true);
+            }
         };
 
         if (await dialog.ShowAsync() != ContentDialogResult.Primary || spec is null) return;
         try
         {
-            await ViewModel.CreateProfileAsync(spec, secret.Password, new ProfilePreference
+            var preference = new ProfilePreference
             {
-                Enabled = enabled.IsChecked == true,
-                AutoConnect = autoConnect.IsChecked == true,
-                AutoReconnect = autoReconnect.IsChecked == true
-            });
+                Enabled = editor.Enabled,
+                AutoConnect = editor.AutoConnect,
+                AutoReconnect = editor.AutoReconnect
+            };
+
+            if (editor.AdvancedEdited)
+            {
+                await ViewModel.CreateProfileFromTextAsync(spec, editor.RawText, editor.Secret, preference);
+            }
+            else
+            {
+                await ViewModel.CreateProfileAsync(spec, editor.Secret, preference);
+            }
         }
         catch (Exception exception)
         {
@@ -72,74 +100,81 @@ public sealed partial class MainWindow
         try
         {
             var data = await ViewModel.LoadSelectedProfileAsync();
-            var commonTargetSupported = data.TargetKind is "server_url" or "command";
-            var tunnelId = new TextBox { Header = "Tunnel ID", Text = data.TunnelId, HorizontalAlignment = HorizontalAlignment.Stretch };
-            var target = new TextBox
-            {
-                Header = data.TargetKind == "command"
-                    ? "main MCP Command"
-                    : commonTargetSupported ? "main MCP URL" : $"main MCP target ({data.TargetKind}) - 请在高级配置中修改",
-                Text = data.TargetValue,
-                IsEnabled = commonTargetSupported,
-                HorizontalAlignment = HorizontalAlignment.Stretch
-            };
-            var secret = new PasswordBox { Header = "新的 Runtime API Key", PlaceholderText = data.HasSavedSecret ? "已保存；留空表示不修改" : "未保存；留空使用环境变量", HorizontalAlignment = HorizontalAlignment.Stretch };
-            var deleteSecret = new CheckBox { Content = "删除已保存的 Runtime API Key", IsEnabled = data.HasSavedSecret };
-            var enabled = new CheckBox { Content = "启用此配置", IsChecked = data.Preference.Enabled };
-            var autoConnect = new CheckBox { Content = "程序启动后自动连接", IsChecked = data.Preference.AutoConnect };
-            var autoReconnect = new CheckBox { Content = "异常停止后自动重连", IsChecked = data.Preference.AutoReconnect };
-            var raw = new TextBox
-            {
-                Header = "高级配置（完整 Profile YAML / JSON）",
-                Text = data.Text,
-                AcceptsReturn = true,
-                TextWrapping = TextWrapping.NoWrap,
-                FontFamily = new FontFamily("Cascadia Mono"),
-                HorizontalAlignment = HorizontalAlignment.Stretch
-            };
-            ConfigureProfileTextEditor(raw);
-            ScrollViewer.SetHorizontalScrollBarVisibility(raw, ScrollBarVisibility.Auto);
-            ScrollViewer.SetVerticalScrollBarVisibility(raw, ScrollBarVisibility.Auto);
+            var editor = new ProfileEditorControl();
+            editor.InitializeForEdit(
+                data.Name,
+                data.TunnelId,
+                data.TargetKind,
+                data.TargetValue,
+                data.Preference.Enabled,
+                data.Preference.AutoConnect,
+                data.Preference.AutoReconnect,
+                data.HasSavedSecret,
+                data.Text);
 
-            var error = new TextBlock { TextWrapping = TextWrapping.Wrap, Foreground = new SolidColorBrush(Microsoft.UI.Colors.IndianRed) };
-            var stack = new StackPanel { Spacing = 10, HorizontalAlignment = HorizontalAlignment.Stretch };
-            foreach (var control in new UIElement[] { tunnelId, target, enabled, autoConnect, autoReconnect, secret, deleteSecret, raw, error }) stack.Children.Add(control);
-            var scroll = new ScrollViewer
-            {
-                Content = stack,
-                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-                HorizontalContentAlignment = HorizontalAlignment.Stretch
-            };
-            var dialog = NewDialog($"编辑 Profile - {data.Name}", scroll, "保存");
+            var dialog = NewProfileEditorDialog($"编辑 Profile - {data.Name}", editor, "保存");
             dialog.PrimaryButtonClick += (_, args) =>
             {
-                var validationTarget = commonTargetSupported ? target.Text : "http://127.0.0.1/";
+                editor.ClearValidationError();
+                var validationTarget = editor.CommonTargetSupported ? editor.TargetValue : "http://127.0.0.1/";
                 var spec = new ProfileSpec(
                     data.Name,
-                    tunnelId.Text,
+                    editor.TunnelId,
                     data.TargetKind == "command" ? McpType.Stdio : McpType.Http,
                     validationTarget);
                 var errors = spec.Validate();
-                if (errors.Count == 0 && !string.IsNullOrWhiteSpace(raw.Text)) return;
-                args.Cancel = true;
-                error.Text = errors.Count > 0 ? string.Join(Environment.NewLine, errors) : "Profile 内容不能为空";
+                if (errors.Count > 0)
+                {
+                    args.Cancel = true;
+                    editor.ShowValidationError(string.Join(Environment.NewLine, errors));
+                    return;
+                }
+
+                if (string.IsNullOrWhiteSpace(editor.RawText))
+                {
+                    args.Cancel = true;
+                    editor.ShowValidationError("Profile 内容不能为空", advanced: true);
+                    return;
+                }
+
+                try
+                {
+                    if (editor.CommonTargetSupported)
+                    {
+                        _ = ProfileDocumentEditor.ApplyCommonFields(
+                            editor.RawText,
+                            data.TunnelId,
+                            data.TargetKind,
+                            data.TargetValue,
+                            editor.TunnelId,
+                            editor.TargetValue);
+                    }
+                    else
+                    {
+                        _ = ProfileDocumentEditor.ReadMetadata(editor.RawText);
+                    }
+                }
+                catch (Exception exception)
+                {
+                    args.Cancel = true;
+                    editor.ShowValidationError(exception.Message, advanced: true);
+                }
             };
 
             if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
             await ViewModel.SaveSelectedProfileAsync(
                 data,
-                raw.Text,
-                tunnelId.Text,
-                commonTargetSupported ? target.Text : data.TargetValue,
+                editor.RawText,
+                editor.TunnelId,
+                editor.CommonTargetSupported ? editor.TargetValue : data.TargetValue,
                 new ProfilePreference
                 {
-                    Enabled = enabled.IsChecked == true,
-                    AutoConnect = autoConnect.IsChecked == true,
-                    AutoReconnect = autoReconnect.IsChecked == true
+                    Enabled = editor.Enabled,
+                    AutoConnect = editor.AutoConnect,
+                    AutoReconnect = editor.AutoReconnect
                 },
-                secret.Password,
-                deleteSecret.IsChecked == true);
+                editor.Secret,
+                editor.DeleteSecret);
         }
         catch (Exception exception)
         {

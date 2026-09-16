@@ -10,6 +10,7 @@ public interface ITunnelClientOperations
     Task<TunnelClientCapabilities> GetCapabilitiesAsync(CancellationToken cancellationToken = default);
     Task<TunnelConnection> GetStatusAsync(TunnelConnection connection, CancellationToken cancellationToken = default);
     Task CreateProfileAsync(ProfileSpec spec, CancellationToken cancellationToken = default);
+    Task CreateProfileTextAsync(string name, string text, CancellationToken cancellationToken = default);
     Task<string> ReadProfileTextAsync(string name, string expectedPath, CancellationToken cancellationToken = default);
     Task SaveProfileTextAsync(string name, string expectedPath, string text, CancellationToken cancellationToken = default);
     Task DeleteProfileAsync(string name, string expectedPath, CancellationToken cancellationToken = default);
