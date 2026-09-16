@@ -8,6 +8,7 @@ public sealed class AppSettings
     public string TunnelClientPath { get; set; } = string.Empty;
     public bool CloseToTray { get; set; } = true;
     public bool StartWithWindows { get; set; }
+    public string ThemeMode { get; set; } = "system";
     public string ProfileDirectoryOverride { get; set; } = string.Empty;
     public string StateDirectoryOverride { get; set; } = string.Empty;
     public Dictionary<string, ProfilePreference> ProfilePreferences { get; set; } = new(StringComparer.OrdinalIgnoreCase);
