@@ -159,9 +159,10 @@ public sealed partial class MainWindow
         {
             await viewer.ShowLogAsync(item.Identity, path, forceReload);
 
-            // Apply the current search/level only after at least one real parsed line exists.
-            // Error placeholder lines use a negative sequence and must remain visible.
-            if (viewer.VisibleLines.Any(static line => line.Sequence >= 0))
+            // The viewer keeps the active query/level once configured and can append matching new
+            // lines incrementally. Configure it only when a real cursor first becomes available;
+            // rebuilding all visible lines every one-second refresh would defeat that design.
+            if (!_ansiLogFilterReady && viewer.VisibleLines.Any(static line => line.Sequence >= 0))
             {
                 _ansiLogFilterReady = true;
                 viewer.SetFilter(ViewModel.LogSearch, ViewModel.LogLevel);
