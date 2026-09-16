@@ -170,25 +170,6 @@ public partial class ConnectionsViewModel : ObservableObject
         }
     }
 
-    public async Task SaveSettingsAsync()
-    {
-        var path = TunnelClientPath.Trim();
-        if (!string.IsNullOrWhiteSpace(path) && !File.Exists(path)) throw new FileNotFoundException("选择的 tunnel-client.exe 不存在", path);
-        Settings.TunnelClientPath = path;
-        Settings.CloseToTray = CloseToTray;
-        Settings.StartWithWindows = StartWithWindows;
-        Settings.ProfileDirectoryOverride = ProfileDirectoryOverride.Trim();
-        Settings.StateDirectoryOverride = StateDirectoryOverride.Trim();
-        _autostart.SetEnabled(StartWithWindows);
-        await _settingsStore.SaveAsync(Settings);
-        ApplySettingsToOptions();
-        _initialAutoConnectApplied = false;
-        StatusMessage = "设置已保存";
-        await RefreshAsync();
-        StartRuntimeEvents();
-    }
-
-    public void SetTunnelClientPath(string path) => TunnelClientPath = path;
     private void ApplySettingsToOptions() => _options.Apply(Settings);
 
     [RelayCommand(CanExecute = nameof(CanStart))]
