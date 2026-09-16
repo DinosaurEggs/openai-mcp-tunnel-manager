@@ -69,8 +69,9 @@ public sealed partial class MainWindow
 
     private void EnsureAnsiLogViewerOnTabChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (!IsLogTabSelected() || _ansiLogViewer is not null) return;
-        DispatcherQueue.TryEnqueue(InitializeAnsiLogViewer);
+        if (!IsLogTabSelected()) return;
+        HideLogPathFooter();
+        if (_ansiLogViewer is null) DispatcherQueue.TryEnqueue(InitializeAnsiLogViewer);
     }
 
     private void HideLogPathFooter()
