@@ -4,6 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:controls="using:OpenAITunnelManager.App.Controls"
     mc:Ignorable="d"
     Title="OpenAI MCP Tunnel Manager">
 
@@ -41,7 +42,6 @@
 
             <NavigationView.Content>
                 <Grid x:Name="ContentGrid" Padding="24,20,24,16">
-                    <!-- Overview: global dashboard only. Connection entities belong on the Connections page. -->
                     <Grid x:Name="DashboardPage" Visibility="Collapsed">
                         <ScrollViewer x:Name="DashboardScrollViewer" VerticalScrollBarVisibility="Auto" HorizontalContentAlignment="Stretch">
                             <StackPanel x:Name="DashboardContentPanel" Spacing="20" HorizontalAlignment="Stretch">
@@ -179,7 +179,6 @@
                         </ScrollViewer>
                     </Grid>
 
-                    <!-- Connections -->
                     <Grid x:Name="ConnectionsPage">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
@@ -357,8 +356,6 @@
                                                     <RowDefinition Height="Auto" />
                                                     <RowDefinition Height="10" />
                                                     <RowDefinition Height="*" />
-                                                    <RowDefinition Height="8" />
-                                                    <RowDefinition Height="Auto" />
                                                 </Grid.RowDefinitions>
                                                 <Grid x:Name="LogsHeader">
                                                     <Grid.ColumnDefinitions>
@@ -370,7 +367,7 @@
                                                         <TextBlock Text="读取当前连接的 Runtime 或 GUI 前台 Profile 日志" Opacity="0.7" TextWrapping="Wrap" />
                                                     </StackPanel>
                                                     <StackPanel x:Name="LogsHeaderActions" Grid.Column="1" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
-                                                        <Button Content="立即刷新" Command="{Binding RefreshLogCommand}" />
+                                                        <Button Content="立即刷新" Click="AnsiLogManualRefresh_Click" />
                                                         <Button Content="打开文件位置" IsEnabled="{Binding CanOpenLogSelected}" Click="OpenLogLocation_Click" />
                                                     </StackPanel>
                                                 </Grid>
@@ -391,23 +388,15 @@
                                                         <ComboBoxItem Content="ERROR" />
                                                     </ComboBox>
                                                     <CheckBox Grid.Column="2" Content="自动刷新" IsChecked="{Binding LogAutoRefresh, Mode=TwoWay}" VerticalAlignment="Center" />
-                                                    <CheckBox Grid.Column="3" x:Name="LogWrapCheckBox" Content="自动换行" IsChecked="{Binding LogWrap, Mode=TwoWay}" VerticalAlignment="Center" Checked="LogWrap_Changed" Unchecked="LogWrap_Changed" />
+                                                    <CheckBox Grid.Column="3" x:Name="LogWrapCheckBox" Content="自动换行" IsChecked="{Binding LogWrap, Mode=TwoWay}" VerticalAlignment="Center" />
                                                 </Grid>
 
                                                 <Border Grid.Row="4" Background="{ThemeResource ControlFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="12">
-                                                    <TextBox
-                                                        x:Name="LogTextBox"
-                                                        Text="{Binding VisibleLog}"
-                                                        IsReadOnly="True"
-                                                        AcceptsReturn="True"
-                                                        FontFamily="Cascadia Mono"
-                                                        TextWrapping="NoWrap"
-                                                        ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                                                        ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                                        BorderThickness="0"
-                                                        Background="Transparent" />
+                                                    <controls:AnsiLogViewerControl
+                                                        x:Name="AnsiLogViewer"
+                                                        HorizontalAlignment="Stretch"
+                                                        VerticalAlignment="Stretch" />
                                                 </Border>
-                                                <TextBlock Grid.Row="6" Text="{Binding CurrentLogPath}" Opacity="0.65" TextTrimming="CharacterEllipsis" />
                                             </Grid>
                                         </TabViewItem>
 
@@ -469,7 +458,6 @@
                         </Grid>
                     </Grid>
 
-                    <!-- Settings -->
                     <Grid x:Name="SettingsPage" Visibility="Collapsed">
                         <ScrollViewer x:Name="SettingsScrollViewer" VerticalScrollBarVisibility="Auto" HorizontalContentAlignment="Stretch">
                             <StackPanel x:Name="SettingsContentPanel" Spacing="18" HorizontalAlignment="Stretch">
