@@ -1,8 +1,8 @@
-# Python 1.0.0 → WinUI 3 功能对照
+# OpenAI MCP Tunnel Manager 1.1.0 功能验收
 
-此表用于验证 C# / WinUI 3 重写版的最终产品行为。`tunnel-client` 仍是 Profile / Runtime 唯一事实来源；Python 1.0.0 中已明确移除的功能不作为重写目标，也不保留隐藏 UI 或隐藏后端。
+此表用于验证 C# / WinUI 3 版本的最终产品行为。`tunnel-client` 仍是 Profile / Runtime 唯一事实来源；已明确移除的功能不保留隐藏 UI 或隐藏后端。
 
-| Python 1.0.0 / 最终约束 | WinUI 3 实现 | 自动门禁 |
+| 产品约束 | WinUI 3 实现 | 自动门禁 |
 |---|---|---|
 | `tunnel-client` 是 Profile / Runtime 唯一事实来源 | `TunnelClientService` / `TunnelClientOperations` | fake CLI 集成测试 |
 | 外部 Profile / Runtime 变化手动刷新后同步 | 启动、手动刷新、CRUD、lifecycle 时读取 inventory | 集成测试 |
@@ -15,7 +15,7 @@
 | 设置 tunnel-client.exe | WinUI `FileOpenPicker` | explicit path 测试 |
 | 显式错误路径不 fallback | `TunnelClientOptions.ResolveExecutablePath` | 行为测试 |
 | Manager 配置不保存 Tunnel ID / target / API Key | schema 2 `config/settings.json` | 设置测试 |
-| 旧 Python settings / tunnels[] 单向迁移 | 保留本机偏好、清除旧 Tunnel 定义 | 兼容测试 |
+| 旧版 settings / tunnels[] 单向迁移 | 保留本机偏好、清除旧 Tunnel 定义 | 兼容测试 |
 | 旧刷新间隔配置不继续保留 | 读取 `refreshIntervalMs` / `refresh_interval_ms` 后重写并移除 | 兼容测试 |
 | 损坏 settings 保留 `.broken` | `JsonSettingsStore` | 兼容测试 |
 | Manager 配置 / 日志 / 状态只写程序目录 | `<EXE>\config` / `<EXE>\logs` / `<EXE>\state` | AppDataPaths + smoke |
