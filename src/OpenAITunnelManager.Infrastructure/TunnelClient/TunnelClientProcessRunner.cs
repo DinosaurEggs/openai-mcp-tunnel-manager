@@ -1,10 +1,13 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Text;
 
 namespace OpenAITunnelManager.Infrastructure.TunnelClient;
 
 public sealed class TunnelClientProcessRunner(TunnelClientOptions options)
 {
+    private static readonly UTF8Encoding Utf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: false);
+
     public ProcessStartInfo CreateStartInfo(
         IEnumerable<string> arguments,
         string? secretRef = null,
@@ -17,6 +20,8 @@ public sealed class TunnelClientProcessRunner(TunnelClientOptions options)
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             RedirectStandardInput = true,
+            StandardOutputEncoding = Utf8,
+            StandardErrorEncoding = Utf8,
             CreateNoWindow = true,
             WorkingDirectory = AppContext.BaseDirectory
         };
