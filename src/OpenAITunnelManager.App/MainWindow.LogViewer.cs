@@ -16,9 +16,14 @@ public sealed partial class MainWindow
         _ansiLogViewerConfigured = true;
         _ansiLogFilterReady = false;
 
-        // The log tab must consume the full TabView content viewport. Otherwise the content
-        // presenter may size itself to the realized log rows, making the viewer shrink when
-        // only a few lines are visible.
+        // Keep the TabView and its content presenter constrained to the available details-panel
+        // viewport. Without these alignments, the selected tab can be measured from the desired
+        // height of its child content, which makes the log viewer shrink to the visible log rows.
+        ConnectionTabs.HorizontalAlignment = HorizontalAlignment.Stretch;
+        ConnectionTabs.VerticalAlignment = VerticalAlignment.Stretch;
+        ConnectionTabs.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+        ConnectionTabs.VerticalContentAlignment = VerticalAlignment.Stretch;
+
         foreach (var tab in ConnectionTabs.TabItems.OfType<TabViewItem>())
         {
             if (!string.Equals(tab.Header?.ToString(), "日志", StringComparison.Ordinal)) continue;
