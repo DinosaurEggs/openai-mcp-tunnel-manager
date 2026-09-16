@@ -25,7 +25,7 @@ public partial class ConnectionsViewModel
 
         // Runtime inventory/status is refreshed only on startup, manual refresh, and explicit
         // lifecycle/CRUD actions. No periodic runtime polling is started here.
-        StartRuntimeMonitor();
+        StartRuntimeEvents();
         await RefreshAsync();
     }
 }
