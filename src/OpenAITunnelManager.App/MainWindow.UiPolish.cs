@@ -12,7 +12,6 @@ public sealed partial class MainWindow
         if (_uiPolishConfigured) return;
         _uiPolishConfigured = true;
         ConfigureItemOnlyContextMenu();
-        ConfigureAdvancedDirectoryPickers();
         ConfigureDashboardState();
         ConfigureSupplementalLayout();
         RequestUiPolish();
@@ -26,8 +25,6 @@ public sealed partial class MainWindow
 
     private void ApplyUiPolish()
     {
-        ConfigureAdvancedDirectoryPickers();
-
         // Only normalize buttons owned by our page content. Do not mutate NavigationView
         // template buttons, otherwise the built-in pane toggle icon is pushed off-center.
         foreach (var button in FindDescendants<Button>(ContentGrid))
