@@ -1,7 +1,8 @@
 <UserControl
     x:Class="OpenAITunnelManager.App.Controls.ProfileEditorControl"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:OpenAITunnelManager.App.Controls">
 
     <Grid
         MinWidth="0"
@@ -144,7 +145,7 @@
                             Opacity="0.65"
                             TextWrapping="Wrap" />
                     </StackPanel>
-                    <TextBox
+                    <controls:ProfileTextEditor
                         x:Name="RawEditor"
                         Grid.Row="2"
                         MinWidth="0"
