@@ -78,6 +78,7 @@ public sealed partial class MainWindow : Window
         try
         {
             await ViewModel.InitializeForManualRefreshAsync();
+            InitializeThemeSetting();
             _logTimer.Start();
             ApplyUiPolish();
             if (!ViewModel.IsClientAvailable) SelectPage("settings");
