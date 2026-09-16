@@ -11,15 +11,19 @@ public sealed partial class MainWindow
         var windowWidth = RootGrid.ActualWidth > 1 ? RootGrid.ActualWidth : 1000d;
         var windowHeight = RootGrid.ActualHeight > 1 ? RootGrid.ActualHeight : 800d;
 
-        // The host owns the editor size. Do not lock both ContentDialog and UserControl widths:
-        // WinUI's ContentDialog template has its own presenter constraints and double-locking the
-        // dimensions causes off-center placement and focus-time re-measurement.
+        // Width is owned only by the dialog host. The editor itself stretches inside it.
         var desiredDialogWidth = Math.Clamp(windowWidth * 0.62, 600d, 860d);
         var dialogWidth = Math.Min(desiredDialogWidth, Math.Max(360d, windowWidth - 64d));
-        var desiredContentHeight = Math.Clamp(windowHeight * 0.68, 500d, 720d);
-        var availableContentHeight = Math.Max(260d, windowHeight * 0.94 - 180d);
-        var contentHeight = Math.Min(desiredContentHeight, availableContentHeight);
         var contentWidth = Math.Max(0d, dialogWidth - 48d);
+
+        // ContentDialog still needs vertical room for its title area, template padding and
+        // fixed footer buttons. Previously the body itself was capped at 720 epx, which made
+        // both create/edit dialogs unnecessarily short on large windows and clipped the
+        // credential section against the footer. Allocate the body from the actual window
+        // height instead and reserve chrome space explicitly.
+        var dialogMaxHeight = Math.Max(480d, windowHeight * 0.92);
+        var chromeReserve = Math.Clamp(windowHeight * 0.18, 160d, 220d);
+        var contentHeight = Math.Max(320d, dialogMaxHeight - chromeReserve);
 
         editor.Width = double.NaN;
         editor.Height = double.NaN;
@@ -53,14 +57,14 @@ public sealed partial class MainWindow
             VerticalAlignment = VerticalAlignment.Center,
             MinWidth = 0,
             MaxWidth = double.PositiveInfinity,
-            MaxHeight = windowHeight * 0.94
+            MaxHeight = dialogMaxHeight
         };
 
-        // WinUI ships ContentDialog with a comparatively narrow theme maximum. Override the
-        // presenter resources for this editor only so the popup is measured around the host and
-        // centered consistently instead of silently clamping to the platform default width.
+        // Override the template limits for this editor only. The body remains internally
+        // scrollable, while the title and footer always stay inside the dialog bounds.
         dialog.Resources["ContentDialogMinWidth"] = dialogWidth;
         dialog.Resources["ContentDialogMaxWidth"] = dialogWidth;
+        dialog.Resources["ContentDialogMaxHeight"] = dialogMaxHeight;
         dialog.Opened += (_, _) => editor.ResetInitialViewport();
 
         return dialog;
