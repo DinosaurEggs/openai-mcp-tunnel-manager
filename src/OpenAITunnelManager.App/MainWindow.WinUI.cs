@@ -61,7 +61,7 @@ public sealed partial class MainWindow : Window
         _logTimer = DispatcherQueue.CreateTimer();
         _logTimer.Interval = TimeSpan.FromSeconds(1);
         _logTimer.Tick += LogTimer_Tick;
-        InitializeAnsiLogViewer();
+        ConfigureAnsiLogViewer();
         AppWindow.Closing += AppWindow_Closing;
         AppLog.Info("MainWindow construction completed");
     }
@@ -70,9 +70,6 @@ public sealed partial class MainWindow : Window
     {
         if (_initialized) return;
         _initialized = true;
-        // InitializeComponent normally establishes this parent relationship already. Repeat here
-        // after Loaded as an idempotent fallback in case WinUI deferred the visual parent.
-        InitializeAnsiLogViewer();
         if (Navigation.SettingsItem is NavigationViewItem settingsItem) settingsItem.Content = "设置";
         AppLog.Info("MainWindow loaded; initializing settings and tunnel-client state");
 
@@ -81,7 +78,6 @@ public sealed partial class MainWindow : Window
         try
         {
             await ViewModel.InitializeForManualRefreshAsync();
-            ViewModel.RestoreSelectedLogCache();
             _logTimer.Start();
             ApplyUiPolish();
             if (!ViewModel.IsClientAvailable) SelectPage("settings");
@@ -100,17 +96,7 @@ public sealed partial class MainWindow : Window
     private async void LogTimer_Tick(DispatcherQueueTimer sender, object args)
     {
         if (!IsLogTabSelected() || !ViewModel.LogAutoRefresh || ViewModel.IsBusy) return;
-        var horizontalOffset = CaptureLogHorizontalOffset();
-        try
-        {
-            await ViewModel.RefreshLogIncrementalAsync();
-            RestoreLogViewport(horizontalOffset, followVertical: true);
-        }
-        catch (Exception exception)
-        {
-            AppLog.Error("Background log refresh failed", exception);
-            ViewModel.StatusMessage = $"读取日志失败：{exception.Message}";
-        }
+        await RefreshAnsiLogAsync(forceReload: false);
     }
 
     private void Navigation_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
@@ -147,15 +133,12 @@ public sealed partial class MainWindow : Window
     private async void ConnectionsList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (!_initialized || ViewModel.SelectedConnection is null) return;
-        ViewModel.RestoreSelectedLogCache();
 
         try
         {
             if (IsLogTabSelected())
             {
-                var horizontalOffset = CaptureLogHorizontalOffset();
-                await ViewModel.RefreshLogIncrementalAsync();
-                RestoreLogViewport(horizontalOffset, followVertical: true);
+                await RefreshAnsiLogAsync(forceReload: false, resetFilterState: true);
             }
             else if (IsDiagnosticsTabSelected())
             {
@@ -175,10 +158,7 @@ public sealed partial class MainWindow : Window
         {
             if (IsLogTabSelected())
             {
-                ViewModel.RestoreSelectedLogCache();
-                var horizontalOffset = CaptureLogHorizontalOffset();
-                await ViewModel.RefreshLogIncrementalAsync();
-                RestoreLogViewport(horizontalOffset, followVertical: true);
+                await RefreshAnsiLogAsync(forceReload: false);
             }
             else if (IsDiagnosticsTabSelected())
             {
@@ -193,9 +173,6 @@ public sealed partial class MainWindow : Window
 
     private bool IsLogTabSelected() => ConnectionTabs.SelectedIndex == 1;
     private bool IsDiagnosticsTabSelected() => ConnectionTabs.SelectedIndex == 2;
-
-    private void ShowLogs_Click(object sender, RoutedEventArgs e) => ConnectionTabs.SelectedIndex = 1;
-    private void ShowDiagnostics_Click(object sender, RoutedEventArgs e) => ConnectionTabs.SelectedIndex = 2;
 
     private void SetupTrayIcon()
     {
@@ -255,8 +232,7 @@ public sealed partial class MainWindow : Window
         }
 
         _logTimer.Stop();
-        _ansiLogViewer?.Dispose();
-        _ansiLogViewer = null;
+        DisposeAnsiLogViewer();
         DisposeTray();
     }
 
@@ -287,8 +263,7 @@ public sealed partial class MainWindow : Window
         finally
         {
             _allowClose = true;
-            _ansiLogViewer?.Dispose();
-            _ansiLogViewer = null;
+            DisposeAnsiLogViewer();
             DisposeTray();
             Close();
         }
