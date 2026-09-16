@@ -23,27 +23,24 @@ public sealed partial class MainWindow
 
         var editor = new ProfileEditorControl();
         editor.InitializeForCreate();
-        var dialog = NewProfileEditorDialog("新建 Profile", editor, "创建");
         ProfileSpec? spec = null;
 
-        dialog.PrimaryButtonClick += (_, args) =>
+        bool ValidateCreate()
         {
             editor.ClearValidationError();
             spec = new ProfileSpec(editor.ProfileName, editor.TunnelId, editor.McpType, editor.TargetValue);
             var errors = spec.Validate();
             if (errors.Count > 0)
             {
-                args.Cancel = true;
                 editor.ShowValidationError(string.Join(Environment.NewLine, errors));
-                return;
+                return false;
             }
 
-            if (!editor.AdvancedEdited) return;
+            if (!editor.AdvancedEdited) return true;
             if (string.IsNullOrWhiteSpace(editor.RawText))
             {
-                args.Cancel = true;
                 editor.ShowValidationError("Profile 内容不能为空", advanced: true);
-                return;
+                return false;
             }
 
             try
@@ -51,20 +48,22 @@ public sealed partial class MainWindow
                 var metadata = ProfileDocumentEditor.ReadMetadata(editor.RawText);
                 if (!string.Equals(metadata.TargetKind, editor.ExpectedTargetKind, StringComparison.Ordinal))
                 {
-                    args.Cancel = true;
                     editor.ShowValidationError(
                         $"高级配置中的 main MCP 类型为 {metadata.TargetKind}，与基本页选择的 {editor.ExpectedTargetKind} 不一致。",
                         advanced: true);
+                    return false;
                 }
             }
             catch (Exception exception)
             {
-                args.Cancel = true;
                 editor.ShowValidationError(exception.Message, advanced: true);
+                return false;
             }
-        };
 
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary || spec is null) return;
+            return true;
+        }
+
+        if (!await ShowProfileEditorDialogAsync("新建 Profile", editor, "创建", ValidateCreate) || spec is null) return;
         try
         {
             var preference = new ProfilePreference
@@ -112,8 +111,7 @@ public sealed partial class MainWindow
                 data.HasSavedSecret,
                 data.Text);
 
-            var dialog = NewProfileEditorDialog($"编辑 Profile - {data.Name}", editor, "保存");
-            dialog.PrimaryButtonClick += (_, args) =>
+            bool ValidateEdit()
             {
                 editor.ClearValidationError();
                 var validationTarget = editor.CommonTargetSupported ? editor.TargetValue : "http://127.0.0.1/";
@@ -125,16 +123,14 @@ public sealed partial class MainWindow
                 var errors = spec.Validate();
                 if (errors.Count > 0)
                 {
-                    args.Cancel = true;
                     editor.ShowValidationError(string.Join(Environment.NewLine, errors));
-                    return;
+                    return false;
                 }
 
                 if (string.IsNullOrWhiteSpace(editor.RawText))
                 {
-                    args.Cancel = true;
                     editor.ShowValidationError("Profile 内容不能为空", advanced: true);
-                    return;
+                    return false;
                 }
 
                 try
@@ -156,12 +152,14 @@ public sealed partial class MainWindow
                 }
                 catch (Exception exception)
                 {
-                    args.Cancel = true;
                     editor.ShowValidationError(exception.Message, advanced: true);
+                    return false;
                 }
-            };
 
-            if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+                return true;
+            }
+
+            if (!await ShowProfileEditorDialogAsync($"编辑 Profile - {data.Name}", editor, "保存", ValidateEdit)) return;
             await ViewModel.SaveSelectedProfileAsync(
                 data,
                 editor.RawText,
