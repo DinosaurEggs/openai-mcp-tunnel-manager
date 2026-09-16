@@ -22,6 +22,8 @@ public sealed partial class MainWindow
                 ViewModel.ProfileDirectoryOverride = folder.Path;
             else
                 ViewModel.StateDirectoryOverride = folder.Path;
+
+            await ViewModel.PersistSettingsAsync();
         }
         catch (Exception exception)
         {
@@ -29,12 +31,22 @@ public sealed partial class MainWindow
         }
     }
 
-    private void ClearDirectoryOverride_Click(object sender, RoutedEventArgs e)
+    private async void ClearDirectoryOverride_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not Button { Tag: string kind }) return;
-        if (string.Equals(kind, "profile", StringComparison.Ordinal))
-            ViewModel.ProfileDirectoryOverride = string.Empty;
-        else
-            ViewModel.StateDirectoryOverride = string.Empty;
+
+        try
+        {
+            if (string.Equals(kind, "profile", StringComparison.Ordinal))
+                ViewModel.ProfileDirectoryOverride = string.Empty;
+            else
+                ViewModel.StateDirectoryOverride = string.Empty;
+
+            await ViewModel.PersistSettingsAsync();
+        }
+        catch (Exception exception)
+        {
+            await ShowErrorAsync($"清除目录覆盖失败：{exception.Message}");
+        }
     }
 }
