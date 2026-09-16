@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using OpenAITunnelManager.App.Diagnostics;
 
 namespace OpenAITunnelManager.App;
@@ -14,6 +15,20 @@ public sealed partial class MainWindow
         if (_ansiLogViewerConfigured) return;
         _ansiLogViewerConfigured = true;
         _ansiLogFilterReady = false;
+
+        // The log tab must consume the full TabView content viewport. Otherwise the content
+        // presenter may size itself to the realized log rows, making the viewer shrink when
+        // only a few lines are visible.
+        foreach (var tab in ConnectionTabs.TabItems.OfType<TabViewItem>())
+        {
+            if (!string.Equals(tab.Header?.ToString(), "日志", StringComparison.Ordinal)) continue;
+            tab.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+            tab.VerticalContentAlignment = VerticalAlignment.Stretch;
+            break;
+        }
+
+        AnsiLogViewer.HorizontalAlignment = HorizontalAlignment.Stretch;
+        AnsiLogViewer.VerticalAlignment = VerticalAlignment.Stretch;
         AnsiLogViewer.SetWrap(ViewModel.LogWrap);
         ViewModel.PropertyChanged += ViewModel_LogViewerPropertyChanged;
     }
