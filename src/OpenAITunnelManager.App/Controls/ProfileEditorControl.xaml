@@ -3,7 +3,11 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <Grid MinWidth="0">
+    <Grid
+        MinWidth="0"
+        MinHeight="0"
+        HorizontalAlignment="Stretch"
+        VerticalAlignment="Stretch">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -19,92 +23,118 @@
         <TabView
             x:Name="EditorTabs"
             Grid.Row="1"
+            MinWidth="0"
+            MinHeight="0"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Stretch"
             IsAddTabButtonVisible="False"
             CanDragTabs="False"
             CanReorderTabs="False"
             SelectionChanged="EditorTabs_SelectionChanged">
 
-            <TabViewItem Header="基本" IsClosable="False" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
-                <ScrollViewer
-                    VerticalScrollBarVisibility="Auto"
-                    HorizontalScrollBarVisibility="Disabled"
-                    HorizontalContentAlignment="Stretch"
-                    Padding="0,10,10,0">
-                    <StackPanel Spacing="24">
-                        <StackPanel Spacing="10">
-                            <TextBlock Text="基本信息" FontSize="16" FontWeight="SemiBold" />
-                            <TextBox
-                                x:Name="ProfileNameBox"
-                                Header="Profile 名称"
-                                PlaceholderText="my-profile"
-                                HorizontalAlignment="Stretch"
-                                TextChanged="BasicField_Changed" />
-                            <TextBox
-                                x:Name="TunnelIdBox"
-                                Header="Tunnel ID"
-                                PlaceholderText="tunnel_ + 32 位小写十六进制字符"
-                                HorizontalAlignment="Stretch"
-                                TextChanged="BasicField_Changed" />
-                            <ComboBox
-                                x:Name="McpTypeCombo"
-                                Header="MCP 类型"
-                                HorizontalAlignment="Stretch"
-                                SelectedIndex="0"
-                                SelectionChanged="McpTypeCombo_SelectionChanged">
-                                <ComboBoxItem Content="HTTP URL" />
-                                <ComboBoxItem Content="STDIO Command" />
-                            </ComboBox>
-                            <TextBox
-                                x:Name="TargetBox"
-                                Header="main MCP URL"
-                                PlaceholderText="例如 http://127.0.0.1:8000/mcp"
-                                HorizontalAlignment="Stretch"
-                                TextChanged="BasicField_Changed" />
-                            <TextBlock
-                                x:Name="TargetHelpText"
-                                Visibility="Collapsed"
-                                FontSize="12"
-                                Opacity="0.65"
-                                TextWrapping="Wrap" />
-                        </StackPanel>
+            <TabViewItem
+                Header="基本"
+                IsClosable="False"
+                HorizontalContentAlignment="Stretch"
+                VerticalContentAlignment="Stretch">
+                <Grid MinWidth="0" MinHeight="0">
+                    <ScrollViewer
+                        MinWidth="0"
+                        MinHeight="0"
+                        Margin="0,8,0,0"
+                        Padding="0,0,8,16"
+                        HorizontalAlignment="Stretch"
+                        VerticalAlignment="Stretch"
+                        HorizontalContentAlignment="Stretch"
+                        HorizontalScrollMode="Disabled"
+                        HorizontalScrollBarVisibility="Disabled"
+                        VerticalScrollMode="Auto"
+                        VerticalScrollBarVisibility="Auto">
+                        <StackPanel Spacing="24" HorizontalAlignment="Stretch">
+                            <StackPanel Spacing="10" HorizontalAlignment="Stretch">
+                                <TextBlock Text="基本信息" FontSize="16" FontWeight="SemiBold" />
+                                <TextBox
+                                    x:Name="ProfileNameBox"
+                                    Header="Profile 名称"
+                                    PlaceholderText="my-profile"
+                                    HorizontalAlignment="Stretch"
+                                    TextChanged="BasicField_Changed" />
+                                <TextBox
+                                    x:Name="TunnelIdBox"
+                                    Header="Tunnel ID"
+                                    PlaceholderText="tunnel_ + 32 位小写十六进制字符"
+                                    HorizontalAlignment="Stretch"
+                                    TextChanged="BasicField_Changed" />
+                                <ComboBox
+                                    x:Name="McpTypeCombo"
+                                    Header="MCP 类型"
+                                    HorizontalAlignment="Stretch"
+                                    SelectedIndex="0"
+                                    SelectionChanged="McpTypeCombo_SelectionChanged">
+                                    <ComboBoxItem Content="HTTP URL" />
+                                    <ComboBoxItem Content="STDIO Command" />
+                                </ComboBox>
+                                <TextBox
+                                    x:Name="TargetBox"
+                                    Header="main MCP URL"
+                                    PlaceholderText="例如 http://127.0.0.1:8000/mcp"
+                                    HorizontalAlignment="Stretch"
+                                    TextChanged="BasicField_Changed" />
+                                <TextBlock
+                                    x:Name="TargetHelpText"
+                                    Visibility="Collapsed"
+                                    FontSize="12"
+                                    Opacity="0.65"
+                                    TextWrapping="Wrap" />
+                            </StackPanel>
 
-                        <StackPanel Spacing="10">
-                            <TextBlock Text="运行选项" FontSize="16" FontWeight="SemiBold" />
-                            <CheckBox x:Name="EnabledCheckBox" Content="启用此配置" IsChecked="True" />
-                            <CheckBox x:Name="AutoConnectCheckBox" Content="程序启动后自动连接" />
-                            <CheckBox x:Name="AutoReconnectCheckBox" Content="异常停止后自动重连" />
-                        </StackPanel>
+                            <StackPanel Spacing="10" HorizontalAlignment="Stretch">
+                                <TextBlock Text="运行选项" FontSize="16" FontWeight="SemiBold" />
+                                <CheckBox x:Name="EnabledCheckBox" Content="启用此配置" IsChecked="True" />
+                                <CheckBox x:Name="AutoConnectCheckBox" Content="程序启动后自动连接" />
+                                <CheckBox x:Name="AutoReconnectCheckBox" Content="异常停止后自动重连" />
+                            </StackPanel>
 
-                        <StackPanel Spacing="10">
-                            <TextBlock Text="凭据" FontSize="16" FontWeight="SemiBold" />
-                            <TextBlock x:Name="CredentialStatusText" Text="未保存 Runtime API Key" Opacity="0.72" />
-                            <PasswordBox
-                                x:Name="SecretBox"
-                                Header="新的 Runtime API Key"
-                                PlaceholderText="可留空；未保存时使用环境变量"
-                                HorizontalAlignment="Stretch" />
-                            <TextBlock
-                                Text="Runtime API Key 仅保存到 Windows Credential Manager，不写入 Profile 文件。"
-                                FontSize="12"
-                                Opacity="0.65"
-                                TextWrapping="Wrap" />
-                            <CheckBox
-                                x:Name="DeleteSecretCheckBox"
-                                Content="保存时删除已保存的 Runtime API Key"
-                                Visibility="Collapsed" />
+                            <StackPanel Spacing="10" HorizontalAlignment="Stretch">
+                                <TextBlock Text="凭据" FontSize="16" FontWeight="SemiBold" />
+                                <TextBlock x:Name="CredentialStatusText" Text="未保存 Runtime API Key" Opacity="0.72" />
+                                <PasswordBox
+                                    x:Name="SecretBox"
+                                    Header="新的 Runtime API Key"
+                                    PlaceholderText="可留空；未保存时使用环境变量"
+                                    HorizontalAlignment="Stretch" />
+                                <TextBlock
+                                    Text="Runtime API Key 仅保存到 Windows Credential Manager，不写入 Profile 文件。"
+                                    FontSize="12"
+                                    Opacity="0.65"
+                                    TextWrapping="Wrap" />
+                                <CheckBox
+                                    x:Name="DeleteSecretCheckBox"
+                                    Content="保存时删除已保存的 Runtime API Key"
+                                    Visibility="Collapsed" />
+                            </StackPanel>
                         </StackPanel>
-                    </StackPanel>
-                </ScrollViewer>
+                    </ScrollViewer>
+                </Grid>
             </TabViewItem>
 
-            <TabViewItem Header="高级配置" IsClosable="False" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
-                <Grid Margin="0,10,0,0">
+            <TabViewItem
+                Header="高级配置"
+                IsClosable="False"
+                HorizontalContentAlignment="Stretch"
+                VerticalContentAlignment="Stretch">
+                <Grid
+                    MinWidth="0"
+                    MinHeight="0"
+                    Margin="0,8,0,0"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
-                        <RowDefinition Height="10" />
+                        <RowDefinition Height="12" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
-                    <StackPanel Spacing="4">
+                    <StackPanel Spacing="4" HorizontalAlignment="Stretch">
                         <TextBlock Text="完整 Profile YAML / JSON" FontSize="16" FontWeight="SemiBold" />
                         <TextBlock
                             x:Name="AdvancedHelpText"
@@ -116,12 +146,17 @@
                     <TextBox
                         x:Name="RawEditor"
                         Grid.Row="2"
+                        MinWidth="0"
+                        MinHeight="0"
+                        Margin="0,0,4,4"
+                        Padding="12,8"
                         AcceptsReturn="True"
                         TextWrapping="NoWrap"
                         FontFamily="Cascadia Mono"
                         HorizontalAlignment="Stretch"
                         VerticalAlignment="Stretch"
-                        MinHeight="300"
+                        ScrollViewer.HorizontalScrollMode="Auto"
+                        ScrollViewer.VerticalScrollMode="Auto"
                         ScrollViewer.HorizontalScrollBarVisibility="Auto"
                         ScrollViewer.VerticalScrollBarVisibility="Auto"
                         TextChanged="RawEditor_TextChanged" />
