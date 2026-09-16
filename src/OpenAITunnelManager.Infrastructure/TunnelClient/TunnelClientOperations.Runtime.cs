@@ -150,11 +150,33 @@ public sealed partial class TunnelClientOperations
 
             if (process.HasExited) throw new InvalidOperationException($"Profile 前台进程已退出，退出码 {process.ExitCode}。日志：{logPath}");
         }
-        catch (OperationCanceledException)
+        catch
         {
             await StopProfileAsync(name);
             throw;
         }
+
+        process.Exited += (_, _) => HandleForegroundProfileExited(name, process);
+        try
+        {
+            if (process.HasExited) HandleForegroundProfileExited(name, process);
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+    }
+
+    private void HandleForegroundProfileExited(string name, Process process)
+    {
+        if (!_foreground.TryGetValue(name, out var current) || !ReferenceEquals(current.Process, process)) return;
+        if (!_foreground.TryRemove(name, out var record) || !ReferenceEquals(record.Process, process)) return;
+
+        try { process.CancelOutputRead(); } catch { }
+        try { process.CancelErrorRead(); } catch { }
+        try { record.LogWriter.Dispose(); } catch { }
+        try { process.Dispose(); } catch { }
+
+        try { ForegroundProfileExited?.Invoke(name); } catch { }
     }
 
     private Task StopProfileAsync(string name)

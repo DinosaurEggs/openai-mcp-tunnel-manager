@@ -239,7 +239,6 @@ public sealed partial class MainWindow
             await ViewModel.SaveSettingsAsync();
             ResetTimers();
             MissingClientInfo.IsOpen = !ViewModel.IsClientAvailable;
-            if (ViewModel.IsClientAvailable) SelectPage("connections");
         }
         catch (Exception exception)
         {

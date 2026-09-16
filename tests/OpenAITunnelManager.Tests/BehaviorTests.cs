@@ -74,7 +74,6 @@ public sealed class BehaviorTests
         var settings = new AppSettings
         {
             TunnelClientPath = @"C:\Tools\tunnel-client.exe",
-            RefreshIntervalMs = 5000,
             CloseToTray = true,
             StartWithWindows = true,
             ProfilePreferences = new Dictionary<string, ProfilePreference>(StringComparer.OrdinalIgnoreCase)
@@ -87,12 +86,12 @@ public sealed class BehaviorTests
         var text = await File.ReadAllTextAsync(path, cancellationToken);
         Assert.Contains("tunnelClientPath", text, StringComparison.Ordinal);
         Assert.Contains("profilePreferences", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("refreshInterval", text, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(TunnelId, text, StringComparison.Ordinal);
         Assert.DoesNotContain("mcpTarget", text, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("apiKey", text, StringComparison.OrdinalIgnoreCase);
 
         var loaded = await store.LoadAsync(cancellationToken);
-        Assert.Equal(5000, loaded.RefreshIntervalMs);
         Assert.True(loaded.ProfilePreferences["PROFILE:IDEA"].AutoConnect);
     }
 

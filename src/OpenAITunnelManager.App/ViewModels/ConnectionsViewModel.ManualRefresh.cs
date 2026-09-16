@@ -23,9 +23,9 @@ public partial class ConnectionsViewModel
             return;
         }
 
-        // Inventory is loaded once at application entry. RuntimeMonitor subsequently checks
-        // only known connection status; inventory is refreshed manually or after explicit CRUD/lifecycle actions.
-        await RefreshAsync();
+        // Runtime inventory/status is refreshed only on startup, manual refresh, and explicit
+        // lifecycle/CRUD actions. No periodic runtime polling is started here.
         StartRuntimeMonitor();
+        await RefreshAsync();
     }
 }

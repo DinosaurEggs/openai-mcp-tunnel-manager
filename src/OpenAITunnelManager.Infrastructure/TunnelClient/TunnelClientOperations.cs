@@ -22,6 +22,8 @@ public sealed partial class TunnelClientOperations : ITunnelClientOperations
         _runner = new TunnelClientProcessRunner(options);
     }
 
+    public event Action<string>? ForegroundProfileExited;
+
     public string ResolveExecutablePath() => _options.ResolveExecutablePath();
 
     public async Task<TunnelClientCapabilities> GetCapabilitiesAsync(CancellationToken cancellationToken = default)

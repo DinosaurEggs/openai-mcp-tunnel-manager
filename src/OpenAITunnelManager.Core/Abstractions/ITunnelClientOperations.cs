@@ -4,6 +4,8 @@ namespace OpenAITunnelManager.Core.Abstractions;
 
 public interface ITunnelClientOperations
 {
+    event Action<string>? ForegroundProfileExited;
+
     string ResolveExecutablePath();
     Task<TunnelClientCapabilities> GetCapabilitiesAsync(CancellationToken cancellationToken = default);
     Task<TunnelConnection> GetStatusAsync(TunnelConnection connection, CancellationToken cancellationToken = default);

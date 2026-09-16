@@ -11,11 +11,8 @@ namespace OpenAITunnelManager.App;
 public sealed partial class MainWindow
 {
     private bool _emptyStatesEnabled;
-    private bool _initialReadinessNavigationApplied;
     private EmptyStateControl? _dashboardEmptyState;
     private EmptyStateControl? _connectionsEmptyState;
-    private EmptyStateControl? _logsEmptyState;
-    private EmptyStateControl? _diagnosticsEmptyState;
 
     internal void EnableEmptyStates()
     {
@@ -24,8 +21,6 @@ public sealed partial class MainWindow
 
         _dashboardEmptyState = AttachEmptyState(DashboardPage);
         _connectionsEmptyState = AttachEmptyState(ConnectionsPage);
-        _logsEmptyState = AttachEmptyState(LogsPage);
-        _diagnosticsEmptyState = AttachEmptyState(DiagnosticsPage);
 
         ViewModel.PropertyChanged += ViewModel_PropertyChangedForEmptyStates;
         ViewModel.Connections.CollectionChanged += Connections_CollectionChangedForEmptyStates;
@@ -43,23 +38,15 @@ public sealed partial class MainWindow
         return emptyState;
     }
 
-    private void ViewModel_PropertyChangedForEmptyStates(object? sender, PropertyChangedEventArgs e)
-    {
+    private void ViewModel_PropertyChangedForEmptyStates(object? sender, PropertyChangedEventArgs e) =>
         DispatcherQueue.TryEnqueue(UpdateEmptyStates);
-    }
 
-    private void Connections_CollectionChangedForEmptyStates(object? sender, NotifyCollectionChangedEventArgs e)
-    {
+    private void Connections_CollectionChangedForEmptyStates(object? sender, NotifyCollectionChangedEventArgs e) =>
         DispatcherQueue.TryEnqueue(UpdateEmptyStates);
-    }
 
     private void UpdateEmptyStates()
     {
-        if (!_emptyStatesEnabled || _dashboardEmptyState is null || _connectionsEmptyState is null ||
-            _logsEmptyState is null || _diagnosticsEmptyState is null)
-        {
-            return;
-        }
+        if (!_emptyStatesEnabled || _dashboardEmptyState is null || _connectionsEmptyState is null) return;
 
         var readiness = ViewModel.ReadinessState;
         switch (readiness)
@@ -68,59 +55,38 @@ public sealed partial class MainWindow
                 ConfigureClientMissingStates(invalidPath: false);
                 ShowEmptyState(DashboardPage, _dashboardEmptyState, true);
                 ShowEmptyState(ConnectionsPage, _connectionsEmptyState, true);
-                ShowEmptyState(LogsPage, _logsEmptyState, true);
-                ShowEmptyState(DiagnosticsPage, _diagnosticsEmptyState, true);
                 break;
 
             case ApplicationReadinessState.TunnelClientInvalid:
                 ConfigureClientMissingStates(invalidPath: true);
                 ShowEmptyState(DashboardPage, _dashboardEmptyState, true);
                 ShowEmptyState(ConnectionsPage, _connectionsEmptyState, true);
-                ShowEmptyState(LogsPage, _logsEmptyState, true);
-                ShowEmptyState(DiagnosticsPage, _diagnosticsEmptyState, true);
                 break;
 
             case ApplicationReadinessState.NoConnections:
                 ConfigureNoConnectionsStates();
                 ShowEmptyState(DashboardPage, _dashboardEmptyState, true);
                 ShowEmptyState(ConnectionsPage, _connectionsEmptyState, true);
-                ShowEmptyState(LogsPage, _logsEmptyState, true);
-                ShowEmptyState(DiagnosticsPage, _diagnosticsEmptyState, true);
                 break;
 
             default:
                 ShowEmptyState(DashboardPage, _dashboardEmptyState, false);
                 ShowEmptyState(ConnectionsPage, _connectionsEmptyState, false);
-                ConfigureLogState();
-                ShowEmptyState(DiagnosticsPage, _diagnosticsEmptyState, ViewModel.SelectedConnection is null);
-                if (ViewModel.SelectedConnection is null)
-                {
-                    _diagnosticsEmptyState.Configure(
-                        "\uE9D9",
-                        "请选择一个连接",
-                        "选择连接后可以运行 doctor，并查看 Runtime 与 MCP Health。",
-                        "打开连接页面");
-                    _diagnosticsEmptyState.PrimaryAction = NavigateToConnectionsAsync;
-                    _diagnosticsEmptyState.SecondaryAction = null;
-                }
                 break;
         }
 
         MissingClientInfo.IsOpen = readiness is ApplicationReadinessState.TunnelClientNotConfigured or ApplicationReadinessState.TunnelClientInvalid;
-        ApplyInitialReadinessNavigation(readiness);
     }
 
     private void ConfigureClientMissingStates(bool invalidPath)
     {
         var title = invalidPath ? "tunnel-client 配置无效" : "尚未配置 tunnel-client";
         var description = invalidPath
-            ? "当前 tunnel-client 路径不可用。重新选择 tunnel-client.exe 后，Manager 会自动读取已有 Profile 和 Runtime。"
+            ? "当前 tunnel-client 路径不可用。重新选择 tunnel-client.exe 后，Manager 会读取已有 Profile 和 Runtime。"
             : "Manager 需要通过 tunnel-client 读取和管理 Profile、Runtime、日志与诊断信息。先完成基础配置即可继续。";
 
         ConfigureClientRequiredState(_dashboardEmptyState!, "\uE713", title, description);
         ConfigureClientRequiredState(_connectionsEmptyState!, "\uE71B", title, description);
-        ConfigureClientRequiredState(_logsEmptyState!, "\uE8A5", "还不能查看日志", description);
-        ConfigureClientRequiredState(_diagnosticsEmptyState!, "\uE9D9", "还不能运行诊断", description);
     }
 
     private void ConfigureClientRequiredState(EmptyStateControl state, string glyph, string title, string description)
@@ -149,66 +115,6 @@ public sealed partial class MainWindow
             "刷新");
         _connectionsEmptyState.PrimaryAction = CreateProfileFromEmptyStateAsync;
         _connectionsEmptyState.SecondaryAction = RefreshFromEmptyStateAsync;
-
-        _logsEmptyState!.Configure(
-            "\uE8A5",
-            "还没有连接",
-            "创建 Profile 并启动后，运行日志会自动显示在这里。",
-            "新建 Profile",
-            "打开连接页面");
-        _logsEmptyState.PrimaryAction = CreateProfileFromEmptyStateAsync;
-        _logsEmptyState.SecondaryAction = NavigateToConnectionsAsync;
-
-        _diagnosticsEmptyState!.Configure(
-            "\uE9D9",
-            "没有可诊断的连接",
-            "创建 Profile 后即可运行 doctor；Runtime 启动后还可以继续检查 Health 与 Ready 状态。",
-            "新建 Profile",
-            "打开连接页面");
-        _diagnosticsEmptyState.PrimaryAction = CreateProfileFromEmptyStateAsync;
-        _diagnosticsEmptyState.SecondaryAction = NavigateToConnectionsAsync;
-    }
-
-    private void ConfigureLogState()
-    {
-        if (_logsEmptyState is null) return;
-        if (ViewModel.HasCurrentLog)
-        {
-            ShowEmptyState(LogsPage, _logsEmptyState, false);
-            return;
-        }
-
-        var item = ViewModel.SelectedConnection;
-        if (item is null)
-        {
-            _logsEmptyState.Configure("\uE8A5", "请选择一个连接", "选择连接后可以查看对应 Runtime 或前台 Profile 的日志。", "打开连接页面");
-            _logsEmptyState.PrimaryAction = NavigateToConnectionsAsync;
-            _logsEmptyState.SecondaryAction = null;
-        }
-        else if (item.ProcessRunning)
-        {
-            _logsEmptyState.Configure(
-                "\uE8A5",
-                "暂时没有日志",
-                $"{item.Name} 正在运行，但还没有发现日志文件。可以立即刷新，或回到连接详情检查状态。",
-                "刷新日志",
-                "查看连接详情");
-            _logsEmptyState.PrimaryAction = RefreshLogFromEmptyStateAsync;
-            _logsEmptyState.SecondaryAction = NavigateToConnectionsAsync;
-        }
-        else
-        {
-            _logsEmptyState.Configure(
-                "\uE8A5",
-                "暂无运行日志",
-                $"{item.Name} 当前未运行。启动连接后，日志会自动显示在这里。",
-                "启动连接",
-                "查看连接详情");
-            _logsEmptyState.PrimaryAction = StartSelectedFromEmptyStateAsync;
-            _logsEmptyState.SecondaryAction = NavigateToConnectionsAsync;
-        }
-
-        ShowEmptyState(LogsPage, _logsEmptyState, true);
     }
 
     private static void ShowEmptyState(Grid page, EmptyStateControl state, bool show)
@@ -221,24 +127,9 @@ public sealed partial class MainWindow
         state.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private void ApplyInitialReadinessNavigation(ApplicationReadinessState readiness)
-    {
-        if (_initialReadinessNavigationApplied || !_initialized || ViewModel.IsBusy) return;
-        _initialReadinessNavigationApplied = true;
-        if (readiness == ApplicationReadinessState.Ready) return;
-
-        DispatcherQueue.TryEnqueue(() => SelectPage("dashboard"));
-    }
-
     private Task NavigateToSettingsAsync()
     {
         SelectPage("settings");
-        return Task.CompletedTask;
-    }
-
-    private Task NavigateToConnectionsAsync()
-    {
-        SelectPage("connections");
         return Task.CompletedTask;
     }
 
@@ -274,21 +165,6 @@ public sealed partial class MainWindow
     private async Task RefreshFromEmptyStateAsync()
     {
         await ViewModel.RefreshAsync();
-        UpdateEmptyStates();
-    }
-
-    private async Task RefreshLogFromEmptyStateAsync()
-    {
-        await ViewModel.RefreshLogIncrementalAsync();
-        UpdateEmptyStates();
-    }
-
-    private async Task StartSelectedFromEmptyStateAsync()
-    {
-        if (ViewModel.StartSelectedCommand.CanExecute(null))
-        {
-            await ViewModel.StartSelectedCommand.ExecuteAsync(null);
-        }
         UpdateEmptyStates();
     }
 }

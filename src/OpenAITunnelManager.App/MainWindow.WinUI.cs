@@ -95,7 +95,7 @@ public sealed partial class MainWindow : Window
 
     private async void LogTimer_Tick(DispatcherQueueTimer sender, object args)
     {
-        if (LogsPage.Visibility != Visibility.Visible || !ViewModel.LogAutoRefresh || ViewModel.IsBusy) return;
+        if (!IsLogTabSelected() || !ViewModel.LogAutoRefresh || ViewModel.IsBusy) return;
         var horizontalOffset = CaptureLogHorizontalOffset();
         try
         {
@@ -109,36 +109,16 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private async void Navigation_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
+    private void Navigation_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
         var tag = args.IsSettingsSelected ? "settings" : args.SelectedItemContainer?.Tag as string ?? "connections";
         SelectPage(tag, updateNavigation: false);
-        try
-        {
-            if (tag == "logs")
-            {
-                ViewModel.RestoreSelectedLogCache();
-                var horizontalOffset = CaptureLogHorizontalOffset();
-                await ViewModel.RefreshLogIncrementalAsync();
-                RestoreLogViewport(horizontalOffset, followVertical: true);
-            }
-            else if (tag == "diagnostics")
-            {
-                await ViewModel.RefreshHealthAsync();
-            }
-        }
-        catch (Exception exception)
-        {
-            await ShowErrorAsync(exception.Message);
-        }
     }
 
     private void SelectPage(string tag, bool updateNavigation = true)
     {
         DashboardPage.Visibility = tag == "dashboard" ? Visibility.Visible : Visibility.Collapsed;
         ConnectionsPage.Visibility = tag == "connections" ? Visibility.Visible : Visibility.Collapsed;
-        LogsPage.Visibility = tag == "logs" ? Visibility.Visible : Visibility.Collapsed;
-        DiagnosticsPage.Visibility = tag == "diagnostics" ? Visibility.Visible : Visibility.Collapsed;
         SettingsPage.Visibility = tag == "settings" ? Visibility.Visible : Visibility.Collapsed;
 
         RequestResponsiveLayout();
@@ -165,13 +145,18 @@ public sealed partial class MainWindow : Window
         if (!_initialized || ViewModel.SelectedConnection is null) return;
         ViewModel.RestoreSelectedLogCache();
 
-        if (LogsPage.Visibility != Visibility.Visible) return;
-
         try
         {
-            var horizontalOffset = CaptureLogHorizontalOffset();
-            await ViewModel.RefreshLogIncrementalAsync();
-            RestoreLogViewport(horizontalOffset, followVertical: true);
+            if (IsLogTabSelected())
+            {
+                var horizontalOffset = CaptureLogHorizontalOffset();
+                await ViewModel.RefreshLogIncrementalAsync();
+                RestoreLogViewport(horizontalOffset, followVertical: true);
+            }
+            else if (IsDiagnosticsTabSelected())
+            {
+                await ViewModel.RefreshHealthAsync();
+            }
         }
         catch (Exception exception)
         {
@@ -179,9 +164,34 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void StartSelected_Click(object sender, RoutedEventArgs e) => SelectPage("logs");
-    private void ShowLogs_Click(object sender, RoutedEventArgs e) => SelectPage("logs");
-    private void ShowDiagnostics_Click(object sender, RoutedEventArgs e) => SelectPage("diagnostics");
+    private async void ConnectionTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_initialized || ViewModel.SelectedConnection is null) return;
+        try
+        {
+            if (IsLogTabSelected())
+            {
+                ViewModel.RestoreSelectedLogCache();
+                var horizontalOffset = CaptureLogHorizontalOffset();
+                await ViewModel.RefreshLogIncrementalAsync();
+                RestoreLogViewport(horizontalOffset, followVertical: true);
+            }
+            else if (IsDiagnosticsTabSelected())
+            {
+                await ViewModel.RefreshHealthAsync();
+            }
+        }
+        catch (Exception exception)
+        {
+            ViewModel.StatusMessage = exception.Message;
+        }
+    }
+
+    private bool IsLogTabSelected() => ConnectionTabs.SelectedIndex == 1;
+    private bool IsDiagnosticsTabSelected() => ConnectionTabs.SelectedIndex == 2;
+
+    private void ShowLogs_Click(object sender, RoutedEventArgs e) => ConnectionTabs.SelectedIndex = 1;
+    private void ShowDiagnostics_Click(object sender, RoutedEventArgs e) => ConnectionTabs.SelectedIndex = 2;
 
     private void SetupTrayIcon()
     {

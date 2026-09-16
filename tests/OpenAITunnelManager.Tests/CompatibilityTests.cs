@@ -59,7 +59,6 @@ public sealed class CompatibilityTests
         Assert.Equal("C:/Tools/tunnel-client.exe", loaded.TunnelClientPath);
         Assert.False(loaded.CloseToTray);
         Assert.True(loaded.StartWithWindows);
-        Assert.Equal(5000, loaded.RefreshIntervalMs);
         Assert.True(loaded.ProfilePreferences["profile:kept"].AutoConnect);
         Assert.True(loaded.ProfilePreferences["idea"].AutoConnect);
         Assert.True(loaded.ProfilePreferences["idea"].AutoReconnect);
@@ -68,6 +67,7 @@ public sealed class CompatibilityTests
         var rewritten = await File.ReadAllTextAsync(path, token);
         Assert.Contains("\"schemaVersion\": 2", rewritten, StringComparison.Ordinal);
         Assert.Contains("\"tunnelClientPath\"", rewritten, StringComparison.Ordinal);
+        Assert.DoesNotContain("refreshInterval", rewritten, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("tunnels", rewritten, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("old-private-definition", rewritten, StringComparison.Ordinal);
         Assert.DoesNotContain("old-private-target", rewritten, StringComparison.Ordinal);

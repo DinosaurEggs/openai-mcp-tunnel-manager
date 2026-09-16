@@ -35,7 +35,6 @@ public sealed partial class MainWindow
 
     private void ApplyResponsiveLayout()
     {
-        StretchScrollablePage(DashboardScrollViewer, DashboardContentPanel);
         StretchScrollablePage(SettingsScrollViewer, SettingsContentPanel);
 
         var width = ContentGrid.ActualWidth;
@@ -62,13 +61,13 @@ public sealed partial class MainWindow
         };
 
         ConfigureHeader(ConnectionsHeader, ConnectionsHeaderTitle, ConnectionsHeaderActions, width < 760);
-        ConfigureHeader(LogsHeader, LogsHeaderTitle, LogsHeaderActions, width < 760);
-        ConfigureHeader(DiagnosticsHeader, DiagnosticsHeaderTitle, DiagnosticsHeaderActions, width < 760);
+        ConfigureHeader(LogsHeader, LogsHeaderTitle, LogsHeaderActions, width < 860);
+        ConfigureHeader(DiagnosticsHeader, DiagnosticsHeaderTitle, DiagnosticsHeaderActions, width < 860);
 
         ApplyConnectionsLayout(bucket);
         ApplyLogsLayout(bucket);
         ApplyDiagnosticsLayout(bucket);
-        ApplyDashboardLayout(width);
+        ApplyDashboardLayout(bucket);
         ApplySettingsLayout(bucket);
 
         if (RootGrid.ActualWidth < 1080) Navigation.IsPaneOpen = false;
@@ -94,8 +93,8 @@ public sealed partial class MainWindow
             ConnectionsSplitGrid.ColumnSpacing = 0;
             ConnectionsSplitGrid.RowSpacing = 12;
             ConnectionsSplitGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            ConnectionsSplitGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(32, GridUnitType.Star) });
-            ConnectionsSplitGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(68, GridUnitType.Star) });
+            ConnectionsSplitGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(230) });
+            ConnectionsSplitGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
             Grid.SetRow(ConnectionsListPanel, 0);
             Grid.SetColumn(ConnectionsListPanel, 0);
             Grid.SetRow(ConnectionsDetailsPanel, 1);
@@ -105,7 +104,7 @@ public sealed partial class MainWindow
         {
             ConnectionsSplitGrid.RowSpacing = 0;
             ConnectionsSplitGrid.ColumnSpacing = 12;
-            var listShare = bucket == "compact" ? 35 : 30;
+            var listShare = bucket == "compact" ? 36 : 30;
             ConnectionsSplitGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(listShare, GridUnitType.Star) });
             ConnectionsSplitGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(100 - listShare, GridUnitType.Star) });
             Grid.SetRow(ConnectionsListPanel, 0);
@@ -118,14 +117,14 @@ public sealed partial class MainWindow
         ConnectionsPrimaryActions.Orientation = stackActions ? Orientation.Vertical : Orientation.Horizontal;
         ConnectionsPrimaryActions.HorizontalAlignment = stackActions ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
         foreach (var button in ConnectionsPrimaryActions.Children.OfType<Button>())
-        {
             button.HorizontalAlignment = stackActions ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
-        }
     }
 
     private void ApplyLogsLayout(string bucket)
     {
-        var controls = LogsFilterGrid.Children.OfType<FrameworkElement>().Take(5).ToArray();
+        var controls = LogsFilterGrid.Children.OfType<FrameworkElement>().Take(4).ToArray();
+        if (controls.Length < 4) return;
+
         LogsFilterGrid.RowDefinitions.Clear();
         LogsFilterGrid.ColumnDefinitions.Clear();
         LogsFilterGrid.ColumnSpacing = 10;
@@ -133,10 +132,8 @@ public sealed partial class MainWindow
 
         if (bucket == "wide")
         {
-            foreach (var width in new[] { 30d, 28d, 16d, 13d, 13d })
-            {
+            foreach (var width in new[] { 42d, 22d, 18d, 18d })
                 LogsFilterGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(width, GridUnitType.Star) });
-            }
             for (var index = 0; index < controls.Length; index++)
             {
                 Grid.SetRow(controls[index], 0);
@@ -167,8 +164,7 @@ public sealed partial class MainWindow
         Grid.SetRow(controls[0], 0); Grid.SetColumn(controls[0], 0); Grid.SetColumnSpan(controls[0], 2);
         Grid.SetRow(controls[1], 1); Grid.SetColumn(controls[1], 0); Grid.SetColumnSpan(controls[1], 1);
         Grid.SetRow(controls[2], 1); Grid.SetColumn(controls[2], 1); Grid.SetColumnSpan(controls[2], 1);
-        Grid.SetRow(controls[3], 2); Grid.SetColumn(controls[3], 0); Grid.SetColumnSpan(controls[3], 1);
-        Grid.SetRow(controls[4], 2); Grid.SetColumn(controls[4], 1); Grid.SetColumnSpan(controls[4], 1);
+        Grid.SetRow(controls[3], 2); Grid.SetColumn(controls[3], 0); Grid.SetColumnSpan(controls[3], 2);
     }
 
     private void ApplyDiagnosticsLayout(string bucket)
@@ -196,12 +192,19 @@ public sealed partial class MainWindow
         }
     }
 
-    private void ApplyDashboardLayout(double width)
+    private void ApplyDashboardLayout(string bucket)
     {
+        DashboardContentPanel.Width = double.NaN;
+        DashboardContentPanel.HorizontalAlignment = bucket == "wide" ? HorizontalAlignment.Center : HorizontalAlignment.Stretch;
+        DashboardContentPanel.MaxWidth = bucket == "wide" ? 1280 : double.PositiveInfinity;
+        DashboardScrollViewer.HorizontalContentAlignment = bucket == "wide" ? HorizontalAlignment.Center : HorizontalAlignment.Stretch;
+        DashboardScrollViewer.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
+
         var cards = DashboardCardsGrid.Children.OfType<Border>().ToArray();
         DashboardCardsGrid.RowDefinitions.Clear();
         DashboardCardsGrid.ColumnDefinitions.Clear();
-        if (width >= 800)
+
+        if (bucket == "wide")
         {
             DashboardCardsGrid.RowSpacing = 0;
             DashboardCardsGrid.ColumnSpacing = 12;
@@ -210,19 +213,38 @@ public sealed partial class MainWindow
                 DashboardCardsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                 Grid.SetRow(cards[index], 0);
                 Grid.SetColumn(cards[index], index);
+                Grid.SetColumnSpan(cards[index], 1);
             }
+            return;
         }
-        else
+
+        if (bucket == "compact")
         {
-            DashboardCardsGrid.ColumnSpacing = 0;
+            DashboardCardsGrid.ColumnSpacing = 12;
             DashboardCardsGrid.RowSpacing = 12;
             DashboardCardsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            DashboardCardsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            DashboardCardsGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            DashboardCardsGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             for (var index = 0; index < cards.Length; index++)
             {
-                DashboardCardsGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-                Grid.SetRow(cards[index], index);
-                Grid.SetColumn(cards[index], 0);
+                Grid.SetRow(cards[index], index / 2);
+                Grid.SetColumn(cards[index], index % 2);
+                Grid.SetColumnSpan(cards[index], 1);
             }
+            if (cards.Length % 2 == 1) Grid.SetColumnSpan(cards[^1], 2);
+            return;
+        }
+
+        DashboardCardsGrid.ColumnSpacing = 0;
+        DashboardCardsGrid.RowSpacing = 12;
+        DashboardCardsGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        for (var index = 0; index < cards.Length; index++)
+        {
+            DashboardCardsGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            Grid.SetRow(cards[index], index);
+            Grid.SetColumn(cards[index], 0);
+            Grid.SetColumnSpan(cards[index], 1);
         }
     }
 
@@ -284,8 +306,6 @@ public sealed partial class MainWindow
         actionPanel.Margin = new Thickness(0, 10, 0, 0);
     }
 
-    // Non-responsive auxiliary UI helpers still use this generic tree walk (for example the
-    // advanced directory-picker enhancer). Responsive layout itself uses only named XAML elements.
     private static IEnumerable<T> FindDescendants<T>(DependencyObject root) where T : DependencyObject
     {
         var childCount = VisualTreeHelper.GetChildrenCount(root);

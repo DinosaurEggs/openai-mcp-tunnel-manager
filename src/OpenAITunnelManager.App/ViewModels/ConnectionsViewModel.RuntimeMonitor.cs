@@ -5,23 +5,31 @@ namespace OpenAITunnelManager.App.ViewModels;
 public partial class ConnectionsViewModel
 {
     private static readonly int[] RuntimeReconnectDelaysMs = [1000, 2000, 5000, 10000, 30000, 60000];
-    private static readonly TimeSpan RuntimeMonitorInterval = TimeSpan.FromSeconds(5);
-    private static readonly TimeSpan ReadyStabilityWindow = TimeSpan.FromSeconds(20);
     private const int StatusConcurrency = 4;
 
     private readonly CancellationTokenSource _lifetimeCancellation = new();
     private readonly Dictionary<string, CancellationTokenSource> _reconnectCancellations = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, DateTimeOffset> _readySince = new(StringComparer.OrdinalIgnoreCase);
-    private Task? _runtimeMonitorTask;
+    private SynchronizationContext? _uiSynchronizationContext;
+    private bool _runtimeEventsStarted;
 
+    // Kept as the lifecycle entry point used by the rest of the ViewModel. It no longer
+    // starts a timer: runtime changes are event-driven for Manager-owned foreground profiles.
     private void StartRuntimeMonitor()
     {
-        if (_runtimeMonitorTask is not null || !IsClientAvailable) return;
-        _runtimeMonitorTask = RuntimeMonitorLoopAsync(_lifetimeCancellation.Token);
+        if (_runtimeEventsStarted) return;
+        _runtimeEventsStarted = true;
+        _uiSynchronizationContext = SynchronizationContext.Current;
+        _operations.ForegroundProfileExited += Operations_ForegroundProfileExited;
     }
 
-    private async Task StopRuntimeMonitorAsync()
+    private Task StopRuntimeMonitorAsync()
     {
+        if (_runtimeEventsStarted)
+        {
+            _operations.ForegroundProfileExited -= Operations_ForegroundProfileExited;
+            _runtimeEventsStarted = false;
+        }
+
         if (!_lifetimeCancellation.IsCancellationRequested)
         {
             _lifetimeCancellation.Cancel();
@@ -32,56 +40,38 @@ public partial class ConnectionsViewModel
             try { cancellation.Cancel(); } catch { }
         }
 
-        if (_runtimeMonitorTask is null) return;
-        try { await _runtimeMonitorTask; }
-        catch (OperationCanceledException) { }
-        finally { _runtimeMonitorTask = null; }
+        _reconnectCancellations.Clear();
+        _reconnectScheduled.Clear();
+        return Task.CompletedTask;
     }
 
-    private async Task RuntimeMonitorLoopAsync(CancellationToken cancellationToken)
+    private void Operations_ForegroundProfileExited(string profileName)
     {
-        using var timer = new PeriodicTimer(RuntimeMonitorInterval);
-        while (!cancellationToken.IsCancellationRequested)
-        {
-            try
-            {
-                await RefreshKnownStatusesAsync(cancellationToken);
-                await timer.WaitForNextTickAsync(cancellationToken);
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                break;
-            }
-            catch (Exception exception)
-            {
-                StatusMessage = $"Runtime 状态监控失败：{exception.Message}";
-                try { await Task.Delay(RuntimeMonitorInterval, cancellationToken); }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { break; }
-            }
-        }
+        var context = _uiSynchronizationContext;
+        if (context is null) return;
+        context.Post(_ => HandleForegroundProfileExited(profileName), null);
     }
 
-    private async Task RefreshKnownStatusesAsync(CancellationToken cancellationToken)
+    private void HandleForegroundProfileExited(string profileName)
     {
-        if (!IsClientAvailable || IsBusy || Connections.Count == 0) return;
+        var item = Connections.FirstOrDefault(connection =>
+            !connection.HasRuntime &&
+            connection.HasProfile &&
+            string.Equals(connection.ProfileName, profileName, StringComparison.OrdinalIgnoreCase));
+        if (item is null || _manualStopped.Contains(item.Identity)) return;
 
-        var snapshot = Connections.ToArray();
-        var statuses = await ReadStatusesAsync(snapshot, cancellationToken);
-        foreach (var status in statuses)
+        var stopped = item with
         {
-            ReplaceConnection(status);
-            if (!string.IsNullOrWhiteSpace(status.LogPath))
-            {
-                _lastLogPaths[status.Identity] = status.LogPath;
-                if (SelectedConnection is not null &&
-                    string.Equals(SelectedConnection.Identity, status.Identity, StringComparison.OrdinalIgnoreCase))
-                {
-                    CurrentLogPath = status.LogPath;
-                }
-            }
-            EvaluateRuntimeReconnect(status);
-        }
+            State = RuntimeState.Stopped,
+            ProcessRunning = false,
+            Healthy = false,
+            Ready = false,
+            ProcessId = null
+        };
+        ReplaceConnection(stopped);
+        StatusMessage = $"{item.Name} 已退出";
         NotifyOverviewState();
+        EvaluateRuntimeReconnect(stopped);
     }
 
     private async Task<IReadOnlyList<TunnelConnection>> ReadStatusesAsync(
@@ -111,65 +101,68 @@ public partial class ConnectionsViewModel
         if (preference is not { Enabled: true, AutoReconnect: true } || _manualStopped.Contains(identity))
         {
             CancelReconnect(identity, resetAttempts: true);
-            _readySince.Remove(identity);
             return;
         }
 
-        if (item.ProcessRunning && item.Ready)
-        {
-            if (!_readySince.TryGetValue(identity, out var since))
-            {
-                _readySince[identity] = DateTimeOffset.UtcNow;
-            }
-            else if (DateTimeOffset.UtcNow - since >= ReadyStabilityWindow)
-            {
-                _reconnectAttempts.Remove(identity);
-            }
-            return;
-        }
-
-        _readySince.Remove(identity);
-        if (item.ProcessRunning || item.State is RuntimeState.Configured or RuntimeState.Starting or RuntimeState.Unknown) return;
+        if (item.ProcessRunning) return;
+        if (item.State is RuntimeState.Configured or RuntimeState.Starting or RuntimeState.Unknown) return;
         if (_reconnectScheduled.Contains(identity)) return;
 
-        var attempt = _reconnectAttempts.GetValueOrDefault(identity);
-        var delayIndex = Math.Min(attempt, RuntimeReconnectDelaysMs.Length - 1);
-        var delay = RuntimeReconnectDelaysMs[delayIndex];
-        _reconnectAttempts[identity] = attempt + 1;
         _reconnectScheduled.Add(identity);
-
         var cancellation = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeCancellation.Token);
         _reconnectCancellations[identity] = cancellation;
-        StatusMessage = $"{item.Name} 将在 {delay / 1000} 秒后自动重连";
-        _ = ReconnectAfterDelayAsync(identity, item.Name, delay, cancellation);
+        _ = ReconnectLoopAsync(identity, item.Name, cancellation);
     }
 
-    private async Task ReconnectAfterDelayAsync(
+    private async Task ReconnectLoopAsync(
         string identity,
         string displayName,
-        int delayMs,
         CancellationTokenSource cancellation)
     {
         try
         {
-            await Task.Delay(delayMs, cancellation.Token);
-            var current = Connections.FirstOrDefault(item =>
-                string.Equals(item.Identity, identity, StringComparison.OrdinalIgnoreCase));
-            if (current is null || _manualStopped.Contains(identity)) return;
+            while (!cancellation.IsCancellationRequested)
+            {
+                var current = Connections.FirstOrDefault(item =>
+                    string.Equals(item.Identity, identity, StringComparison.OrdinalIgnoreCase));
+                if (current is null || current.ProcessRunning || _manualStopped.Contains(identity)) return;
 
-            var preference = FindPreference(current);
-            if (preference is not { Enabled: true, AutoReconnect: true } || current.ProcessRunning) return;
+                var preference = FindPreference(current);
+                if (preference is not { Enabled: true, AutoReconnect: true }) return;
 
-            StatusMessage = $"正在自动重连 {displayName}...";
-            await _operations.StartAsync(current, ReadSavedSecret(current), cancellation.Token);
-            StatusMessage = $"{displayName} 自动重连命令已完成，等待 Ready";
+                var attempt = _reconnectAttempts.GetValueOrDefault(identity);
+                var delayIndex = Math.Min(attempt, RuntimeReconnectDelaysMs.Length - 1);
+                var delay = RuntimeReconnectDelaysMs[delayIndex];
+                _reconnectAttempts[identity] = attempt + 1;
+                StatusMessage = $"{displayName} 将在 {delay / 1000} 秒后自动重连";
+
+                await Task.Delay(delay, cancellation.Token);
+
+                current = Connections.FirstOrDefault(item =>
+                    string.Equals(item.Identity, identity, StringComparison.OrdinalIgnoreCase));
+                if (current is null || current.ProcessRunning || _manualStopped.Contains(identity)) return;
+                preference = FindPreference(current);
+                if (preference is not { Enabled: true, AutoReconnect: true }) return;
+
+                try
+                {
+                    StatusMessage = $"正在自动重连 {displayName}...";
+                    await _operations.StartAsync(current, ReadSavedSecret(current), cancellation.Token);
+                    await RefreshAfterOperationAsync(identity, $"{displayName} 已自动重连");
+                    return;
+                }
+                catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+                {
+                    return;
+                }
+                catch (Exception exception)
+                {
+                    StatusMessage = $"{displayName} 自动重连失败：{exception.Message}";
+                }
+            }
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
-        }
-        catch (Exception exception)
-        {
-            StatusMessage = $"{displayName} 自动重连失败：{exception.Message}";
         }
         finally
         {
@@ -191,6 +184,5 @@ public partial class ConnectionsViewModel
         }
         _reconnectScheduled.Remove(identity);
         if (resetAttempts) _reconnectAttempts.Remove(identity);
-        _readySince.Remove(identity);
     }
 }

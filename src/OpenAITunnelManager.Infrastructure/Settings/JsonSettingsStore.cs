@@ -46,7 +46,6 @@ public sealed class JsonSettingsStore : ISettingsStore
     {
         ArgumentNullException.ThrowIfNull(settings);
         settings.SchemaVersion = 2;
-        settings.RefreshIntervalMs = settings.NormalizedRefreshIntervalMs;
 
         var directory = Path.GetDirectoryName(SettingsPath)!;
         Directory.CreateDirectory(directory);
@@ -70,14 +69,21 @@ public sealed class JsonSettingsStore : ISettingsStore
     private static (AppSettings Settings, bool Migrated) ParseSettings(JsonElement root)
     {
         var schema = ReadInt(root, 1, "schemaVersion", "schema_version");
-        var migrated = schema < 2 || HasProperty(root, "schema_version", "binary_path", "close_to_tray", "start_with_windows", "refresh_interval_ms", "profile_preferences", "tunnels");
+        var migrated = schema < 2 || HasProperty(root,
+            "schema_version",
+            "binary_path",
+            "close_to_tray",
+            "start_with_windows",
+            "refresh_interval_ms",
+            "refreshIntervalMs",
+            "profile_preferences",
+            "tunnels");
         var settings = new AppSettings
         {
             SchemaVersion = 2,
             TunnelClientPath = ReadString(root, "tunnelClientPath", "binaryPath", "binary_path"),
             CloseToTray = ReadBool(root, true, "closeToTray", "close_to_tray"),
             StartWithWindows = ReadBool(root, false, "startWithWindows", "start_with_windows"),
-            RefreshIntervalMs = ReadInt(root, 4000, "refreshIntervalMs", "refresh_interval_ms"),
             ProfileDirectoryOverride = ReadString(root, "profileDirectoryOverride", "profile_directory_override"),
             StateDirectoryOverride = ReadString(root, "stateDirectoryOverride", "state_directory_override"),
             ProfilePreferences = new Dictionary<string, ProfilePreference>(StringComparer.OrdinalIgnoreCase)
@@ -117,7 +123,6 @@ public sealed class JsonSettingsStore : ISettingsStore
     private static AppSettings Normalize(AppSettings settings)
     {
         settings.SchemaVersion = 2;
-        settings.RefreshIntervalMs = settings.NormalizedRefreshIntervalMs;
         settings.TunnelClientPath = settings.TunnelClientPath?.Trim() ?? string.Empty;
         settings.ProfileDirectoryOverride = settings.ProfileDirectoryOverride?.Trim() ?? string.Empty;
         settings.StateDirectoryOverride = settings.StateDirectoryOverride?.Trim() ?? string.Empty;
