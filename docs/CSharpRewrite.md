@@ -1,6 +1,6 @@
 # C# / WinUI 3 architecture
 
-`rewrite/csharp-winui3` 是 OpenAI MCP Tunnel Manager 的纯 C# / WinUI 3 实现。
+OpenAI MCP Tunnel Manager 1.1.0 使用纯 C# / WinUI 3 实现。
 
 ## UI 约束
 
