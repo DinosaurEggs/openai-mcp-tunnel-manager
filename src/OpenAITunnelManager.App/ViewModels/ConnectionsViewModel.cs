@@ -185,7 +185,7 @@ public partial class ConnectionsViewModel : ObservableObject
         _initialAutoConnectApplied = false;
         StatusMessage = "设置已保存";
         await RefreshAsync();
-        StartRuntimeMonitor();
+        StartRuntimeEvents();
     }
 
     public void SetTunnelClientPath(string path) => TunnelClientPath = path;
@@ -449,7 +449,7 @@ public partial class ConnectionsViewModel : ObservableObject
 
     public async Task ShutdownAsync()
     {
-        await StopRuntimeMonitorAsync();
+        await StopRuntimeEventsAsync();
         await _operations.ShutdownForegroundProfilesAsync();
     }
 
