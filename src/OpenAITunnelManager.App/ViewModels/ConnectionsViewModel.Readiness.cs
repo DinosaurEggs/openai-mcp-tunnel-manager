@@ -11,6 +11,4 @@ public sealed partial class ConnectionsViewModel
 
     public bool HasConnections => Connections.Count > 0;
     public bool HasSelectedConnection => SelectedConnection is not null;
-    public bool HasCurrentLog => SelectedConnection is not null &&
-                                 (!string.IsNullOrWhiteSpace(CurrentLogPath) || !string.IsNullOrWhiteSpace(RawLog));
 }
