@@ -40,7 +40,8 @@ public sealed partial class MainWindow
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        var titleIndex = SettingsContentPanel.Children.IndexOf(titlePanel);
+        var titleIndex = IndexOfChild(SettingsContentPanel.Children, titlePanel);
+        if (titleIndex < 0) return;
         SettingsContentPanel.Children.RemoveAt(titleIndex);
         titlePanel.HorizontalAlignment = HorizontalAlignment.Stretch;
         Grid.SetColumn(titlePanel, 0);
@@ -68,15 +69,20 @@ public sealed partial class MainWindow
         // The path is intentionally no longer shown in the settings page.
         if (footer is not null)
         {
-            SettingsContentPanel.Children.Remove(footer);
+            var footerIndex = IndexOfChild(SettingsContentPanel.Children, footer);
+            if (footerIndex >= 0) SettingsContentPanel.Children.RemoveAt(footerIndex);
         }
 
-        var regularIndex = SettingsContentPanel.Children.IndexOf(regularCard);
-        SettingsContentPanel.Children.Insert(regularIndex, CreateSettingsSectionTitle("常规设置"));
+        var regularIndex = IndexOfChild(SettingsContentPanel.Children, regularCard);
+        if (regularIndex >= 0)
+        {
+            SettingsContentPanel.Children.Insert(regularIndex, CreateSettingsSectionTitle("常规设置"));
+        }
 
         // Advanced settings are always visible. Remove the Expander completely and
         // reuse its card as an ordinary section so opening it can never resize layout.
-        var expanderIndex = SettingsContentPanel.Children.IndexOf(expander);
+        var expanderIndex = IndexOfChild(SettingsContentPanel.Children, expander);
+        if (expanderIndex < 0) return;
         expander.Content = null;
         SettingsContentPanel.Children.RemoveAt(expanderIndex);
         advancedCard.Margin = new Thickness(0);
@@ -96,6 +102,15 @@ public sealed partial class MainWindow
         ConfigureDirectoryField(advancedPanel, directoryFields[1], isProfileDirectory: false);
     }
 
+    private static int IndexOfChild(UIElementCollection children, UIElement target)
+    {
+        for (var index = 0; index < children.Count; index++)
+        {
+            if (ReferenceEquals(children[index], target)) return index;
+        }
+        return -1;
+    }
+
     private static TextBlock CreateSettingsSectionTitle(string text) => new()
     {
         Text = text,
@@ -106,7 +121,7 @@ public sealed partial class MainWindow
 
     private void ConfigureDirectoryField(StackPanel parent, TextBox textBox, bool isProfileDirectory)
     {
-        var index = parent.Children.IndexOf(textBox);
+        var index = IndexOfChild(parent.Children, textBox);
         if (index < 0) return;
         parent.Children.RemoveAt(index);
 
