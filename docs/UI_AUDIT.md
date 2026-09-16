@@ -1,5 +1,7 @@
 # WinUI 界面与弹窗验收清单
 
+适用于 OpenAI MCP Tunnel Manager 1.1.0 及后续 WinUI 3 版本。
+
 此清单用于后续所有 UI 修改，避免高 DPI、高缩放、窄窗口、长文本和大日志再次引入布局回归。
 
 ## 通用规则
