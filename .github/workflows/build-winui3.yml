@@ -163,6 +163,22 @@ jobs:
           --no-restore
           -o artifacts/${{ matrix.rid }}
 
+      - name: Trim unsupported WinUI language resources
+        shell: pwsh
+        run: |
+          $output = "artifacts/${{ matrix.rid }}"
+          Get-ChildItem $output -Directory | ForEach-Object {
+            $muiFiles = @(Get-ChildItem $_.FullName -File -Filter '*.mui' -ErrorAction SilentlyContinue)
+            if ($muiFiles.Count -gt 0) {
+              $isSupportedEnglish = $_.Name -like 'en-*'
+              $isSupportedSimplifiedChinese = $_.Name -eq 'zh-CN'
+              if (-not $isSupportedEnglish -and -not $isSupportedSimplifiedChinese) {
+                Write-Host "Removing unsupported UI language resources: $($_.Name)"
+                Remove-Item $_.FullName -Recurse -Force
+              }
+            }
+          }
+
       - name: Verify published runtime files
         shell: pwsh
         run: |
@@ -182,6 +198,22 @@ jobs:
               Get-ChildItem $output -File -Recurse | ForEach-Object { $_.FullName.Substring((Resolve-Path $output).Path.Length + 1) } | Sort-Object
               throw "Required published file not found: $path"
             }
+          }
+
+          foreach ($languageDirectory in @('en-us', 'zh-CN')) {
+            $path = Join-Path $output $languageDirectory
+            if (-not (Test-Path $path)) {
+              throw "Required UI language resource directory not found: $path"
+            }
+          }
+
+          $unsupportedMuiDirectories = @(Get-ChildItem $output -Directory | Where-Object {
+            $muiFiles = @(Get-ChildItem $_.FullName -File -Filter '*.mui' -ErrorAction SilentlyContinue)
+            $muiFiles.Count -gt 0 -and $_.Name -notlike 'en-*' -and $_.Name -ne 'zh-CN'
+          })
+          if ($unsupportedMuiDirectories.Count -gt 0) {
+            $unsupportedMuiDirectories | ForEach-Object { Write-Host "Unsupported UI language directory: $($_.Name)" }
+            throw 'Published artifact contains unsupported WinUI language resources.'
           }
 
           $forbiddenDesktopDlls = @(
