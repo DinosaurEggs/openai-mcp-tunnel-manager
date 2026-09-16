@@ -122,6 +122,21 @@ public sealed class BehaviorTests
     }
 
     [Fact]
+    public void TunnelClientProcessRunner_DecodesRedirectedStreamsAsUtf8()
+    {
+        using var temp = new TempDirectory();
+        var executable = Path.Combine(temp.Path, "tunnel-client.exe");
+        File.WriteAllBytes(executable, []);
+        var options = new TunnelClientOptions { ExecutablePath = executable };
+        var runner = new TunnelClientProcessRunner(options);
+
+        var startInfo = runner.CreateStartInfo(["--version"]);
+
+        Assert.Equal("utf-8", startInfo.StandardOutputEncoding?.WebName);
+        Assert.Equal("utf-8", startInfo.StandardErrorEncoding?.WebName);
+    }
+
+    [Fact]
     public void ExplicitMissingBinary_NeverFallsBackToAnotherTunnelClient()
     {
         var options = new TunnelClientOptions { ExecutablePath = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".exe") };
