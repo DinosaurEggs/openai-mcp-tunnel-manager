@@ -124,8 +124,6 @@ public sealed partial class MainWindow
             Grid.SetColumn(ConnectionsDetailsPanel, 1);
         }
 
-        // Compact still has enough horizontal room for the lifecycle toolbar. Only the true
-        // one-column narrow layout stacks these actions vertically.
         var stackActions = bucket == "narrow";
         ConnectionsPrimaryActions.Orientation = stackActions ? Orientation.Vertical : Orientation.Horizontal;
         ConnectionsPrimaryActions.HorizontalAlignment = stackActions ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
@@ -270,7 +268,6 @@ public sealed partial class MainWindow
 
     private void ApplySettingsLayout(string bucket)
     {
-        ApplySettingsHeaderLayout(bucket == "narrow");
         ApplyDirectoryOverrideLayout(bucket == "narrow");
 
         SettingsClientGrid.RowDefinitions.Clear();
@@ -303,36 +300,6 @@ public sealed partial class MainWindow
             Grid.SetColumn(normalChildren[index], index);
             Grid.SetColumnSpan(normalChildren[index], 1);
         }
-    }
-
-    private void ApplySettingsHeaderLayout(bool narrow)
-    {
-        var header = SettingsContentPanel.Children.OfType<Grid>().FirstOrDefault();
-        if (header is null) return;
-        var title = header.Children.OfType<StackPanel>().FirstOrDefault();
-        var saveButton = header.Children.OfType<Button>().FirstOrDefault();
-        if (title is null || saveButton is null) return;
-
-        header.RowDefinitions.Clear();
-        header.ColumnDefinitions.Clear();
-        header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-        if (narrow)
-        {
-            header.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            header.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            Grid.SetRow(title, 0); Grid.SetColumn(title, 0);
-            Grid.SetRow(saveButton, 1); Grid.SetColumn(saveButton, 0);
-            saveButton.HorizontalAlignment = HorizontalAlignment.Left;
-            saveButton.Margin = new Thickness(0, 10, 0, 0);
-            return;
-        }
-
-        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        Grid.SetRow(title, 0); Grid.SetColumn(title, 0);
-        Grid.SetRow(saveButton, 0); Grid.SetColumn(saveButton, 1);
-        saveButton.HorizontalAlignment = HorizontalAlignment.Right;
-        saveButton.Margin = new Thickness(0);
     }
 
     private void ApplyDirectoryOverrideLayout(bool narrow)
