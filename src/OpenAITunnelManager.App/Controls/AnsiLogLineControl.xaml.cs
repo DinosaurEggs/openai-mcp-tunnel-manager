@@ -83,7 +83,7 @@ public sealed partial class AnsiLogLineControl : UserControl
                 {
                     run.Foreground = ResolveBrush(foreground, span.Style.Dim);
                 }
-                if (span.Style.Bold) run.FontWeight = FontWeights.Bold;
+                if (span.Style.Bold) run.FontWeight = new FontWeight { Weight = 700 };
                 if (span.Style.Italic) run.FontStyle = FontStyle.Italic;
                 if (span.Style.Underline) run.TextDecorations = TextDecorations.Underline;
                 Presenter.Inlines.Add(run);
