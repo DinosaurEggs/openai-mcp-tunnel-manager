@@ -60,8 +60,6 @@ public partial class ConnectionsViewModel : ObservableObject
     [ObservableProperty] public partial bool StartWithWindows { get; set; }
     [ObservableProperty] public partial string ProfileDirectoryOverride { get; set; } = string.Empty;
     [ObservableProperty] public partial string StateDirectoryOverride { get; set; } = string.Empty;
-    [ObservableProperty] public partial string RawLog { get; set; } = string.Empty;
-    [ObservableProperty] public partial string VisibleLog { get; set; } = string.Empty;
     [ObservableProperty] public partial string LogSearch { get; set; } = string.Empty;
     [ObservableProperty] public partial string LogLevel { get; set; } = "全部";
     [ObservableProperty] public partial bool LogAutoRefresh { get; set; } = true;
@@ -78,7 +76,6 @@ public partial class ConnectionsViewModel : ObservableObject
     public bool CanDiagnoseSelected => IsClientAvailable && !IsBusy && SelectedConnection is not null;
     public bool CanOpenConfigSelected => SelectedConnection is { HasProfile: true };
     public bool CanOpenLogSelected => !string.IsNullOrWhiteSpace(CurrentLogPath);
-    public string SettingsPath => _settingsStore.SettingsPath;
     public int TotalCount => Connections.Count;
     public int ActiveCount => Connections.Count(static item => item.ProcessRunning);
     public int HealthyCount => Connections.Count(static item => item.ProcessRunning && item.Healthy && item.Ready);
@@ -95,8 +92,6 @@ public partial class ConnectionsViewModel : ObservableObject
     partial void OnIsBusyChanged(bool value) => NotifyActionState();
     partial void OnIsClientAvailableChanged(bool value) => NotifyActionState();
     partial void OnCurrentLogPathChanged(string value) => OnPropertyChanged(nameof(CanOpenLogSelected));
-    partial void OnLogSearchChanged(string value) => RenderLog();
-    partial void OnLogLevelChanged(string value) => RenderLog();
 
     public Task InitializeAsync() => InitializeForManualRefreshAsync();
 
@@ -188,7 +183,7 @@ public partial class ConnectionsViewModel : ObservableObject
         await _settingsStore.SaveAsync(Settings);
         ApplySettingsToOptions();
         _initialAutoConnectApplied = false;
-        StatusMessage = $"设置已保存：{SettingsPath}";
+        StatusMessage = "设置已保存";
         await RefreshAsync();
         StartRuntimeMonitor();
     }
@@ -420,36 +415,6 @@ public partial class ConnectionsViewModel : ObservableObject
     private bool CanDiagnose() => CanDiagnoseSelected;
 
     [RelayCommand]
-    public async Task RefreshLogAsync()
-    {
-        var item = SelectedConnection;
-        if (item is null)
-        {
-            RawLog = VisibleLog = string.Empty;
-            CurrentLogPath = string.Empty;
-            return;
-        }
-        var path = !string.IsNullOrWhiteSpace(item.LogPath) ? item.LogPath : _lastLogPaths.GetValueOrDefault(item.Identity, string.Empty);
-        if (string.IsNullOrWhiteSpace(path))
-        {
-            CurrentLogPath = string.Empty;
-            if (string.IsNullOrWhiteSpace(RawLog)) VisibleLog = string.Empty;
-            return;
-        }
-        CurrentLogPath = path;
-        _lastLogPaths[item.Identity] = path;
-        try
-        {
-            RawLog = await _operations.ReadLogTailAsync(path);
-            RenderLog();
-        }
-        catch (Exception exception)
-        {
-            VisibleLog = $"读取日志失败：{exception.Message}";
-        }
-    }
-
-    [RelayCommand]
     public async Task RefreshHealthAsync()
     {
         var item = SelectedConnection;
@@ -661,17 +626,7 @@ public partial class ConnectionsViewModel : ObservableObject
         OnPropertyChanged(nameof(ReadinessState));
         OnPropertyChanged(nameof(HasConnections));
         OnPropertyChanged(nameof(HasSelectedConnection));
-        OnPropertyChanged(nameof(HasCurrentLog));
         NotifyActionState();
-    }
-
-    private void RenderLog()
-    {
-        var query = LogSearch.Trim();
-        var level = LogLevel;
-        VisibleLog = string.Join(Environment.NewLine, RawLog.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
-            .Where(line => string.IsNullOrWhiteSpace(query) || line.Contains(query, StringComparison.OrdinalIgnoreCase))
-            .Where(line => level == "全部" || line.Contains(level, StringComparison.OrdinalIgnoreCase)));
     }
 
     private static bool PathsEqual(string left, string right)
