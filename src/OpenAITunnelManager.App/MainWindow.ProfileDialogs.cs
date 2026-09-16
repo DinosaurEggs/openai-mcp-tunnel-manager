@@ -42,8 +42,9 @@ public sealed partial class MainWindow
         editor.MinWidth = 0;
         editor.MinHeight = 0;
         editor.MaxWidth = double.PositiveInfinity;
+        editor.MaxHeight = double.PositiveInfinity;
         editor.HorizontalAlignment = HorizontalAlignment.Stretch;
-        editor.VerticalAlignment = VerticalAlignment.Top;
+        editor.VerticalAlignment = VerticalAlignment.Stretch;
 
         _profileModalTitle!.Text = title;
         _profileModalPrimaryButton!.Content = primaryText;
@@ -80,7 +81,7 @@ public sealed partial class MainWindow
             Padding = new Thickness(22, 18, 22, 16)
         };
         cardGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        cardGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        cardGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         cardGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
         var title = new TextBlock
@@ -97,9 +98,9 @@ public sealed partial class MainWindow
             MinWidth = 0,
             MinHeight = 0,
             HorizontalAlignment = HorizontalAlignment.Stretch,
-            VerticalAlignment = VerticalAlignment.Top,
+            VerticalAlignment = VerticalAlignment.Stretch,
             HorizontalContentAlignment = HorizontalAlignment.Stretch,
-            VerticalContentAlignment = VerticalAlignment.Top
+            VerticalContentAlignment = VerticalAlignment.Stretch
         };
         Grid.SetRow(content, 1);
         cardGrid.Children.Add(content);
@@ -159,12 +160,16 @@ public sealed partial class MainWindow
         var availableWidth = Math.Max(1d, RootGrid.ActualWidth);
         var availableHeight = Math.Max(1d, RootGrid.ActualHeight);
 
-        // Large layout uses only proportions of the current window. Internal paddings,
-        // typography, button spacing and other small controls keep numeric metrics.
+        // The modal frame has a stable percentage-based size. Switching between the basic
+        // and advanced tabs cannot resize it; only a window resize changes these dimensions.
         _profileModalCard.Width = availableWidth * 0.66;
-        _profileModalCard.MaxHeight = availableHeight * 0.88;
-        _profileModalContent.MaxHeight = availableHeight * 0.68;
-        _activeProfileEditor.MaxHeight = availableHeight * 0.68;
+        _profileModalCard.Height = availableHeight * 0.82;
+        _profileModalContent.Width = double.NaN;
+        _profileModalContent.Height = double.NaN;
+        _profileModalContent.MaxHeight = double.PositiveInfinity;
+        _activeProfileEditor.Width = double.NaN;
+        _activeProfileEditor.Height = double.NaN;
+        _activeProfileEditor.MaxHeight = double.PositiveInfinity;
     }
 
     private void UpdateProfileModalTheme()
