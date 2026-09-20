@@ -24,7 +24,7 @@ public partial class ConnectionsViewModel : ObservableObject
     private readonly ISettingsStore _settingsStore;
     private readonly ICredentialStore _credentials;
     private readonly IAutostartService _autostart;
-    private readonly TunnelClientOptions _options;
+    private readonly TunnelClientOptions _options;\n    private readonly TunnelClientUpdateService _clientUpdateService;\n    private bool _settingsLoaded;
     private readonly HashSet<string> _manualStopped = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _reconnectScheduled = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, int> _reconnectAttempts = new(StringComparer.OrdinalIgnoreCase);
@@ -44,7 +44,7 @@ public partial class ConnectionsViewModel : ObservableObject
         _settingsStore = settingsStore;
         _credentials = credentials;
         _autostart = autostart;
-        _options = options;
+        _options = options;\n        _clientUpdateService = clientUpdateService;
     }
 
     public ObservableCollection<TunnelConnection> Connections { get; } = [];
