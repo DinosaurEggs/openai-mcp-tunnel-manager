@@ -67,4 +67,24 @@ public sealed class JsonLogParserTests
         Assert.Single(errors);
         Assert.Equal(LogSeverity.Error, errors[0].Severity);
     }
+    [Fact]
+    public void ConsoleBufferReportsTrimSoRenderedDocumentCanBeReplayed()
+    {
+        var buffer = new LogConsoleBuffer(maxEntries: 100, maxCharacters: 64 * 1024);
+        var firstBatch = Enumerable.Range(0, 100)
+            .Select(index => JsonLogParser.ParseLine($$"""{"level":"info","message":"line {{index}}"}""", index))
+            .ToArray();
+
+        Assert.False(buffer.Append(firstBatch));
+
+        var trimmed = buffer.Append([
+            JsonLogParser.ParseLine("""{"level":"info","message":"overflow"}""", 101)
+        ]);
+
+        Assert.True(trimmed);
+        Assert.True(buffer.WasTrimmed);
+        Assert.Equal(100, buffer.Count);
+        Assert.DoesNotContain(buffer.Snapshot(), entry => entry.Sequence == 0);
+    }
+
 }
