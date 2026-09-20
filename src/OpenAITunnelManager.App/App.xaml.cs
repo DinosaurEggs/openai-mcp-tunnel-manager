@@ -93,6 +93,7 @@ public partial class App : Application
                 .ConfigureServices(static services =>
                 {
                     services.AddSingleton<TunnelClientOptions>();
+                    services.AddSingleton(_ => new ManagedTunnelClientService());
                     services.AddSingleton<TunnelClientProcessRunner>();
                     services.AddSingleton<ISettingsStore, JsonSettingsStore>();
                     services.AddSingleton<ICredentialStore, WindowsCredentialStore>();
