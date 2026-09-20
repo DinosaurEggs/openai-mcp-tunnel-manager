@@ -4,8 +4,11 @@ namespace OpenAITunnelManager.Core.Models;
 
 public sealed class AppSettings
 {
-    public int SchemaVersion { get; set; } = 2;
+    public int SchemaVersion { get; set; } = 3;
+    public TunnelClientSource TunnelClientSource { get; set; } = TunnelClientSource.Managed;
     public string TunnelClientPath { get; set; } = string.Empty;
+    public bool TunnelClientSetupCompleted { get; set; }
+    public string ManagedTunnelClientVersion { get; set; } = string.Empty;
     public bool CloseToTray { get; set; } = true;
     public bool StartWithWindows { get; set; }
     public string ThemeMode { get; set; } = "system";
@@ -45,6 +48,12 @@ public sealed class AppSettings
             yield return connection.RuntimeAlias;
         }
     }
+}
+
+public enum TunnelClientSource
+{
+    Managed,
+    Custom
 }
 
 public sealed class ProfilePreference
