@@ -77,6 +77,12 @@ public sealed partial class MainWindow : Window
 
         try
         {
+            await ViewModel.LoadSettingsAsync();
+            if (!ViewModel.Settings.TunnelClientSetupCompleted)
+            {
+                await ShowTunnelClientSetupAsync();
+            }
+
             await ViewModel.InitializeForManualRefreshAsync();
             InitializeThemeSetting();
             _logTimer.Start();
