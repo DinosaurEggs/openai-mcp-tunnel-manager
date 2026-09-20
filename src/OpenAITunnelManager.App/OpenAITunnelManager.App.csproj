@@ -20,7 +20,6 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <Platforms>x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
-    <LogConsoleAssetDirectory>$(MSBuildProjectDirectory)\Assets\LogConsole</LogConsoleAssetDirectory>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\OpenAITunnelManager.Core\OpenAITunnelManager.Core.csproj" />
@@ -32,6 +31,7 @@
     <PackageReference Include="Microsoft.Extensions.Hosting" />
     <PackageReference Include="Microsoft.WindowsAppSDK" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" />
+    <PackageReference Include="WinUIEdit" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="Assets\AppIcon.png">
@@ -42,30 +42,5 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
-    <Content Include="Assets\LogConsole\dist\index.html">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-    </Content>
-    <Content Include="Assets\LogConsole\dist\console.js">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-    </Content>
-    <Content Include="Assets\LogConsole\dist\console.css">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-    </Content>
-    <Content Include="Assets\LogConsole\dist\xterm.css">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-    </Content>
-    <Content Include="Assets\LogConsole\dist\THIRD-PARTY-NOTICES.txt">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-    </Content>
   </ItemGroup>
-
-  <Target Name="BuildLogConsoleAssets" BeforeTargets="PrepareForBuild" Condition="'$(DesignTimeBuild)' != 'true'">
-    <Exec WorkingDirectory="$(LogConsoleAssetDirectory)" Command="npm install --no-audit --no-fund --prefer-offline" />
-    <Exec WorkingDirectory="$(LogConsoleAssetDirectory)" Command="npm run build" />
-  </Target>
 </Project>
