@@ -208,19 +208,16 @@ public sealed class ManagedTunnelClientService : IDisposable
             .OrderByDescending(static info => info.LastWriteTimeUtc)
             .ToArray();
 
-        var kept = 0;
+        var fallbackSlots = Math.Max(0, versionsToKeep - 1);
         foreach (var directory in directories)
         {
             var full = Path.GetFullPath(directory.FullName);
             if (string.Equals(full, currentDirectory, StringComparison.OrdinalIgnoreCase))
-            {
-                kept++;
                 continue;
-            }
 
-            if (kept < versionsToKeep)
+            if (fallbackSlots > 0)
             {
-                kept++;
+                fallbackSlots--;
                 continue;
             }
 
