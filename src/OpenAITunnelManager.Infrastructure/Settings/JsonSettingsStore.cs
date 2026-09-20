@@ -45,7 +45,7 @@ public sealed class JsonSettingsStore : ISettingsStore
     public async Task SaveAsync(AppSettings settings, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(settings);
-        settings.SchemaVersion = 2;
+        settings.SchemaVersion = 3;
 
         var directory = Path.GetDirectoryName(SettingsPath)!;
         Directory.CreateDirectory(directory);
@@ -69,7 +69,7 @@ public sealed class JsonSettingsStore : ISettingsStore
     private static (AppSettings Settings, bool Migrated) ParseSettings(JsonElement root)
     {
         var schema = ReadInt(root, 1, "schemaVersion", "schema_version");
-        var migrated = schema < 2 || HasProperty(root,
+        var migrated = schema < 3 || HasProperty(root,
             "schema_version",
             "binary_path",
             "close_to_tray",
@@ -108,6 +108,16 @@ public sealed class JsonSettingsStore : ISettingsStore
                 if (name.Length == 0 || settings.ProfilePreferences.ContainsKey(name)) continue;
                 settings.ProfilePreferences[name] = ParsePreference(tunnel);
             }
+        }
+
+        if (string.IsNullOrWhiteSpace(settings.TunnelClientSource))
+        {
+            settings.TunnelClientSource = string.IsNullOrWhiteSpace(settings.TunnelClientPath) ? "managed" : "custom";
+        }
+
+        if (schema < 3 && !string.IsNullOrWhiteSpace(settings.TunnelClientPath))
+        {
+            settings.TunnelClientSetupCompleted = true;
         }
 
         return (settings, migrated);
