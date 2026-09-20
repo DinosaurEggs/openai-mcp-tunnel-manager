@@ -298,15 +298,31 @@ public sealed partial class MainWindow
 
     private LogViewState GetOrCreateLogState(string identity, string path, bool reset)
     {
-        if (reset ||
-            !_logStates.TryGetValue(identity, out var state) ||
-            !PathsEqual(state.Path, path))
+        if (!reset &&
+            _logStates.TryGetValue(identity, out var existing) &&
+            PathsEqual(existing.Path, path))
         {
-            state = new LogViewState(path);
-            _logStates[identity] = state;
+            return existing;
         }
 
+        var state = new LogViewState(path);
+        _logStates[identity] = state;
         return state;
+    }
+
+    private static bool PathsEqual(string left, string right)
+    {
+        try
+        {
+            return string.Equals(
+                Path.GetFullPath(left),
+                Path.GetFullPath(right),
+                StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private async Task ReplayCurrentLogAsync(bool followTail)
