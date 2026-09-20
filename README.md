@@ -46,6 +46,10 @@ Manager 自身配置、日志和状态文件固定保存在 `OpenAITunnelManager
 
 ```text
 OpenAITunnelManager.exe
+├─ tunnel-client\
+│  └─ versions\
+│     └─ vX.Y.Z\
+│        └─ tunnel-client.exe
 ├─ config\
 │  └─ settings.json
 ├─ logs\
@@ -56,13 +60,20 @@ OpenAITunnelManager.exe
 └─ state\
    ├─ foreground\
    └─ temp\
+      └─ tunnel-client-update\
 ```
 
 因此发布目录必须可写。
 
+首次启动时，Manager 会提示下载 OpenAI 官方最新 `tunnel-client`，或继续使用自定义 `tunnel-client.exe`。自动管理模式会按当前 Manager 架构选择官方 `windows-amd64` / `windows-arm64` Release 资产，校验 Release digest 与 `SHA256SUMS.txt`，验证 `tunnel-client.exe --version` 成功后才切换版本。以后每次启动都会检查最新正式 Release；检查或下载失败时继续使用当前已安装版本。
+
+自动管理版本按版本号安装到 `tunnel-client\\versions\\<version>`。更新不会覆盖正在运行的旧 EXE，并保留当前版本之外的一个旧版本用于回退清理。
+
 `config/settings.json` 只保存 Manager 本机偏好：
 
-- `tunnel-client.exe` 路径；
+- tunnel-client 来源（自动管理或自定义）；
+- 自定义 `tunnel-client.exe` 路径；
+- 当前自动管理版本；
 - 关闭到托盘；
 - Windows 登录启动；
 - Profile / Runtime 的 enabled、auto-connect、auto-reconnect；
