@@ -11,6 +11,7 @@ Windows 上的 `tunnel-client` 可视化管理器，使用 C# / WinUI 3 开发�
 - CommunityToolkit.Mvvm
 - Microsoft.Extensions.Hosting
 - H.NotifyIcon.WinUI
+- WinUIEdit / Scintilla
 - YamlDotNet
 - xUnit v3 / Microsoft Testing Platform
 
@@ -36,7 +37,7 @@ tunnel-client runtimes list --json
 
 Manager 自己启动并持有的 Profile 前台进程通过 `Process.Exited` 事件发现退出并触发自动重连。外部 Runtime 不做后台探测；其状态只在启动、手动刷新和显式操作时同步。
 
-唯一保留的周期刷新是日志自动刷新：日志标签当前可见且开关启用时，每 1 秒增量读取当前日志文件。
+唯一保留的周期刷新是日志 tail：日志标签当前可见时，每 1 秒增量读取当前日志文件。暂停输出只暂停控制台渲染，不停止文件读取。
 
 `tunnel-client --version` 和 capability probe 按可执行文件完整路径与最后修改时间缓存，不随每次刷新重复执行。
 
@@ -127,7 +128,7 @@ Runtime API Key 明文只进入 Windows Credential Manager，不写入 `settings
 - Runtime API Key 使用 Windows Credential Manager，并支持 Runtime → Profile 凭据查找；
 - `doctor --explain`；
 - Health / Ready 与新旧 Runtime 兼容；
-- 高性能 ANSI 日志查看：UTF-8、Unicode / Emoji、ANSI 16/256/TrueColor、增量读取、搜索、等级过滤、自动刷新、自动换行；
+- WinUIEdit / Scintilla 原生日志控制台：JSON `level` 精确解析、UTF-8 增量读取、搜索/正则、等级过滤、Follow Tail、暂停/继续、清空、复制、导出、自动换行与重复折叠；
 - 停止后保留最后已知日志路径用于继续读取和“打开文件位置”；
 - 打开配置 / 日志文件所在位置；
 - 纯 WinUI 系统托盘；
@@ -137,8 +138,6 @@ Runtime API Key 明文只进入 Windows Credential Manager，不写入 `settings
 以下功能已从最终产品**直接删除**，不保留隐藏控件或隐藏后端：
 
 - Profile Import / Export；
-- 复制可见日志；
-- 导出日志；
 - inventory 周期轮询；
 - Runtime status 周期轮询；
 - 可配置刷新间隔字段 / UI；
@@ -156,7 +155,7 @@ Runtime API Key 明文只进入 Windows Credential Manager，不写入 `settings
 - Header / Footer 固定；
 - 中间内容区独立滚动；
 - 基本页包含基本信息、运行选项和凭据；
-- 高级页提供完整 YAML / JSON 编辑器；
+- 高级页使用 WinUIEdit / Scintilla 编辑完整 YAML / JSON，并按内容启用 YAML / JSON 语法高亮；
 - 对话框打开后宽度稳定，不随 TextBox focus / scrollbar 状态重新缩放；
 - 编辑模式打开时基本页滚动位置归零。
 
@@ -200,22 +199,20 @@ Manager 持有该前台子进程及 stdout/stderr 日志 writer。异常退出�
 
 Runtime 使用 `runtimes status --json` 返回的官方 `log_path`；纯 Profile 使用 Manager 前台进程日志。
 
-日志 UI 直接使用虚拟化 `AnsiLogViewerControl`，不再通过隐藏的旧 `TextBox` 或整段字符串中转：
+日志 UI 使用 WinUIEdit / Scintilla 原生控件，不依赖 WebView2、Node/npm 或浏览器前端：
 
-- UTF-8 增量解码，跨 chunk 字符不会被截断；
-- 流式解析 ANSI SGR；
-- 支持标准 16 色、256 色和 24-bit TrueColor；
-- 中文、Unicode 特殊字符和 Emoji 由 WinUI 字体 fallback 显示；
-- 最多缓存约 30,000 行 / 8 MiB 字符，并批量淘汰旧行；
-- 初次只 tail 最近约 2 MiB，后续按文件 offset 增量读取；
-- 单次刷新和积压都有上限，防止大文件拖垮 UI；
-- 最多缓存 8 个连接的日志游标；
-- `ListView + ItemsStackPanel` 虚拟化，只创建可见行 UI；
-- 搜索和 DEBUG / INFO / WARN / ERROR 过滤使用纯文本；
-- 搜索过滤带 debounce，不在每次按键同步重建大量 UI；
-- 自动刷新默认每 1 秒执行且只在日志标签可见时运行；
-- 自动换行可选；
-- 日志页不显示文件路径；需要访问文件时使用“打开文件位置”；
+- 日志文件按 UTF-8 增量解码，跨 chunk 字符不会被截断；
+- 每行按 JSON 解析，等级**只读取 `level` 字段**，不会再从 `message` 或整行文本猜测 ERROR / WARN / INFO；
+- 支持 `trace/debug/info/warn/warning/error/fatal/critical` 映射，无法解析的行归为 Unknown；
+- 默认显示 `时间 LEVEL [logger] message`，原始 JSON 仍保存在内存结构中；
+- 初次只 tail 最近约 2 MiB，后续按文件 offset 增量读取，并处理文件截断 / 轮转；
+- Clear All 只清控制台与内存缓冲，并把读取游标推进到当前 EOF，不 truncate 正在写入的日志文件；
+- 最多缓存约 30,000 条 / 8 MiB，并保留最多 8 个连接的日志游标；
+- 默认 Follow Tail；用户向上滚动后停止抢滚动位置，并显示新增日志数量；点击“滚动到底部”恢复跟随；
+- “暂停输出”期间仍持续读取/解析日志，恢复后一次性重放当前缓冲；
+- 支持 TRACE / DEBUG / INFO / WARN / ERROR 等级过滤，其中 ERROR 包含 Fatal；
+- 支持上一项 / 下一项搜索、区分大小写和 C++11 正则表达式；
+- 支持自动换行、连续重复日志折叠、复制、全选和保存当前控制台；
 - Manager 自身 `app.log` 按约 5 MiB × 3 份备份滚动。
 
 ## Health
