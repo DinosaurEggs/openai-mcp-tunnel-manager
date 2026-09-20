@@ -14,7 +14,7 @@
 | custom Runtime Profile 与同名 listed Profile 分离 | Profile path 严格匹配后才合并 | 集成测试 |
 | 设置 tunnel-client.exe | WinUI `FileOpenPicker` | explicit path 测试 |
 | 显式错误路径不 fallback | `TunnelClientOptions.ResolveExecutablePath` | 行为测试 |
-| Manager 配置不保存 Tunnel ID / target / API Key | schema 2 `config/settings.json` | 设置测试 |
+| Manager 配置不保存 Tunnel ID / target / API Key | schema 3 `config/settings.json` | 设置测试 |
 | 旧版 settings / tunnels[] 单向迁移 | 保留本机偏好、清除旧 Tunnel 定义 | 兼容测试 |
 | 旧刷新间隔配置不继续保留 | 读取 `refreshIntervalMs` / `refresh_interval_ms` 后重写并移除 | 兼容测试 |
 | 损坏 settings 保留 `.broken` | `JsonSettingsStore` | 兼容测试 |
@@ -47,15 +47,21 @@
 | caller cancellation 杀进程树 | `Kill(entireProcessTree: true)` | cancellation 测试 |
 | command timeout 杀进程树 | 同一 runner timeout 路径 | timeout 测试 |
 | capability 不随刷新重复探测 | path + LastWriteTimeUtc cache | 实现约束 |
-| UTF-8 增量日志读取 | 流式 Decoder + byte offset | ANSI viewer |
-| 日志大文件有界 | 约 30k 行 / 8 MiB 字符，初始 tail 约 2 MiB | parser / stress tests |
-| 日志自动刷新保留 | 日志标签可见时 1 秒 `DispatcherQueueTimer` | WinUI shell |
-| 日志切换不串数据 | 最多 8 个 identity cursor | ANSI viewer |
-| ANSI 终端颜色 | 16 / 256 / TrueColor SGR | parser tests |
-| 中文 / Unicode / Emoji | UTF-8 + WinUI font fallback | parser + UI |
-| 日志搜索 / 等级过滤 | 纯文本过滤 + debounce | ANSI viewer |
-| 自动换行 | 虚拟化行控件 wrapping | WinUI shell |
-| 大量日志 UI 性能 | `ListView + ItemsStackPanel` 虚拟化 | WinUI shell |
+| UTF-8 增量日志读取 | `LogTailSession` Decoder + byte offset | tail session tests |
+| JSON 日志等级解析 | 只读取 JSON `level` 字段，不扫描 message / 原始文本 | `JsonLogParserTests` |
+| 日志大文件有界 | 约 30k 条 / 8 MiB，初始 tail 约 2 MiB | buffer + tail tests |
+| 日志持续 tail | 日志标签可见时 1 秒 `DispatcherQueueTimer`，无自动刷新开关 | WinUI shell |
+| Pause / Resume | 暂停只冻结控制台显示，文件仍继续读取并进入 buffer | WinUI shell |
+| Clear All | 清空控制台和 buffer，并将当前文件 cursor 推到 EOF；不 truncate 日志文件 | tail session tests |
+| Follow Tail | 底部时持续跟随；用户上滚后保留 viewport 并累计新日志数 | WinUIEdit / Scintilla |
+| 日志切换不串数据 | 最多 8 个 identity cursor | log state cache |
+| 中文 / Unicode / Emoji | UTF-8 + Scintilla 原生文本渲染 | parser + tail tests |
+| 日志搜索 | Scintilla 上一项 / 下一项、区分大小写、C++11 正则 | WinUIEdit |
+| 等级过滤 | TRACE / DEBUG / INFO / WARN / ERROR（ERROR 含 Fatal） | buffer tests |
+| 自动换行 | Scintilla `WrapMode` | WinUIEdit |
+| 重复日志折叠 | 连续相同 Severity + Message 折叠为 ×N | buffer tests |
+| 复制 / 全选 / 保存控制台 | Scintilla selection + 当前结构化 buffer 导出 | WinUI shell |
+| 大量日志 UI 性能 | Scintilla 原生大文本控件 + 有界 buffer | WinUIEdit |
 | 日志页不显示文件路径 | 路径控件和布局行不存在 | WinUI XAML |
 | 停止后保留最后日志路径 | `_lastLogPaths`，仅用于继续读取 / 打开文件位置 | ViewModel |
 | 打开日志 / 配置位置 | Explorer `/select` | WinUI shell |
@@ -89,7 +95,6 @@
 | 保存设置在页头 | Narrow 自动换行布局 | responsive controller |
 | Responsive 只有一套规则 | `MainWindow.Responsive.cs` | UI audit |
 | Profile Import / Export 删除 | UI / ViewModel / operations / tests 无入口 | 源码检查 |
-| 复制可见日志 / 导出日志删除 | UI / handlers / backend 无入口 | 源码检查 |
 | 旧字符串日志链路删除 | 无 `RawLog / VisibleLog`、无旧 Logs ViewModel 文件 | 源码检查 |
 | Runtime polling 残留命名删除 | 事件生命周期为 `ConnectionsViewModel.RuntimeEvents.cs` | 源码检查 |
 | 无 Python / WinForms / WPF | 纯 C# + WinUI 3 | CI 静态 + Artifact |
