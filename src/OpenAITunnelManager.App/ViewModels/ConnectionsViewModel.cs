@@ -61,6 +61,7 @@ public partial class ConnectionsViewModel : ObservableObject
     [ObservableProperty] public partial string TunnelClientPath { get; set; } = string.Empty;
     [ObservableProperty] public partial string ManagedTunnelClientVersion { get; set; } = string.Empty;
     [ObservableProperty] public partial string TunnelClientUpdateStatus { get; set; } = "未检查更新";
+    [ObservableProperty] public partial bool IsTunnelClientUpdating { get; set; }
     [ObservableProperty] public partial bool CloseToTray { get; set; } = true;
     [ObservableProperty] public partial bool StartWithWindows { get; set; }
     [ObservableProperty] public partial string ProfileDirectoryOverride { get; set; } = string.Empty;
