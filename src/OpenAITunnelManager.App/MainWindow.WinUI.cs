@@ -81,10 +81,21 @@ public sealed partial class MainWindow : Window
             InitializeThemeSetting();
             _logTimer.Start();
             ApplyUiPolish();
+
+            if (!ViewModel.TunnelClientSetupCompleted)
+            {
+                await ShowFirstRunTunnelClientSetupAsync();
+            }
+
             if (!ViewModel.IsClientAvailable) SelectPage("settings");
             MissingClientInfo.IsOpen = !ViewModel.IsClientAvailable;
             RequestResponsiveLayout();
             AppLog.Info($"Initial tunnel-client load completed: {ViewModel.StatusMessage}");
+
+            if (ViewModel.TunnelClientSetupCompleted && ViewModel.UsesManagedTunnelClient)
+            {
+                _ = CheckForManagedTunnelClientUpdatesAsync();
+            }
         }
         catch (Exception exception)
         {
