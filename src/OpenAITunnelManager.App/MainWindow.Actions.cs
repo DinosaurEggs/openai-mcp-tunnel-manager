@@ -249,7 +249,25 @@ public sealed partial class MainWindow
         if (container is not null) ConnectionsList.SelectedItem = container.Content;
     }
 
+    private async void DownloadManagedTunnelClient_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            await ViewModel.InstallManagedTunnelClientAsync();
+            MissingClientInfo.IsOpen = !ViewModel.IsClientAvailable;
+        }
+        catch (Exception exception)
+        {
+            await ShowErrorAsync($"下载 tunnel-client 失败：{exception.Message}");
+        }
+    }
+
     private async void BrowseTunnelClient_Click(object sender, RoutedEventArgs e)
+    {
+        await PickCustomTunnelClientAsync();
+    }
+
+    private async Task<bool> PickCustomTunnelClientAsync()
     {
         try
         {
@@ -257,14 +275,68 @@ public sealed partial class MainWindow
             picker.FileTypeFilter.Add(".exe");
             WinRT.Interop.InitializeWithWindow.Initialize(picker, _hwnd);
             var file = await picker.PickSingleFileAsync();
-            if (file is null) return;
+            if (file is null) return false;
 
             await ViewModel.ApplyTunnelClientPathAsync(file.Path);
             MissingClientInfo.IsOpen = !ViewModel.IsClientAvailable;
+            return true;
         }
         catch (Exception exception)
         {
             await ShowErrorAsync($"选择 tunnel-client 失败：{exception.Message}");
+            return false;
+        }
+    }
+
+    private async Task ShowFirstRunTunnelClientSetupAsync()
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = RootGrid.XamlRoot,
+            Title = "配置 tunnel-client",
+            Content = PrepareDialogContent(new TextBlock
+            {
+                Text = "OpenAI MCP Tunnel Manager 可以自动下载并维护 OpenAI 官方 tunnel-client，也可以继续使用你已有的 tunnel-client.exe。",
+                TextWrapping = TextWrapping.Wrap,
+                HorizontalAlignment = HorizontalAlignment.Stretch
+            }),
+            PrimaryButtonText = "下载最新版",
+            SecondaryButtonText = "使用自定义版本",
+            CloseButtonText = "稍后",
+            DefaultButton = ContentDialogButton.Primary
+        };
+
+        var result = await dialog.ShowAsync();
+        if (result == ContentDialogResult.Primary)
+        {
+            try
+            {
+                await ViewModel.InstallManagedTunnelClientAsync();
+                MissingClientInfo.IsOpen = !ViewModel.IsClientAvailable;
+            }
+            catch (Exception exception)
+            {
+                await ShowErrorAsync($"下载 tunnel-client 失败：{exception.Message}");
+            }
+            return;
+        }
+
+        if (result == ContentDialogResult.Secondary)
+        {
+            await PickCustomTunnelClientAsync();
+        }
+    }
+
+    private async Task CheckForManagedTunnelClientUpdatesAsync()
+    {
+        try
+        {
+            await ViewModel.CheckForManagedTunnelClientUpdateAsync();
+            MissingClientInfo.IsOpen = !ViewModel.IsClientAvailable;
+        }
+        catch (Exception exception)
+        {
+            AppLog.Error("Managed tunnel-client update check failed", exception);
         }
     }
 
