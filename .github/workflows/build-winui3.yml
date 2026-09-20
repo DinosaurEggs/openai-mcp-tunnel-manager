@@ -145,11 +145,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Setup Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-
       - name: Setup .NET
         uses: actions/setup-dotnet@v6
         with:
@@ -194,11 +189,8 @@ jobs:
             "Microsoft.UI.Xaml.dll",
             "Assets\AppIcon.png",
             "Assets\AppIcon.ico",
-            "Assets\LogConsole\dist\index.html",
-            "Assets\LogConsole\dist\console.js",
-            "Assets\LogConsole\dist\console.css",
-            "Assets\LogConsole\dist\xterm.css",
-            "Assets\LogConsole\dist\THIRD-PARTY-NOTICES.txt"
+            "WinUIEditor.dll",
+            "WinUIEditor.pri"
           )
 
           foreach ($file in $required) {
