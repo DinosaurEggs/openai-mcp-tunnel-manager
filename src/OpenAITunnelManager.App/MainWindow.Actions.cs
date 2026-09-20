@@ -268,6 +268,55 @@ public sealed partial class MainWindow
         }
     }
 
+    private async void DownloadTunnelClient_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            await ViewModel.UseManagedTunnelClientAsync(forceDownload: true);
+            MissingClientInfo.IsOpen = !ViewModel.IsClientAvailable;
+        }
+        catch (Exception exception)
+        {
+            await ShowErrorAsync($"下载 tunnel-client 失败：{exception.Message}");
+        }
+    }
+
+    private async Task ShowTunnelClientSetupAsync()
+    {
+        var dialog = new ContentDialog
+        {
+            XamlRoot = RootGrid.XamlRoot,
+            Title = "设置 tunnel-client",
+            Content = new TextBlock
+            {
+                Text = "Manager 可以自动下载并更新 OpenAI 官方 tunnel-client。默认建议使用自动管理的最新版，也可以选择已有 tunnel-client.exe 所在目录。",
+                TextWrapping = TextWrapping.Wrap,
+                HorizontalAlignment = HorizontalAlignment.Stretch
+            },
+            PrimaryButtonText = "下载最新版",
+            SecondaryButtonText = "使用自定义目录",
+            DefaultButton = ContentDialogButton.Primary
+        };
+
+        var result = await dialog.ShowAsync();
+        if (result == ContentDialogResult.Primary)
+        {
+            await ViewModel.UseManagedTunnelClientAsync(forceDownload: false);
+            return;
+        }
+
+        if (result != ContentDialogResult.Secondary) return;
+
+        var picker = new FolderPicker { SuggestedStartLocation = PickerLocationId.ComputerFolder };
+        picker.FileTypeFilter.Add("*");
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, _hwnd);
+        var folder = await picker.PickSingleFolderAsync();
+        if (folder is not null)
+        {
+            await ViewModel.ApplyTunnelClientDirectoryAsync(folder.Path);
+        }
+    }
+
     private void OpenConfigLocation_Click(object sender, RoutedEventArgs e) => OpenFileLocation(ViewModel.GetSelectedConfigPath());
     private void OpenLogLocation_Click(object sender, RoutedEventArgs e) => OpenFileLocation(ViewModel.CurrentLogPath);
 
