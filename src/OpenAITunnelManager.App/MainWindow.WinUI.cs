@@ -24,6 +24,7 @@ public sealed partial class MainWindow : Window
     private bool _initialized;
     private bool _allowClose;
     private bool _shutdownInProgress;
+    private bool _logRefreshInProgress;
 
     public ConnectionsViewModel ViewModel { get; }
 
@@ -61,7 +62,7 @@ public sealed partial class MainWindow : Window
         _logTimer = DispatcherQueue.CreateTimer();
         _logTimer.Interval = TimeSpan.FromSeconds(1);
         _logTimer.Tick += LogTimer_Tick;
-        ConfigureAnsiLogViewer();
+        ConfigureLogConsole();
         AppWindow.Closing += AppWindow_Closing;
         AppLog.Info("MainWindow construction completed");
     }
@@ -110,8 +111,16 @@ public sealed partial class MainWindow : Window
 
     private async void LogTimer_Tick(DispatcherQueueTimer sender, object args)
     {
-        if (!IsLogTabSelected() || !ViewModel.LogAutoRefresh || ViewModel.IsBusy) return;
-        await RefreshAnsiLogAsync(forceReload: false);
+        if (!IsLogTabSelected() || _logRefreshInProgress) return;
+        _logRefreshInProgress = true;
+        try
+        {
+            await RefreshLogConsoleAsync(forceReload: false);
+        }
+        finally
+        {
+            _logRefreshInProgress = false;
+        }
     }
 
     private void Navigation_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
@@ -153,7 +162,7 @@ public sealed partial class MainWindow : Window
         {
             if (IsLogTabSelected())
             {
-                await RefreshAnsiLogAsync(forceReload: false, resetFilterState: true);
+                await RefreshLogConsoleAsync(forceReload: false, resetConsoleState: true);
             }
             else if (IsDiagnosticsTabSelected())
             {
@@ -173,7 +182,7 @@ public sealed partial class MainWindow : Window
         {
             if (IsLogTabSelected())
             {
-                await RefreshAnsiLogAsync(forceReload: false);
+                await RefreshLogConsoleAsync(forceReload: false);
             }
             else if (IsDiagnosticsTabSelected())
             {
@@ -247,7 +256,7 @@ public sealed partial class MainWindow : Window
         }
 
         _logTimer.Stop();
-        DisposeAnsiLogViewer();
+        DisposeLogConsole();
         DisposeTray();
     }
 
@@ -278,7 +287,7 @@ public sealed partial class MainWindow : Window
         finally
         {
             _allowClose = true;
-            DisposeAnsiLogViewer();
+            DisposeLogConsole();
             DisposeTray();
             Close();
         }
