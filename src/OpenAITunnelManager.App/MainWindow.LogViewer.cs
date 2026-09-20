@@ -254,7 +254,7 @@ public sealed partial class MainWindow
             var added = rawLines
                 .Select(raw => JsonLogParser.ParseLine(raw, state.NextSequence++))
                 .ToArray();
-            if (added.Length > 0) state.Buffer.Append(added);
+            var trimmedNow = added.Length > 0 && state.Buffer.Append(added);
 
             if (switched || forceReload)
             {
@@ -269,7 +269,7 @@ public sealed partial class MainWindow
                 {
                     _logPausedLines += visibleCount;
                 }
-                else if (ViewModel.LogFoldDuplicates)
+                else if (trimmedNow || ViewModel.LogFoldDuplicates)
                 {
                     await ReplayStateAsync(state, _logAtBottom);
                 }
