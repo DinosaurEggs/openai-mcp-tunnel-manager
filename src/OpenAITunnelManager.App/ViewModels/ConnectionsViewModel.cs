@@ -25,6 +25,7 @@ public partial class ConnectionsViewModel : ObservableObject
     private readonly ICredentialStore _credentials;
     private readonly IAutostartService _autostart;
     private readonly TunnelClientOptions _options;
+    private readonly ManagedTunnelClientService _managedTunnelClient;
     private readonly HashSet<string> _manualStopped = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _reconnectScheduled = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, int> _reconnectAttempts = new(StringComparer.OrdinalIgnoreCase);
@@ -37,7 +38,8 @@ public partial class ConnectionsViewModel : ObservableObject
         ISettingsStore settingsStore,
         ICredentialStore credentials,
         IAutostartService autostart,
-        TunnelClientOptions options)
+        TunnelClientOptions options,
+        ManagedTunnelClientService managedTunnelClient)
     {
         _inventory = inventory;
         _operations = operations;
@@ -45,6 +47,7 @@ public partial class ConnectionsViewModel : ObservableObject
         _credentials = credentials;
         _autostart = autostart;
         _options = options;
+        _managedTunnelClient = managedTunnelClient;
     }
 
     public ObservableCollection<TunnelConnection> Connections { get; } = [];
@@ -56,6 +59,8 @@ public partial class ConnectionsViewModel : ObservableObject
     [ObservableProperty] public partial bool IsBusy { get; set; }
     [ObservableProperty] public partial bool IsClientAvailable { get; set; }
     [ObservableProperty] public partial string TunnelClientPath { get; set; } = string.Empty;
+    [ObservableProperty] public partial string ManagedTunnelClientVersion { get; set; } = string.Empty;
+    [ObservableProperty] public partial string TunnelClientUpdateStatus { get; set; } = "未检查更新";
     [ObservableProperty] public partial bool CloseToTray { get; set; } = true;
     [ObservableProperty] public partial bool StartWithWindows { get; set; }
     [ObservableProperty] public partial string ProfileDirectoryOverride { get; set; } = string.Empty;
@@ -67,6 +72,23 @@ public partial class ConnectionsViewModel : ObservableObject
     [ObservableProperty] public partial string CurrentLogPath { get; set; } = string.Empty;
     [ObservableProperty] public partial string DiagnosticText { get; set; } = string.Empty;
     [ObservableProperty] public partial string HealthText { get; set; } = string.Empty;
+
+    public bool TunnelClientSetupCompleted => Settings.TunnelClientSetupCompleted;
+    public bool UsesManagedTunnelClient => Settings.TunnelClientSource == TunnelClientSource.Managed;
+    public bool UsesCustomTunnelClient => Settings.TunnelClientSource == TunnelClientSource.Custom;
+    public string TunnelClientModeText => UsesManagedTunnelClient ? "当前：自动管理官方版本" : "当前：自定义版本";
+    public string ManagedTunnelClientVersionText => string.IsNullOrWhiteSpace(ManagedTunnelClientVersion)
+        ? "托管版本：未安装"
+        : $"托管版本：{ManagedTunnelClientVersion}";
+    public string ManagedTunnelClientPath
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(ManagedTunnelClientVersion)) return string.Empty;
+            try { return _managedTunnelClient.GetExecutablePath(ManagedTunnelClientVersion); }
+            catch { return string.Empty; }
+        }
+    }
 
     public bool CanStartSelected => IsClientAvailable && !IsBusy && SelectedConnection is { ProcessRunning: false } item && (item.HasRuntime || item.HasProfile);
     public bool CanStopSelected => IsClientAvailable && !IsBusy && SelectedConnection is { ProcessRunning: true };
