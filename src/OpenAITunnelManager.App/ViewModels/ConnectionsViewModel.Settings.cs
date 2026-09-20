@@ -6,7 +6,9 @@ public partial class ConnectionsViewModel
     {
         _autostart.SetEnabled(StartWithWindows);
 
-        Settings.TunnelClientPath = TunnelClientPath.Trim();
+        Settings.TunnelClientPath = string.Equals(Settings.TunnelClientSource, "custom", StringComparison.OrdinalIgnoreCase)
+            ? TunnelClientPath.Trim()
+            : string.Empty;
         Settings.CloseToTray = CloseToTray;
         Settings.StartWithWindows = StartWithWindows;
         Settings.ProfileDirectoryOverride = ProfileDirectoryOverride.Trim();
