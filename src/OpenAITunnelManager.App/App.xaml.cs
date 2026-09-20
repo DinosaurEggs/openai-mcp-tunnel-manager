@@ -92,7 +92,7 @@ public partial class App : Application
                 .UseContentRoot(baseDirectory)
                 .ConfigureServices(static services =>
                 {
-                    services.AddSingleton<TunnelClientOptions>();
+                    services.AddSingleton<TunnelClientOptions>();\n                    services.AddSingleton<TunnelClientUpdateService>();
                     services.AddSingleton<TunnelClientProcessRunner>();
                     services.AddSingleton<ISettingsStore, JsonSettingsStore>();
                     services.AddSingleton<ICredentialStore, WindowsCredentialStore>();
