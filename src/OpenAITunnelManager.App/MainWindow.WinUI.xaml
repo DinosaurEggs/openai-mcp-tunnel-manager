@@ -470,7 +470,7 @@
                                                 <TextBlock Text="{Binding TunnelClientUpdateStatus}" Opacity="0.65" FontSize="12" TextWrapping="Wrap" />
                                             </StackPanel>
                                             <StackPanel Grid.Column="2" Spacing="6" VerticalAlignment="Center">
-                                                <ProgressRing Width="18" Height="18" IsActive="{Binding IsBusy}" />
+                                                <ProgressRing Width="18" Height="18" IsActive="{Binding IsTunnelClientUpdating}" />
                                                 <Button Content="下载/更新" Click="DownloadManagedTunnelClient_Click" />
                                                 <Button Content="浏览自定义" Click="BrowseTunnelClient_Click" />
                                             </StackPanel>
