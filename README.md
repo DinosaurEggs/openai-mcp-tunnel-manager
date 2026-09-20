@@ -60,9 +60,16 @@ OpenAITunnelManager.exe
 
 因此发布目录必须可写。
 
+首次启动时，Manager 会提示：
+
+- 下载 OpenAI 官方最新 tunnel-client 到程序目录；
+- 或选择已有 tunnel-client.exe 所在目录。
+
+选择自动管理后，Manager 每次启动都会检查 `openai/tunnel-client` 最新正式 Release，并按当前 Windows 架构下载完整 client ZIP。下载包使用 Release 提供的 SHA-256 digest 校验，通过后原子替换程序目录中的 `tunnel-client.exe`，并记录已安装版本。网络检查失败时，如果本地已有托管版本，会继续使用现有版本。设置页可随时点击“下载/更新”切回托管最新版，也可继续使用自定义 EXE。
+
 `config/settings.json` 只保存 Manager 本机偏好：
 
-- `tunnel-client.exe` 路径；
+- tunnel-client 来源（默认由 Manager 自动下载/更新，或自定义 tunnel-client.exe 路径）；
 - 关闭到托盘；
 - Windows 登录启动；
 - Profile / Runtime 的 enabled、auto-connect、auto-reconnect；
