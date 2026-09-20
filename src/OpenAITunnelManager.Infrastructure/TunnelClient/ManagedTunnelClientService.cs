@@ -403,7 +403,8 @@ public sealed class ManagedTunnelClientService : IDisposable
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
-            CreateNoWindow = true
+            CreateNoWindow = true,
+            WorkingDirectory = Path.GetDirectoryName(executablePath)!
         };
         startInfo.ArgumentList.Add("--version");
 
