@@ -82,10 +82,19 @@ public sealed partial class LogConsoleControl : UserControl, IDisposable
         try
         {
             var editor = EditorControl.Editor;
+            var firstVisibleLine = editor.FirstVisibleLine;
             WithWritable(editor, () => editor.SetText(builder.ToString()));
             ApplyStyles(editor, 0, spans);
             editor.EmptyUndoBuffer();
-            if (followTail) ScrollToEndCore(editor);
+            if (followTail)
+            {
+                ScrollToEndCore(editor);
+            }
+            else
+            {
+                var lastVisibleLine = Math.Max(0, editor.VisibleFromDocLine(editor.LineCount - 1));
+                editor.FirstVisibleLine = Math.Min(firstVisibleLine, lastVisibleLine);
+            }
         }
         finally
         {
