@@ -277,14 +277,16 @@ public sealed partial class MainWindow
             SettingsClientGrid.RowSpacing = 8;
             SettingsClientGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             SettingsClientGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            SettingsClientGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             SettingsClientGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             SettingsClientGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             var children = SettingsClientGrid.Children.OfType<FrameworkElement>().ToArray();
-            if (children.Length >= 3)
+            if (children.Length >= 4)
             {
-                Grid.SetRow(children[0], 0); Grid.SetColumn(children[0], 0); Grid.SetColumnSpan(children[0], 2);
+                Grid.SetRow(children[0], 0); Grid.SetColumn(children[0], 0); Grid.SetColumnSpan(children[0], 3);
                 Grid.SetRow(children[1], 1); Grid.SetColumn(children[1], 0); Grid.SetColumnSpan(children[1], 1);
                 Grid.SetRow(children[2], 1); Grid.SetColumn(children[2], 1); Grid.SetColumnSpan(children[2], 1);
+                Grid.SetRow(children[3], 1); Grid.SetColumn(children[3], 2); Grid.SetColumnSpan(children[3], 1);
             }
             return;
         }
@@ -292,6 +294,7 @@ public sealed partial class MainWindow
         SettingsClientGrid.RowSpacing = 0;
         SettingsClientGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(28, GridUnitType.Star) });
         SettingsClientGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(72, GridUnitType.Star) });
+        SettingsClientGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         SettingsClientGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var normalChildren = SettingsClientGrid.Children.OfType<FrameworkElement>().ToArray();
         for (var index = 0; index < normalChildren.Length; index++)
