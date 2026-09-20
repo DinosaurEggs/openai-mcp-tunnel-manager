@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using OpenAITunnelManager.App.Controls;
+using OpenAITunnelManager.App.Diagnostics;
 using OpenAITunnelManager.Core.Models;
 using OpenAITunnelManager.Infrastructure.TunnelClient;
 using Windows.Storage.Pickers;
