@@ -28,7 +28,7 @@ public sealed class LogConsoleBuffer
         WasTrimmed = false;
     }
 
-    public void Append(IEnumerable<StructuredLogEntry> entries)
+    public bool Append(IEnumerable<StructuredLogEntry> entries)
     {
         ArgumentNullException.ThrowIfNull(entries);
         foreach (var entry in entries)
@@ -36,7 +36,7 @@ public sealed class LogConsoleBuffer
             _entries.Add(entry);
             _characterCount += entry.RawText.Length;
         }
-        Trim();
+        return Trim();
     }
 
     public IReadOnlyList<StructuredLogEntry> Snapshot(string? level = null)
@@ -93,14 +93,17 @@ public sealed class LogConsoleBuffer
         _ => true
     };
 
-    private void Trim()
+    private bool Trim()
     {
+        var trimmed = false;
         while (_entries.Count > 0 &&
                (_entries.Count > _maxEntries || _characterCount > _maxCharacters))
         {
             _characterCount -= _entries[0].RawText.Length;
             _entries.RemoveAt(0);
             WasTrimmed = true;
+            trimmed = true;
         }
+        return trimmed;
     }
 }
