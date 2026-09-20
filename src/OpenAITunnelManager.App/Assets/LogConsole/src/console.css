@@ -1,0 +1,41 @@
+html,
+body,
+#scroll-host,
+#terminal {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  overflow: hidden;
+  background: transparent;
+}
+
+#scroll-host {
+  position: relative;
+  overflow: hidden;
+}
+
+#scroll-host.no-wrap {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+#terminal {
+  min-width: 100%;
+}
+
+#scroll-host.no-wrap #terminal {
+  min-width: 0;
+}
+
+.xterm {
+  padding: 6px 4px;
+}
+
+.xterm-viewport {
+  scrollbar-width: thin;
+}
