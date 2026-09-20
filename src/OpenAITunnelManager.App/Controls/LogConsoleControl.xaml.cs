@@ -271,8 +271,8 @@ public sealed partial class LogConsoleControl : UserControl, IDisposable
 
     private static void ScrollToEndCore(Editor editor)
     {
-        editor.GotoPos(editor.Length);
-        editor.ScrollCaret();
+        var end = editor.Length;
+        editor.ScrollRange(end, end);
     }
 
     private bool IsAtBottom()
