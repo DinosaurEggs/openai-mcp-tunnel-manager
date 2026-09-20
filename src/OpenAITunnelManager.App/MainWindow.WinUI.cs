@@ -82,7 +82,8 @@ public sealed partial class MainWindow : Window
             _logTimer.Start();
             ApplyUiPolish();
 
-            if (!ViewModel.TunnelClientSetupCompleted)
+            var firstRunSetupNeeded = !ViewModel.TunnelClientSetupCompleted;
+            if (firstRunSetupNeeded)
             {
                 await ShowFirstRunTunnelClientSetupAsync();
             }
@@ -92,7 +93,9 @@ public sealed partial class MainWindow : Window
             RequestResponsiveLayout();
             AppLog.Info($"Initial tunnel-client load completed: {ViewModel.StatusMessage}");
 
-            if (ViewModel.TunnelClientSetupCompleted && ViewModel.UsesManagedTunnelClient)
+            if (!firstRunSetupNeeded &&
+                ViewModel.TunnelClientSetupCompleted &&
+                ViewModel.UsesManagedTunnelClient)
             {
                 _ = CheckForManagedTunnelClientUpdatesAsync();
             }
