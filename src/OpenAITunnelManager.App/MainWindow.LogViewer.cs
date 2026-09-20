@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Diagnostics;
 using System.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -58,26 +57,16 @@ public sealed partial class MainWindow
         LogConsole.HorizontalAlignment = HorizontalAlignment.Stretch;
         LogConsole.VerticalAlignment = VerticalAlignment.Stretch;
         LogConsole.BottomStateChanged += LogConsole_BottomStateChanged;
-        LogConsole.LinkInvoked += LogConsole_LinkInvoked;
         LogConsole.Ready += LogConsole_Ready;
         ViewModel.PropertyChanged += ViewModel_LogConsolePropertyChanged;
 
-        _ = LogConsole.SetWrapAsync(ViewModel.LogWrap);
-        _ = LogConsole.SetSearchAsync(
-            ViewModel.LogSearch,
-            ViewModel.LogSearchRegex,
-            ViewModel.LogSearchCaseSensitive);
+        LogConsole.SetWrap(ViewModel.LogWrap);
         UpdateLogToolbarState();
     }
 
     private void LogConsole_Ready()
     {
-        _ = LogConsole.SetThemeAsync(RootGrid.ActualTheme);
-        _ = LogConsole.SetWrapAsync(ViewModel.LogWrap);
-        _ = LogConsole.SetSearchAsync(
-            ViewModel.LogSearch,
-            ViewModel.LogSearchRegex,
-            ViewModel.LogSearchCaseSensitive);
+        LogConsole.SetWrap(ViewModel.LogWrap);
         _ = ReplayCurrentLogAsync(followTail: true);
     }
 
@@ -88,47 +77,16 @@ public sealed partial class MainWindow
         UpdateLogToolbarState();
     }
 
-    private static bool IsAllowedWebLink(string value, out Uri? uri)
-    {
-        uri = null;
-        if (!Uri.TryCreate(value, UriKind.Absolute, out var parsed)) return false;
-        if (parsed.Scheme is not ("http" or "https")) return false;
-        uri = parsed;
-        return true;
-    }
-
-    private void LogConsole_LinkInvoked(string value)
-    {
-        if (!IsAllowedWebLink(value, out var uri) || uri is null) return;
-        try
-        {
-            Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
-        }
-        catch (Exception exception)
-        {
-            AppLog.Error("Opening log hyperlink failed", exception);
-        }
-    }
-
     private void ViewModel_LogConsolePropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(ViewModel.LogSearch)
-            or nameof(ViewModel.LogSearchRegex)
-            or nameof(ViewModel.LogSearchCaseSensitive))
-        {
-            _ = LogConsole.SetSearchAsync(
-                ViewModel.LogSearch,
-                ViewModel.LogSearchRegex,
-                ViewModel.LogSearchCaseSensitive);
-        }
-        else if (e.PropertyName is nameof(ViewModel.LogLevel)
-                 or nameof(ViewModel.LogFoldDuplicates))
+        if (e.PropertyName is nameof(ViewModel.LogLevel)
+            or nameof(ViewModel.LogFoldDuplicates))
         {
             _ = ReplayCurrentLogAsync(_logAtBottom);
         }
         else if (e.PropertyName == nameof(ViewModel.LogWrap))
         {
-            _ = LogConsole.SetWrapAsync(ViewModel.LogWrap);
+            LogConsole.SetWrap(ViewModel.LogWrap);
         }
     }
 
@@ -148,15 +106,15 @@ public sealed partial class MainWindow
         UpdateLogToolbarState();
     }
 
-    private async void LogScrollToEnd_Click(object sender, RoutedEventArgs e)
+    private void LogScrollToEnd_Click(object sender, RoutedEventArgs e)
     {
         _logAtBottom = true;
         _logPendingLines = 0;
-        await LogConsole.ScrollToBottomAsync();
+        LogConsole.ScrollToEnd();
         UpdateLogToolbarState();
     }
 
-    private async void LogClear_Click(object sender, RoutedEventArgs e)
+    private void LogClear_Click(object sender, RoutedEventArgs e)
     {
         if (TryGetCurrentLogState(out var state))
         {
@@ -168,21 +126,27 @@ public sealed partial class MainWindow
         _logPausedLines = 0;
         _logPendingLines = 0;
         _logAtBottom = true;
-        await LogConsole.ClearAsync();
+        LogConsole.Clear();
         UpdateLogToolbarState();
     }
 
-    private async void LogFindPrevious_Click(object sender, RoutedEventArgs e) =>
-        await LogConsole.FindPreviousAsync();
+    private void LogFindPrevious_Click(object sender, RoutedEventArgs e) =>
+        LogConsole.FindPrevious(
+            ViewModel.LogSearch,
+            ViewModel.LogSearchRegex,
+            ViewModel.LogSearchCaseSensitive);
 
-    private async void LogFindNext_Click(object sender, RoutedEventArgs e) =>
-        await LogConsole.FindNextAsync();
+    private void LogFindNext_Click(object sender, RoutedEventArgs e) =>
+        LogConsole.FindNext(
+            ViewModel.LogSearch,
+            ViewModel.LogSearchRegex,
+            ViewModel.LogSearchCaseSensitive);
 
-    private async void LogCopy_Click(object sender, RoutedEventArgs e) =>
-        await LogConsole.CopyAsync();
+    private void LogCopy_Click(object sender, RoutedEventArgs e) =>
+        LogConsole.Copy();
 
-    private async void LogSelectAll_Click(object sender, RoutedEventArgs e) =>
-        await LogConsole.SelectAllAsync();
+    private void LogSelectAll_Click(object sender, RoutedEventArgs e) =>
+        LogConsole.SelectAll();
 
     private async void LogSaveConsole_Click(object sender, RoutedEventArgs e)
     {
@@ -313,9 +277,9 @@ public sealed partial class MainWindow
                 {
                     var display = added
                         .Where(entry => LogConsoleBuffer.MatchesLevel(entry.Severity, ViewModel.LogLevel))
-                        .Select(entry => FormatConsoleLine(new LogDisplayEntry(entry, 1)))
+                        .Select(static entry => new LogDisplayEntry(entry, 1))
                         .ToArray();
-                    await LogConsole.AppendAsync(display, _logAtBottom);
+                    LogConsole.Append(display, _logAtBottom);
                 }
 
                 if (!_logAtBottom) _logPendingLines += visibleCount;
@@ -356,43 +320,14 @@ public sealed partial class MainWindow
     {
         if (_logPaused) return;
         var lines = state.Buffer
-            .SnapshotDisplay(ViewModel.LogLevel, ViewModel.LogFoldDuplicates)
-            .Select(FormatConsoleLine)
-            .ToArray();
-        await LogConsole.ReplaceAllAsync(lines, followTail);
+            .SnapshotDisplay(ViewModel.LogLevel, ViewModel.LogFoldDuplicates);
+        LogConsole.ReplaceAll(lines, followTail);
+        await Task.CompletedTask;
         if (followTail)
         {
             _logAtBottom = true;
             _logPendingLines = 0;
         }
-    }
-
-    private static string FormatConsoleLine(LogDisplayEntry item)
-    {
-        var text = SanitizeTerminalText(item.ToConsoleText());
-        var prefix = item.Entry.Severity switch
-        {
-            LogSeverity.Trace => "\u001b[2m",
-            LogSeverity.Debug => "\u001b[36m",
-            LogSeverity.Info => "\u001b[32m",
-            LogSeverity.Warn => "\u001b[33m",
-            LogSeverity.Error => "\u001b[31m",
-            LogSeverity.Fatal => "\u001b[1;91m",
-            _ => "\u001b[0m"
-        };
-        return $"{prefix}{text}\u001b[0m\r\n";
-    }
-
-    private static string SanitizeTerminalText(string value)
-    {
-        var builder = new StringBuilder(value.Length);
-        foreach (var ch in value)
-        {
-            if (ch == '\r') { builder.Append("\\r"); continue; }
-            if (ch == '\n') { builder.Append("\\n"); continue; }
-            if (ch == '\t' || ch >= ' ') builder.Append(ch == '\u001b' ? '?' : ch);
-        }
-        return builder.ToString();
     }
 
     private bool TryGetCurrentLogState(out LogViewState state)
@@ -415,8 +350,9 @@ public sealed partial class MainWindow
         _logPausedLines = 0;
         _logPendingLines = 0;
         _logAtBottom = true;
-        await LogConsole.ClearAsync();
+        LogConsole.Clear();
         UpdateLogToolbarState();
+        await Task.CompletedTask;
     }
 
     private void EvictOldLogStates()
@@ -459,7 +395,6 @@ public sealed partial class MainWindow
         _logConsoleConfigured = false;
         ViewModel.PropertyChanged -= ViewModel_LogConsolePropertyChanged;
         LogConsole.BottomStateChanged -= LogConsole_BottomStateChanged;
-        LogConsole.LinkInvoked -= LogConsole_LinkInvoked;
         LogConsole.Ready -= LogConsole_Ready;
         LogConsole.Dispose();
         _logStates.Clear();
