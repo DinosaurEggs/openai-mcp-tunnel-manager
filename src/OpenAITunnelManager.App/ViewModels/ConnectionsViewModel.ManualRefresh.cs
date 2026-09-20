@@ -1,4 +1,4 @@
-namespace OpenAITunnelManager.App.ViewModels;
+using OpenAITunnelManager.Infrastructure.TunnelClient;\n\nnamespace OpenAITunnelManager.App.ViewModels;
 
 public partial class ConnectionsViewModel
 {
