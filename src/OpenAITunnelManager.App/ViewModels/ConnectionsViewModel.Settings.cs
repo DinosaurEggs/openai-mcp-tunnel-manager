@@ -45,10 +45,10 @@ public partial class ConnectionsViewModel
         bool forceDownload = false,
         CancellationToken cancellationToken = default)
     {
-        if (IsBusy) throw new InvalidOperationException("当前正在执行其他操作");
+        if (IsTunnelClientUpdating) throw new InvalidOperationException("当前正在执行其他操作");
 
         ManagedTunnelClientInstallResult result;
-        IsBusy = true;
+        IsTunnelClientUpdating = true;
         StatusMessage = "正在检查 OpenAI 官方 tunnel-client 最新版本...";
         TunnelClientUpdateStatus = "正在检查更新...";
         try
@@ -70,7 +70,7 @@ public partial class ConnectionsViewModel
         }
         finally
         {
-            IsBusy = false;
+            IsTunnelClientUpdating = false;
         }
 
         _initialAutoConnectApplied = false;
@@ -85,13 +85,13 @@ public partial class ConnectionsViewModel
     {
         if (!Settings.TunnelClientSetupCompleted ||
             Settings.TunnelClientSource != TunnelClientSource.Managed ||
-            IsBusy)
+            IsTunnelClientUpdating)
         {
             return;
         }
 
         ManagedTunnelClientInstallResult? result = null;
-        IsBusy = true;
+        IsTunnelClientUpdating = true;
         TunnelClientUpdateStatus = "正在检查更新...";
         try
         {
@@ -123,7 +123,7 @@ public partial class ConnectionsViewModel
         }
         finally
         {
-            IsBusy = false;
+            IsTunnelClientUpdating = false;
         }
 
         if (result is not { Updated: true }) return;
