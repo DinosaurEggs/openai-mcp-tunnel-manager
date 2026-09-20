@@ -448,7 +448,7 @@
                                     <TextBlock Text="Manager 本机设置；修改后立即应用" Opacity="0.7" TextWrapping="Wrap" />
                                 </StackPanel>
 
-                                <InfoBar x:Name="MissingClientInfo" IsOpen="True" IsClosable="False" Severity="Warning" Title="tunnel-client" Message="如果未检测到 tunnel-client，请选择 tunnel-client.exe。" />
+                                <InfoBar x:Name="MissingClientInfo" IsOpen="True" IsClosable="False" Severity="Warning" Title="tunnel-client" Message="如果未检测到 tunnel-client，请下载官方最新版或选择自定义 tunnel-client.exe。" />
 
                                 <TextBlock Text="常规设置" FontSize="16" FontWeight="SemiBold" Margin="0,2,0,-4" />
                                 <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="10">
@@ -459,12 +459,21 @@
                                                 <ColumnDefinition Width="72*" />
                                                 <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
-                                            <StackPanel>
+                                            <StackPanel Spacing="3">
                                                 <TextBlock Text="tunnel-client" FontWeight="SemiBold" />
-                                                <TextBlock Text="选择要管理的 tunnel-client.exe" Opacity="0.65" FontSize="12" />
+                                                <TextBlock Text="{Binding TunnelClientModeText}" Opacity="0.65" FontSize="12" />
                                             </StackPanel>
-                                            <TextBox Grid.Column="1" Text="{Binding TunnelClientPath}" IsReadOnly="True" PlaceholderText="tunnel-client.exe 完整路径" />
-                                            <Button Grid.Column="2" Content="浏览" Click="BrowseTunnelClient_Click" />
+                                            <StackPanel Grid.Column="1" Spacing="5">
+                                                <TextBlock Text="{Binding ManagedTunnelClientVersionText}" />
+                                                <TextBlock Text="{Binding ManagedTunnelClientPath}" Opacity="0.65" FontSize="12" TextTrimming="CharacterEllipsis" />
+                                                <TextBox Text="{Binding TunnelClientPath}" IsReadOnly="True" PlaceholderText="自定义 tunnel-client.exe 路径（可选）" />
+                                                <TextBlock Text="{Binding TunnelClientUpdateStatus}" Opacity="0.65" FontSize="12" TextWrapping="Wrap" />
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="2" Spacing="6" VerticalAlignment="Center">
+                                                <ProgressRing Width="18" Height="18" IsActive="{Binding IsBusy}" />
+                                                <Button Content="下载/更新" Click="DownloadManagedTunnelClient_Click" />
+                                                <Button Content="浏览自定义" Click="BrowseTunnelClient_Click" />
+                                            </StackPanel>
                                         </Grid>
                                         <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}" />
                                         <Grid Padding="18">
