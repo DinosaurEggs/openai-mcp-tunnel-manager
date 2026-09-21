@@ -68,8 +68,12 @@ public sealed partial class TunnelClientOperations : ITunnelClientOperations
         }
     }
 
-    private ProcessStartInfo CreateStartInfo(IEnumerable<string> arguments, string? secretRef = null, string? secret = null) =>
-        _runner.CreateStartInfo(arguments, secretRef, secret);
+    private ProcessStartInfo CreateStartInfo(
+        IEnumerable<string> arguments,
+        string? secretRef = null,
+        string? secret = null,
+        IReadOnlyDictionary<string, string>? environment = null) =>
+        _runner.CreateStartInfo(arguments, secretRef, secret, environment);
 
     private Task<TunnelClientProcessResult> RunAsync(
         IEnumerable<string> arguments,
@@ -77,8 +81,9 @@ public sealed partial class TunnelClientOperations : ITunnelClientOperations
         CancellationToken cancellationToken,
         TimeSpan? timeout = null,
         string? secretRef = null,
-        string? secret = null) =>
-        _runner.RunAsync(arguments, allowFailure, cancellationToken, timeout, secretRef, secret);
+        string? secret = null,
+        IReadOnlyDictionary<string, string>? environment = null) =>
+        _runner.RunAsync(arguments, allowFailure, cancellationToken, timeout, secretRef, secret, environment);
 
     private async Task<JsonDocument> RunJsonAsync(IEnumerable<string> args, CancellationToken cancellationToken)
     {
