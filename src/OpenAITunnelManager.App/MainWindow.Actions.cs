@@ -513,7 +513,7 @@ public sealed partial class MainWindow
             if (string.IsNullOrWhiteSpace(version) || string.Equals(version, "未检测", StringComparison.Ordinal))
                 version = "已验证";
             TunnelClientSummaryText.Text = $"当前：自定义版本 · {version} · 已就绪";
-            TunnelClientSummaryText.ToolTipService.SetToolTip(TunnelClientSummaryText, ViewModel.TunnelClientPath);
+            ToolTipService.SetToolTip(TunnelClientSummaryText, ViewModel.TunnelClientPath);
             CleanupManagedVersionsMenuItem.Visibility = Visibility.Collapsed;
         }
 
