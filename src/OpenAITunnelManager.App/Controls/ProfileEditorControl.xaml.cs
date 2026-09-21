@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenAITunnelManager.Core.Models;
+using WinUIEditor;
 
 namespace OpenAITunnelManager.App.Controls;
 
@@ -26,12 +27,14 @@ public sealed partial class ProfileEditorControl : UserControl
         {
             _initializing = false;
         }
+
+        RawEditor.Editor.Modified += RawEditor_Modified;
     }
 
     public string ProfileName => ProfileNameBox.Text.Trim();
     public string TunnelId => TunnelIdBox.Text.Trim();
     public string TargetValue => TargetBox.Text.Trim();
-    public string RawText => RawEditor.Text;
+    public string RawText => RawEditor.Editor.GetText(RawEditor.Editor.Length + 1);
     public string Secret => SecretBox.Password;
     public bool Enabled => EnabledCheckBox.IsChecked == true;
     public bool AutoConnect => AutoConnectCheckBox.IsChecked == true;
@@ -118,7 +121,7 @@ public sealed partial class ProfileEditorControl : UserControl
         AdvancedHelpText.Text = CommonTargetSupported
             ? "保存时会将“基本”页中的 Tunnel ID 和 main MCP target 同步到此配置。"
             : "当前 Profile 使用非常用 MCP 结构；main MCP target 请直接在这里修改。";
-        RawEditor.Text = rawText;
+        SetRawEditorText(rawText);
         EditorTabs.SelectedIndex = 0;
         ClearValidationError();
 
@@ -163,10 +166,35 @@ public sealed partial class ProfileEditorControl : UserControl
         SyncCreateRawFromBasic();
     }
 
-    private void RawEditor_TextChanged(object sender, TextChangedEventArgs e)
+    private void RawEditor_Modified(Editor sender, ModifiedEventArgs e)
     {
         if (_initializing) return;
+        var type = (ModificationFlags)e.ModificationType;
+        if ((type & (ModificationFlags.InsertText | ModificationFlags.DeleteText)) == ModificationFlags.None) return;
         _advancedEdited = true;
+    }
+
+    private void RawEditor_Loaded(object sender, RoutedEventArgs e)
+    {
+        var editor = RawEditor.Editor;
+        editor.WrapMode = Wrap.None;
+        editor.HScrollBar = true;
+        editor.ScrollWidthTracking = true;
+        editor.TabWidth = 2;
+        editor.UseTabs = false;
+    }
+
+    private void SetRawEditorText(string text)
+    {
+        RawEditor.HighlightingLanguage = LooksLikeJson(text) ? "json" : "yaml";
+        RawEditor.Editor.SetText(text);
+        RawEditor.Editor.EmptyUndoBuffer();
+    }
+
+    private static bool LooksLikeJson(string value)
+    {
+        var trimmed = value.AsSpan().TrimStart();
+        return !trimmed.IsEmpty && trimmed[0] is '{' or '[';
     }
 
     private void SyncCreateRawFromBasic()
@@ -180,13 +208,13 @@ public sealed partial class ProfileEditorControl : UserControl
             var targetSection = McpType == McpType.Http
                 ? $"  server_urls:{Environment.NewLine}    - channel: main{Environment.NewLine}      url: {target}{Environment.NewLine}"
                 : $"  commands:{Environment.NewLine}    - channel: main{Environment.NewLine}      command: {target}{Environment.NewLine}";
-            RawEditor.Text =
+            SetRawEditorText(
                 $"config_version: 1{Environment.NewLine}" +
                 $"control_plane:{Environment.NewLine}" +
                 $"  tunnel_id: {tunnelId}{Environment.NewLine}" +
                 $"  api_key: {keyRef}{Environment.NewLine}" +
                 $"mcp:{Environment.NewLine}" +
-                targetSection;
+                targetSection);
         }
         finally
         {

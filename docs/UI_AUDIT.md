@@ -48,16 +48,20 @@
 
 ## 日志标签
 
-- [x] 使用 `AnsiLogViewerControl` 直接作为 XAML 内容，不通过隐藏旧 TextBox 动态替换。
-- [x] 旧 `RawLog / VisibleLog` 大字符串渲染后端已删除。
-- [x] 保留“立即刷新”和“自动刷新”。
-- [x] 自动刷新只在日志标签当前可见且开关启用时每 1 秒增量读取。
+- [x] 使用 WinUIEdit / Scintilla 原生 `LogConsoleControl`，不依赖 WebView2 / npm / 浏览器前端。
+- [x] 旧 `RawLog / VisibleLog` 和 ANSI/ListView 自研渲染链路已删除。
+- [x] 日志标签可见时每 1 秒增量 tail；不再提供“自动刷新”开关。
+- [x] “暂停输出”只暂停控制台渲染，文件读取与结构化 buffer 继续推进。
+- [x] Clear All 清屏后从当前文件 EOF 继续读取，不删除或 truncate 实际日志文件。
+- [x] JSON 等级只读取 `level` 字段，不从 message / 原始文本猜测。
 - [x] 筛选栏按三档断点重排。
-- [x] 保留日志搜索、等级过滤、自动换行。
-- [x] 支持 UTF-8、Unicode / Emoji 和 ANSI 16/256/TrueColor。
-- [x] 使用有界行缓存和虚拟化 ListView，长日志不会生成整段 TextBox 文本。
-- [x] 日志页文件路径控件和对应布局行已直接删除。
-- [x] 不存在复制可见日志或导出日志入口 / handler / backend。
+- [x] 支持 TRACE / DEBUG / INFO / WARN / ERROR 等级过滤。
+- [x] 支持上一项 / 下一项、大小写和正则搜索。
+- [x] 支持 Follow Tail；用户向上滚动后保持 viewport，并显示新增日志数量。
+- [x] 支持自动换行、连续重复日志折叠。
+- [x] 支持复制、全选、保存当前控制台和打开日志文件位置。
+- [x] 使用有界结构化 buffer，长日志不会无限占用内存。
+- [x] 日志页文件路径控件和对应布局行保持删除。
 
 ## 诊断标签
 
@@ -84,7 +88,7 @@
 - [x] ContentDialog 只负责居中与外层约束，单一 Host Grid 负责编辑区尺寸。
 - [x] Editor 本身只 Stretch，不再同时锁 `Width / MinWidth / MaxWidth`。
 - [x] 基本页只有正文 ScrollViewer；Footer 不随正文滚动。
-- [x] 高级编辑器占剩余 `*` 高度，不使用会顶住 Footer 的固定最小高度。
+- [x] 高级编辑器使用 WinUIEdit / Scintilla，占剩余 `*` 高度，并支持 YAML / JSON 语法高亮。
 - [x] 编辑模式打开时基本页滚动位置归零。
 - [x] TextBox focus / clear button / scrollbar 状态不会导致对话框宽度重新收缩。
 - [x] 未知未来 target：common target 输入禁用，高级原始文本仍可编辑。
@@ -102,8 +106,6 @@
 以下能力已经是“源码删除”，不是隐藏：
 
 - [x] Profile Import / Export。
-- [x] 复制可见日志。
-- [x] 导出日志。
 - [x] 独立 Logs / Diagnostics 主页面。
 - [x] 全局底部状态条。
 - [x] Runtime / inventory 周期轮询。
@@ -119,7 +121,7 @@
 - [x] 发布产物禁止 WinForms / WPF / Python Runtime 残留。
 - [x] x64 启动 smoke test。
 - [x] 单实例 smoke test。
-- [x] ANSI parser 包含大批量日志测试。
+- [x] JSON level parser 与增量 tail / Clear cursor 包含自动测试。
 
 ## 人工视觉验收
 
@@ -131,6 +133,6 @@ CI 可以验证构建、启动和基础结构，但以下项目仍需在最终 W
 - [ ] Wide `>=1000` 下 Dashboard 四卡比例、信息区宽度和留白合理。
 - [ ] 新建 / 编辑 Profile 弹窗在不同 DPI 下居中，基本页从顶部显示，高级编辑器滚动条位于内容边界内。
 - [ ] 长 Profile 名、长路径、长错误信息不会扩大主窗口内容宽度。
-- [ ] 日志自动刷新时切换连接、搜索、ANSI 颜色和水平滚动体验正常，不再出现“刷新后短暂出现又消失”。
+- [ ] 日志持续 tail 时切换连接、搜索、Follow Tail、暂停/恢复和水平滚动体验正常。
 
 > `[x]` 表示代码侧已纳入对应规则；视觉项仍以实际 Windows Artifact 和截图为最终验收依据。

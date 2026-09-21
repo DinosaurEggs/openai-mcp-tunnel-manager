@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using OpenAITunnelManager.Core.Abstractions;
 using OpenAITunnelManager.Core.Models;
 
@@ -6,11 +7,7 @@ namespace OpenAITunnelManager.Infrastructure.Settings;
 
 public sealed class JsonSettingsStore : ISettingsStore
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        WriteIndented = true
-    };
+    private static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
 
     public JsonSettingsStore(string? settingsPath = null)
     {
@@ -45,7 +42,7 @@ public sealed class JsonSettingsStore : ISettingsStore
     public async Task SaveAsync(AppSettings settings, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(settings);
-        settings.SchemaVersion = 2;
+        settings.SchemaVersion = 3;
 
         var directory = Path.GetDirectoryName(SettingsPath)!;
         Directory.CreateDirectory(directory);
@@ -69,7 +66,13 @@ public sealed class JsonSettingsStore : ISettingsStore
     private static (AppSettings Settings, bool Migrated) ParseSettings(JsonElement root)
     {
         var schema = ReadInt(root, 1, "schemaVersion", "schema_version");
-        var migrated = schema < 2 || HasProperty(root,
+        var path = ReadString(root, "tunnelClientPath", "binaryPath", "binary_path");
+        var source = ParseTunnelClientSource(
+            ReadString(root, "tunnelClientSource", "tunnel_client_source"),
+            schema,
+            path);
+
+        var migrated = schema < 3 || HasProperty(root,
             "schema_version",
             "binary_path",
             "close_to_tray",
@@ -78,12 +81,19 @@ public sealed class JsonSettingsStore : ISettingsStore
             "refreshIntervalMs",
             "profile_preferences",
             "tunnels");
+
         var settings = new AppSettings
         {
-            SchemaVersion = 2,
-            TunnelClientPath = ReadString(root, "tunnelClientPath", "binaryPath", "binary_path"),
+            SchemaVersion = 3,
+            TunnelClientSource = source,
+            TunnelClientPath = path,
+            TunnelClientSetupCompleted = schema >= 3
+                ? ReadBool(root, false, "tunnelClientSetupCompleted", "tunnel_client_setup_completed")
+                : !string.IsNullOrWhiteSpace(path),
+            ManagedTunnelClientVersion = ReadString(root, "managedTunnelClientVersion", "managed_tunnel_client_version"),
             CloseToTray = ReadBool(root, true, "closeToTray", "close_to_tray"),
             StartWithWindows = ReadBool(root, false, "startWithWindows", "start_with_windows"),
+            ThemeMode = ReadString(root, "themeMode", "theme_mode"),
             ProfileDirectoryOverride = ReadString(root, "profileDirectoryOverride", "profile_directory_override"),
             StateDirectoryOverride = ReadString(root, "stateDirectoryOverride", "state_directory_override"),
             ProfilePreferences = new Dictionary<string, ProfilePreference>(StringComparer.OrdinalIgnoreCase)
@@ -113,6 +123,18 @@ public sealed class JsonSettingsStore : ISettingsStore
         return (settings, migrated);
     }
 
+    private static TunnelClientSource ParseTunnelClientSource(string value, int schema, string path)
+    {
+        if (string.Equals(value, "custom", StringComparison.OrdinalIgnoreCase))
+            return TunnelClientSource.Custom;
+        if (string.Equals(value, "managed", StringComparison.OrdinalIgnoreCase))
+            return TunnelClientSource.Managed;
+
+        return schema < 3 && !string.IsNullOrWhiteSpace(path)
+            ? TunnelClientSource.Custom
+            : TunnelClientSource.Managed;
+    }
+
     private static ProfilePreference ParsePreference(JsonElement element) => new()
     {
         AutoConnect = ReadBool(element, false, "autoConnect", "auto_connect"),
@@ -122,8 +144,10 @@ public sealed class JsonSettingsStore : ISettingsStore
 
     private static AppSettings Normalize(AppSettings settings)
     {
-        settings.SchemaVersion = 2;
+        settings.SchemaVersion = 3;
         settings.TunnelClientPath = settings.TunnelClientPath?.Trim() ?? string.Empty;
+        settings.ManagedTunnelClientVersion = settings.ManagedTunnelClientVersion?.Trim() ?? string.Empty;
+        settings.ThemeMode = string.IsNullOrWhiteSpace(settings.ThemeMode) ? "system" : settings.ThemeMode.Trim().ToLowerInvariant();
         settings.ProfileDirectoryOverride = settings.ProfileDirectoryOverride?.Trim() ?? string.Empty;
         settings.StateDirectoryOverride = settings.StateDirectoryOverride?.Trim() ?? string.Empty;
         settings.ProfilePreferences ??= new Dictionary<string, ProfilePreference>(StringComparer.OrdinalIgnoreCase);
@@ -136,6 +160,17 @@ public sealed class JsonSettingsStore : ISettingsStore
         }
 
         return settings;
+    }
+
+    private static JsonSerializerOptions CreateJsonOptions()
+    {
+        var options = new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            WriteIndented = true
+        };
+        options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
+        return options;
     }
 
     private static bool HasProperty(JsonElement element, params string[] names) =>

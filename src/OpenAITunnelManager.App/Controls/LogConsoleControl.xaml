@@ -1,0 +1,17 @@
+<UserControl
+    x:Class="OpenAITunnelManager.App.Controls.LogConsoleControl"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:editor="using:WinUIEditor"
+    MinWidth="0"
+    MinHeight="0"
+    HorizontalAlignment="Stretch"
+    VerticalAlignment="Stretch">
+    <Grid MinWidth="0" MinHeight="0">
+        <editor:EditorBaseControl
+            x:Name="EditorControl"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Stretch"
+            Loaded="EditorControl_Loaded" />
+    </Grid>
+</UserControl>

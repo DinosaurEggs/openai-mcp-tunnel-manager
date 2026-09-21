@@ -1,3 +1,4 @@
+using OpenAITunnelManager.Core.Models;
 using OpenAITunnelManager.Infrastructure.Settings;
 using OpenAITunnelManager.Infrastructure.Windows;
 using Xunit;
@@ -55,7 +56,9 @@ public sealed class CompatibilityTests
 
         var loaded = await new JsonSettingsStore(path).LoadAsync(token);
 
-        Assert.Equal(2, loaded.SchemaVersion);
+        Assert.Equal(3, loaded.SchemaVersion);
+        Assert.Equal(TunnelClientSource.Custom, loaded.TunnelClientSource);
+        Assert.True(loaded.TunnelClientSetupCompleted);
         Assert.Equal("C:/Tools/tunnel-client.exe", loaded.TunnelClientPath);
         Assert.False(loaded.CloseToTray);
         Assert.True(loaded.StartWithWindows);
@@ -65,7 +68,9 @@ public sealed class CompatibilityTests
         Assert.False(loaded.ProfilePreferences["idea"].Enabled);
 
         var rewritten = await File.ReadAllTextAsync(path, token);
-        Assert.Contains("\"schemaVersion\": 2", rewritten, StringComparison.Ordinal);
+        Assert.Contains("\"schemaVersion\": 3", rewritten, StringComparison.Ordinal);
+        Assert.Contains("\"tunnelClientSource\": \"custom\"", rewritten, StringComparison.Ordinal);
+        Assert.Contains("\"tunnelClientSetupCompleted\": true", rewritten, StringComparison.Ordinal);
         Assert.Contains("\"tunnelClientPath\"", rewritten, StringComparison.Ordinal);
         Assert.DoesNotContain("refreshInterval", rewritten, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("tunnels", rewritten, StringComparison.OrdinalIgnoreCase);
@@ -73,6 +78,29 @@ public sealed class CompatibilityTests
         Assert.DoesNotContain("old-private-target", rewritten, StringComparison.Ordinal);
         Assert.DoesNotContain("must-not-survive", rewritten, StringComparison.Ordinal);
         Assert.DoesNotContain("mcp_target", rewritten, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Schema2WithoutCustomPathStartsManagedSetupFlow()
+    {
+        var token = TestContext.Current.CancellationToken;
+        using var temp = new TempDirectory();
+        var path = Path.Combine(temp.Path, "config", "settings.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        await File.WriteAllTextAsync(path, """
+            {
+              "schemaVersion": 2,
+              "tunnelClientPath": "",
+              "closeToTray": true
+            }
+            """, token);
+
+        var loaded = await new JsonSettingsStore(path).LoadAsync(token);
+
+        Assert.Equal(3, loaded.SchemaVersion);
+        Assert.Equal(TunnelClientSource.Managed, loaded.TunnelClientSource);
+        Assert.False(loaded.TunnelClientSetupCompleted);
+        Assert.Empty(loaded.ManagedTunnelClientVersion);
     }
 
     [Fact]
@@ -88,10 +116,17 @@ public sealed class CompatibilityTests
         Assert.Equal(Path.Combine(baseDirectory, "config", "settings.json"), paths.SettingsPath);
         Assert.Equal(Path.Combine(baseDirectory, "logs", "app.log"), paths.ManagerLogPath);
         Assert.Equal(Path.Combine(baseDirectory, "state", "foreground"), paths.ForegroundStateDirectory);
+        Assert.Equal(Path.Combine(baseDirectory, "state", "temp"), paths.TempDirectory);
+        Assert.Equal(Path.Combine(baseDirectory, "tunnel-client", "versions"), paths.ManagedTunnelClientVersionsDirectory);
+        Assert.Equal(
+            Path.Combine(baseDirectory, "tunnel-client", "versions", "v1.2.3", "tunnel-client.exe"),
+            paths.GetManagedTunnelClientExecutablePath("v1.2.3"));
         Assert.True(Directory.Exists(paths.ConfigDirectory));
         Assert.True(Directory.Exists(paths.LogsDirectory));
         Assert.True(Directory.Exists(paths.StateDirectory));
+        Assert.True(Directory.Exists(paths.TempDirectory));
         Assert.True(Directory.Exists(paths.ForegroundStateDirectory));
+        Assert.True(Directory.Exists(paths.ManagedTunnelClientVersionsDirectory));
     }
 
     [Fact]

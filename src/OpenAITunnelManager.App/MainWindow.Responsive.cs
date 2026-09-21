@@ -272,34 +272,38 @@ public sealed partial class MainWindow
 
         SettingsClientGrid.RowDefinitions.Clear();
         SettingsClientGrid.ColumnDefinitions.Clear();
+
         if (bucket == "narrow")
         {
-            SettingsClientGrid.RowSpacing = 8;
             SettingsClientGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            SettingsClientGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             SettingsClientGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             SettingsClientGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            var children = SettingsClientGrid.Children.OfType<FrameworkElement>().ToArray();
-            if (children.Length >= 3)
-            {
-                Grid.SetRow(children[0], 0); Grid.SetColumn(children[0], 0); Grid.SetColumnSpan(children[0], 2);
-                Grid.SetRow(children[1], 1); Grid.SetColumn(children[1], 0); Grid.SetColumnSpan(children[1], 1);
-                Grid.SetRow(children[2], 1); Grid.SetColumn(children[2], 1); Grid.SetColumnSpan(children[2], 1);
-            }
+            SettingsClientGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            Grid.SetRow(SettingsClientSummary, 0);
+            Grid.SetColumn(SettingsClientSummary, 0);
+            Grid.SetRow(SettingsClientActions, 1);
+            Grid.SetColumn(SettingsClientActions, 0);
+            Grid.SetRow(TunnelClientProgressPanel, 2);
+            Grid.SetColumn(TunnelClientProgressPanel, 0);
+            Grid.SetColumnSpan(TunnelClientProgressPanel, 1);
+            SettingsClientActions.HorizontalAlignment = HorizontalAlignment.Left;
             return;
         }
 
-        SettingsClientGrid.RowSpacing = 0;
-        SettingsClientGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(28, GridUnitType.Star) });
-        SettingsClientGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(72, GridUnitType.Star) });
+        SettingsClientGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         SettingsClientGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var normalChildren = SettingsClientGrid.Children.OfType<FrameworkElement>().ToArray();
-        for (var index = 0; index < normalChildren.Length; index++)
-        {
-            Grid.SetRow(normalChildren[index], 0);
-            Grid.SetColumn(normalChildren[index], index);
-            Grid.SetColumnSpan(normalChildren[index], 1);
-        }
+        SettingsClientGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        SettingsClientGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        Grid.SetRow(SettingsClientSummary, 0);
+        Grid.SetColumn(SettingsClientSummary, 0);
+        Grid.SetRow(SettingsClientActions, 0);
+        Grid.SetColumn(SettingsClientActions, 1);
+        Grid.SetRow(TunnelClientProgressPanel, 1);
+        Grid.SetColumn(TunnelClientProgressPanel, 0);
+        Grid.SetColumnSpan(TunnelClientProgressPanel, 2);
+        SettingsClientActions.HorizontalAlignment = HorizontalAlignment.Right;
     }
 
     private void ApplyDirectoryOverrideLayout(bool narrow)

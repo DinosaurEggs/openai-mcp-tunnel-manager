@@ -188,7 +188,9 @@ jobs:
             "OpenAITunnelManager.pri",
             "Microsoft.UI.Xaml.dll",
             "Assets\AppIcon.png",
-            "Assets\AppIcon.ico"
+            "Assets\AppIcon.ico",
+            "WinUIEditor.dll",
+            "WinUIEditor.pri"
           )
 
           foreach ($file in $required) {

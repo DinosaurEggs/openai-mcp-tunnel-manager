@@ -346,36 +346,56 @@
                                                     </Grid.ColumnDefinitions>
                                                     <StackPanel x:Name="LogsHeaderTitle" Spacing="3">
                                                         <TextBlock Text="运行日志" FontSize="18" FontWeight="SemiBold" />
-                                                        <TextBlock Text="读取当前连接的 Runtime 或 GUI 前台 Profile 日志" Opacity="0.7" TextWrapping="Wrap" />
+                                                        <TextBlock x:Name="LogConsoleStatus" Text="未选择可读取的日志" Opacity="0.7" TextWrapping="Wrap" />
                                                     </StackPanel>
                                                     <StackPanel x:Name="LogsHeaderActions" Grid.Column="1" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
-                                                        <Button Content="立即刷新" Click="AnsiLogManualRefresh_Click" />
+                                                        <Button x:Name="LogPauseButton" Content="暂停输出" Click="LogPause_Click" />
+                                                        <Button x:Name="LogScrollEndButton" Content="滚动到底部" Click="LogScrollToEnd_Click" />
+                                                        <Button Content="刷新" Click="LogManualRefresh_Click" />
+                                                        <Button Content="清空" Click="LogClear_Click" />
+                                                        <Button Content="复制" Click="LogCopy_Click" />
+                                                        <Button Content="全选" Click="LogSelectAll_Click" />
+                                                        <Button Content="保存控制台" Click="LogSaveConsole_Click" />
                                                         <Button Content="打开文件位置" IsEnabled="{Binding CanOpenLogSelected}" Click="OpenLogLocation_Click" />
                                                     </StackPanel>
                                                 </Grid>
 
                                                 <Grid x:Name="LogsFilterGrid" Grid.Row="2" ColumnSpacing="10">
                                                     <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="42*" />
-                                                        <ColumnDefinition Width="22*" />
+                                                        <ColumnDefinition Width="50*" />
                                                         <ColumnDefinition Width="18*" />
-                                                        <ColumnDefinition Width="18*" />
+                                                        <ColumnDefinition Width="16*" />
+                                                        <ColumnDefinition Width="16*" />
                                                     </Grid.ColumnDefinitions>
-                                                    <TextBox PlaceholderText="搜索日志" Text="{Binding LogSearch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                    <Grid ColumnSpacing="6">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBox PlaceholderText="搜索日志" Text="{Binding LogSearch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                        <Button Grid.Column="1" Content="↑" ToolTipService.ToolTip="上一个匹配" Click="LogFindPrevious_Click" />
+                                                        <Button Grid.Column="2" Content="↓" ToolTipService.ToolTip="下一个匹配" Click="LogFindNext_Click" />
+                                                        <ToggleButton Grid.Column="3" Content="Aa" ToolTipService.ToolTip="区分大小写" IsChecked="{Binding LogSearchCaseSensitive, Mode=TwoWay}" />
+                                                        <ToggleButton Grid.Column="4" Content=".*" ToolTipService.ToolTip="正则表达式" IsChecked="{Binding LogSearchRegex, Mode=TwoWay}" />
+                                                    </Grid>
                                                     <ComboBox Grid.Column="1" x:Name="LogLevelCombo" SelectedValue="{Binding LogLevel, Mode=TwoWay}" SelectedValuePath="Content">
                                                         <ComboBoxItem Content="全部" IsSelected="True" />
+                                                        <ComboBoxItem Content="TRACE" />
                                                         <ComboBoxItem Content="DEBUG" />
                                                         <ComboBoxItem Content="INFO" />
                                                         <ComboBoxItem Content="WARN" />
                                                         <ComboBoxItem Content="ERROR" />
                                                     </ComboBox>
-                                                    <CheckBox Grid.Column="2" Content="自动刷新" IsChecked="{Binding LogAutoRefresh, Mode=TwoWay}" VerticalAlignment="Center" />
-                                                    <CheckBox Grid.Column="3" x:Name="LogWrapCheckBox" Content="自动换行" IsChecked="{Binding LogWrap, Mode=TwoWay}" VerticalAlignment="Center" />
+                                                    <CheckBox Grid.Column="2" Content="自动换行" IsChecked="{Binding LogWrap, Mode=TwoWay}" VerticalAlignment="Center" />
+                                                    <CheckBox Grid.Column="3" Content="折叠重复" IsChecked="{Binding LogFoldDuplicates, Mode=TwoWay}" VerticalAlignment="Center" />
                                                 </Grid>
 
-                                                <Border Grid.Row="4" Background="{ThemeResource ControlFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="12">
-                                                    <controls:AnsiLogViewerControl
-                                                        x:Name="AnsiLogViewer"
+                                                <Border Grid.Row="4" Background="{ThemeResource ControlFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="4">
+                                                    <controls:LogConsoleControl
+                                                        x:Name="LogConsole"
                                                         HorizontalAlignment="Stretch"
                                                         VerticalAlignment="Stretch" />
                                                 </Border>
@@ -448,23 +468,85 @@
                                     <TextBlock Text="Manager 本机设置；修改后立即应用" Opacity="0.7" TextWrapping="Wrap" />
                                 </StackPanel>
 
-                                <InfoBar x:Name="MissingClientInfo" IsOpen="True" IsClosable="False" Severity="Warning" Title="tunnel-client" Message="如果未检测到 tunnel-client，请选择 tunnel-client.exe。" />
+                                <InfoBar x:Name="MissingClientInfo" IsOpen="True" IsClosable="False" Severity="Warning" Title="tunnel-client" Message="如果未检测到 tunnel-client，请下载官方最新版或选择自定义 tunnel-client.exe。" />
 
                                 <TextBlock Text="常规设置" FontSize="16" FontWeight="SemiBold" Margin="0,2,0,-4" />
                                 <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="10">
                                     <StackPanel>
-                                        <Grid x:Name="SettingsClientGrid" Padding="18" ColumnSpacing="16">
+                                        <Grid x:Name="SettingsClientGrid" Padding="18" ColumnSpacing="12" RowSpacing="8">
                                             <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="28*" />
-                                                <ColumnDefinition Width="72*" />
+                                                <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
-                                            <StackPanel>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                            </Grid.RowDefinitions>
+
+                                            <StackPanel x:Name="SettingsClientSummary" Spacing="3" VerticalAlignment="Center">
                                                 <TextBlock Text="tunnel-client" FontWeight="SemiBold" />
-                                                <TextBlock Text="选择要管理的 tunnel-client.exe" Opacity="0.65" FontSize="12" />
+                                                <TextBlock x:Name="TunnelClientSummaryText" Text="当前：托管版本 · 尚未安装" Opacity="0.65" FontSize="12" TextTrimming="CharacterEllipsis" />
                                             </StackPanel>
-                                            <TextBox Grid.Column="1" Text="{Binding TunnelClientPath}" IsReadOnly="True" PlaceholderText="tunnel-client.exe 完整路径" />
-                                            <Button Grid.Column="2" Content="浏览" Click="BrowseTunnelClient_Click" />
+
+                                            <StackPanel x:Name="SettingsClientActions" Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                                <ComboBox
+                                                    x:Name="TunnelClientSourceCombo"
+                                                    MinWidth="120"
+                                                    SelectedValuePath="Tag"
+                                                    SelectionChanged="TunnelClientSourceCombo_SelectionChanged">
+                                                    <ComboBoxItem Content="托管版本" Tag="managed" />
+                                                    <ComboBoxItem Content="自定义版本" Tag="custom" />
+                                                </ComboBox>
+                                                <Button
+                                                    x:Name="TunnelClientPrimaryActionButton"
+                                                    MinWidth="76"
+                                                    Content="下载"
+                                                    Click="TunnelClientPrimaryAction_Click" />
+                                                <DropDownButton x:Name="TunnelClientMoreButton" Padding="10,6">
+                                                    <DropDownButton.Content>
+                                                        <FontIcon Glyph="&#xE712;" FontSize="14" />
+                                                    </DropDownButton.Content>
+                                                    <DropDownButton.Flyout>
+                                                        <MenuFlyout>
+                                                            <MenuFlyoutItem Text="打开文件位置" Click="OpenTunnelClientLocation_Click">
+                                                                <MenuFlyoutItem.Icon>
+                                                                    <FontIcon Glyph="&#xE838;" />
+                                                                </MenuFlyoutItem.Icon>
+                                                            </MenuFlyoutItem>
+                                                            <MenuFlyoutItem x:Name="CleanupManagedVersionsMenuItem" Text="清理已下载版本" Click="CleanupManagedVersions_Click">
+                                                                <MenuFlyoutItem.Icon>
+                                                                    <FontIcon Glyph="&#xE74D;" />
+                                                                </MenuFlyoutItem.Icon>
+                                                            </MenuFlyoutItem>
+                                                        </MenuFlyout>
+                                                    </DropDownButton.Flyout>
+                                                </DropDownButton>
+                                            </StackPanel>
+
+                                            <Grid
+                                                x:Name="TunnelClientProgressPanel"
+                                                Grid.Row="1"
+                                                Grid.ColumnSpan="2"
+                                                Visibility="Collapsed"
+                                                RowSpacing="4">
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="Auto" />
+                                                </Grid.RowDefinitions>
+                                                <ProgressBar
+                                                    x:Name="TunnelClientDownloadProgressBar"
+                                                    Minimum="0"
+                                                    Maximum="100"
+                                                    Height="4" />
+                                                <Grid Grid.Row="1">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock x:Name="TunnelClientOperationText" FontSize="12" Opacity="0.65" />
+                                                    <TextBlock x:Name="TunnelClientTransferText" Grid.Column="1" FontSize="12" Opacity="0.65" Margin="12,0,0,0" />
+                                                </Grid>
+                                            </Grid>
                                         </Grid>
                                         <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}" />
                                         <Grid Padding="18">
