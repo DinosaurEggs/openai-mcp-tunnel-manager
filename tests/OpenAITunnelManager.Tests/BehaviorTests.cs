@@ -78,7 +78,16 @@ public sealed class BehaviorTests
             StartWithWindows = true,
             ProfilePreferences = new Dictionary<string, ProfilePreference>(StringComparer.OrdinalIgnoreCase)
             {
-                ["profile:idea"] = new() { Enabled = true, AutoConnect = true, AutoReconnect = true }
+                ["profile:idea"] = new()
+                {
+                    Enabled = true,
+                    AutoConnect = true,
+                    AutoReconnect = true,
+                    StdioEnvironment = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                    {
+                        ["IJ_MCP_SERVER_PORT"] = "64342"
+                    }
+                }
             }
         };
 
@@ -93,6 +102,7 @@ public sealed class BehaviorTests
 
         var loaded = await store.LoadAsync(cancellationToken);
         Assert.True(loaded.ProfilePreferences["PROFILE:IDEA"].AutoConnect);
+        Assert.Equal("64342", loaded.ProfilePreferences["PROFILE:IDEA"].StdioEnvironment["ij_mcp_server_port"]);
     }
 
     [Fact]
@@ -134,6 +144,37 @@ public sealed class BehaviorTests
 
         Assert.Equal("utf-8", startInfo.StandardOutputEncoding?.WebName);
         Assert.Equal("utf-8", startInfo.StandardErrorEncoding?.WebName);
+    }
+
+    [Fact]
+    public void TunnelClientProcessRunner_AppliesPerLaunchEnvironmentWithManagerOverrides()
+    {
+        using var temp = new TempDirectory();
+        var executable = Path.Combine(temp.Path, "tunnel-client.exe");
+        File.WriteAllBytes(executable, []);
+        var options = new TunnelClientOptions
+        {
+            ExecutablePath = executable,
+            ProfileDirectoryOverride = @"C:\manager\profiles",
+            StateDirectoryOverride = @"C:\manager\state"
+        };
+        var runner = new TunnelClientProcessRunner(options);
+
+        var startInfo = runner.CreateStartInfo(
+            ["--version"],
+            "env:CONTROL_PLANE_API_KEY",
+            "manager-secret",
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["IJ_MCP_SERVER_PORT"] = "64342",
+                ["TUNNEL_CLIENT_PROFILE_DIR"] = @"C:\profile\override",
+                ["CONTROL_PLANE_API_KEY"] = "profile-secret"
+            });
+
+        Assert.Equal("64342", startInfo.Environment["IJ_MCP_SERVER_PORT"]);
+        Assert.Equal(@"C:\manager\profiles", startInfo.Environment["TUNNEL_CLIENT_PROFILE_DIR"]);
+        Assert.Equal(@"C:\manager\state", startInfo.Environment["TUNNEL_CLIENT_STATE_DIR"]);
+        Assert.Equal("manager-secret", startInfo.Environment["CONTROL_PLANE_API_KEY"]);
     }
 
     [Fact]
