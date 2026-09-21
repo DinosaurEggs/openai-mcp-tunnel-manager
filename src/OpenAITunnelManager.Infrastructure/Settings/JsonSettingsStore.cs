@@ -135,12 +135,28 @@ public sealed class JsonSettingsStore : ISettingsStore
             : TunnelClientSource.Managed;
     }
 
-    private static ProfilePreference ParsePreference(JsonElement element) => new()
+    private static ProfilePreference ParsePreference(JsonElement element)
     {
-        AutoConnect = ReadBool(element, false, "autoConnect", "auto_connect"),
-        AutoReconnect = ReadBool(element, false, "autoReconnect", "auto_reconnect"),
-        Enabled = ReadBool(element, true, "enabled")
-    };
+        var preference = new ProfilePreference
+        {
+            AutoConnect = ReadBool(element, false, "autoConnect", "auto_connect"),
+            AutoReconnect = ReadBool(element, false, "autoReconnect", "auto_reconnect"),
+            Enabled = ReadBool(element, true, "enabled")
+        };
+
+        if (TryProperty(element, out var environment, "stdioEnvironment", "stdio_environment") &&
+            environment.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in environment.EnumerateObject())
+            {
+                var name = property.Name.Trim();
+                if (name.Length == 0 || property.Value.ValueKind != JsonValueKind.String) continue;
+                preference.StdioEnvironment[name] = property.Value.GetString() ?? string.Empty;
+            }
+        }
+
+        return preference;
+    }
 
     private static AppSettings Normalize(AppSettings settings)
     {
@@ -157,6 +173,17 @@ public sealed class JsonSettingsStore : ISettingsStore
             settings.ProfilePreferences = new Dictionary<string, ProfilePreference>(
                 settings.ProfilePreferences,
                 StringComparer.OrdinalIgnoreCase);
+        }
+
+        foreach (var preference in settings.ProfilePreferences.Values)
+        {
+            preference.StdioEnvironment ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (preference.StdioEnvironment.Comparer != StringComparer.OrdinalIgnoreCase)
+            {
+                preference.StdioEnvironment = new Dictionary<string, string>(
+                    preference.StdioEnvironment,
+                    StringComparer.OrdinalIgnoreCase);
+            }
         }
 
         return settings;
