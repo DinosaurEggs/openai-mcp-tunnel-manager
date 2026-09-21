@@ -34,6 +34,7 @@ public sealed partial class MainWindow : Window
         ViewModel = viewModel;
         InitializeComponent();
         RootGrid.DataContext = ViewModel;
+        ViewModel.PropertyChanged += ViewModel_TunnelClientUiPropertyChanged;
         ConnectionsList.RightTapped += ConnectionsList_RightTapped;
         ConfigureUiPolish();
         ExtendsContentIntoTitleBar = true;
@@ -80,6 +81,7 @@ public sealed partial class MainWindow : Window
         {
             await ViewModel.InitializeForManualRefreshAsync();
             InitializeThemeSetting();
+            RefreshTunnelClientSettingsUi();
             _logTimer.Start();
             ApplyUiPolish();
 
