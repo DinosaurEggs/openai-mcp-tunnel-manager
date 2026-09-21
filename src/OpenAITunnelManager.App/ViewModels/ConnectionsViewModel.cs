@@ -62,6 +62,14 @@ public partial class ConnectionsViewModel : ObservableObject
     [ObservableProperty] public partial string ManagedTunnelClientVersion { get; set; } = string.Empty;
     [ObservableProperty] public partial string TunnelClientUpdateStatus { get; set; } = "未检查更新";
     [ObservableProperty] public partial bool IsTunnelClientUpdating { get; set; }
+    [ObservableProperty] public partial string TunnelClientOperationStage { get; set; } = string.Empty;
+    [ObservableProperty] public partial double TunnelClientDownloadProgress { get; set; }
+    [ObservableProperty] public partial bool TunnelClientDownloadIndeterminate { get; set; }
+    [ObservableProperty] public partial long TunnelClientDownloadedBytes { get; set; }
+    [ObservableProperty] public partial long? TunnelClientTotalBytes { get; set; }
+    [ObservableProperty] public partial bool CanCancelTunnelClientDownload { get; set; }
+    [ObservableProperty] public partial bool LastTunnelClientOperationFailed { get; set; }
+    [ObservableProperty] public partial string CustomTunnelClientVersionText { get; set; } = string.Empty;
     [ObservableProperty] public partial bool CloseToTray { get; set; } = true;
     [ObservableProperty] public partial bool StartWithWindows { get; set; }
     [ObservableProperty] public partial string ProfileDirectoryOverride { get; set; } = string.Empty;
