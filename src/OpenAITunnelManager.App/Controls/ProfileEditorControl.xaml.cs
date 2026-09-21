@@ -34,6 +34,7 @@ public sealed partial class ProfileEditorControl : UserControl
     public string ProfileName => ProfileNameBox.Text.Trim();
     public string TunnelId => TunnelIdBox.Text.Trim();
     public string TargetValue => TargetBox.Text.Trim();
+    public Dictionary<string, string> StdioEnvironment => ParseStdioEnvironment(StdioEnvironmentBox.Text);
     public string RawText => RawEditor.Editor.GetText(RawEditor.Editor.Length + 1);
     public string Secret => SecretBox.Password;
     public bool Enabled => EnabledCheckBox.IsChecked == true;
@@ -63,6 +64,8 @@ public sealed partial class ProfileEditorControl : UserControl
         TargetBox.IsEnabled = true;
         TargetBox.Text = string.Empty;
         TargetHelpText.Visibility = Visibility.Collapsed;
+        StdioEnvironmentBox.Text = string.Empty;
+        UpdateStdioEnvironmentVisibility();
         EnabledCheckBox.IsChecked = true;
         AutoConnectCheckBox.IsChecked = false;
         AutoReconnectCheckBox.IsChecked = false;
@@ -83,6 +86,7 @@ public sealed partial class ProfileEditorControl : UserControl
         string tunnelId,
         string targetKind,
         string targetValue,
+        IReadOnlyDictionary<string, string>? stdioEnvironment,
         bool enabled,
         bool autoConnect,
         bool autoReconnect,
@@ -110,6 +114,8 @@ public sealed partial class ProfileEditorControl : UserControl
             ? "MCP 类型来自现有 Profile；如需切换 HTTP / STDIO，请在高级配置中修改完整结构。"
             : "该 MCP target 不是常用格式，请在“高级配置”中直接修改。";
         TargetHelpText.Visibility = Visibility.Visible;
+        StdioEnvironmentBox.Text = FormatStdioEnvironment(stdioEnvironment);
+        UpdateStdioEnvironmentVisibility();
 
         EnabledCheckBox.IsChecked = enabled;
         AutoConnectCheckBox.IsChecked = autoConnect;
@@ -157,6 +163,7 @@ public sealed partial class ProfileEditorControl : UserControl
         if (_initializing) return;
         TargetBox.Header = McpType == McpType.Stdio ? "main MCP Command" : "main MCP URL";
         TargetBox.PlaceholderText = McpType == McpType.Stdio ? "例如 dotnet mcp-server.dll" : "例如 http://127.0.0.1:8000/mcp";
+        UpdateStdioEnvironmentVisibility();
         if (_createMode && !_advancedEdited) SyncCreateRawFromBasic();
     }
 
@@ -195,6 +202,58 @@ public sealed partial class ProfileEditorControl : UserControl
     {
         var trimmed = value.AsSpan().TrimStart();
         return !trimmed.IsEmpty && trimmed[0] is '{' or '[';
+    }
+
+    private void UpdateStdioEnvironmentVisibility()
+    {
+        StdioEnvironmentPanel.Visibility =
+            McpType == McpType.Stdio && (_createMode || CommonTargetSupported)
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+    }
+
+    public static Dictionary<string, string> ParseStdioEnvironment(string? text)
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(text)) return result;
+
+        var lines = text.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
+        for (var index = 0; index < lines.Length; index++)
+        {
+            var line = lines[index].TrimEnd('\r');
+            if (string.IsNullOrWhiteSpace(line)) continue;
+
+            var separator = line.IndexOf('=');
+            if (separator <= 0)
+            {
+                throw new ArgumentException($"STDIO 环境变量第 {index + 1} 行必须使用 KEY=VALUE 格式");
+            }
+
+            var name = line[..separator].Trim();
+            var value = line[(separator + 1)..];
+            if (name.Length == 0 || name.Contains('\0'))
+            {
+                throw new ArgumentException($"STDIO 环境变量第 {index + 1} 行的名称无效");
+            }
+            if (value.Contains('\0'))
+            {
+                throw new ArgumentException($"STDIO 环境变量 {name} 的值包含无效字符");
+            }
+            if (!result.TryAdd(name, value))
+            {
+                throw new ArgumentException($"STDIO 环境变量 {name} 重复定义");
+            }
+        }
+
+        return result;
+    }
+
+    public static string FormatStdioEnvironment(IReadOnlyDictionary<string, string>? environment)
+    {
+        if (environment is null || environment.Count == 0) return string.Empty;
+        return string.Join(
+            Environment.NewLine,
+            environment.Select(static pair => $"{pair.Key}={pair.Value}"));
     }
 
     private void SyncCreateRawFromBasic()
