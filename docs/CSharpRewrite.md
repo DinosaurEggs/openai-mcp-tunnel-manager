@@ -1,6 +1,6 @@
 # C# / WinUI 3 architecture
 
-OpenAI MCP Tunnel Manager 1.1.0 使用纯 C# / WinUI 3 实现。
+OpenAI MCP Tunnel Manager 1.2.0 使用纯 C# / WinUI 3 实现。
 
 ## UI 约束
 
@@ -63,6 +63,15 @@ Manager 默认继承当前进程的 `TUNNEL_CLIENT_PROFILE_DIR` / `TUNNEL_CLIENT
 ```
 
 应用日志在 WinUI Application/Window 创建之前就开始记录，因此 XAML、DI、窗口构造和首次 inventory 刷新失败都可诊断。
+
+## tunnel-client 可执行文件管理
+
+设置模型区分两种来源：
+
+- `Managed`：Manager 按架构下载 OpenAI 官方 Release，校验 SHA-256、解压到版本目录并执行 `--version` 后再切换；
+- `Custom`：用户选择本地 EXE，Manager 先自动执行 `--version`，验证成功后才保存路径。
+
+托管更新只由用户在设置页点击“下载 / 更新”触发，不在应用启动时自动联网。下载过程向 WinUI 暴露检查、下载、校验、安装阶段以及字节进度；下载阶段可取消。
 
 ## CLI adapter
 
