@@ -1,0 +1,36 @@
+name: Cleanup merged branches
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - ".github/workflows/cleanup-merged-branches.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: startsWith(github.event.head_commit.message, 'Cleanup merged branches')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Delete fully merged branches
+        shell: bash
+        run: |
+          set -euo pipefail
+          for branch in "codex/managed-tunnel-client" "rewrite/csharp-winui3"; do
+            git fetch origin "+refs/heads/$branch:refs/remotes/origin/$branch"
+            ahead="$(git rev-list --count "origin/master..origin/$branch")"
+            echo "$branch ahead of master: $ahead"
+            if [ "$ahead" -ne 0 ]; then
+              echo "::error::$branch still contains unmerged commits; refusing to delete it."
+              exit 1
+            fi
+            git push origin --delete "$branch"
+          done
