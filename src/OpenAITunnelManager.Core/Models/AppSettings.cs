@@ -61,6 +61,7 @@ public sealed class ProfilePreference
     public bool AutoConnect { get; set; }
     public bool AutoReconnect { get; set; }
     public bool Enabled { get; set; } = true;
+    public Dictionary<string, string> StdioEnvironment { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
 
 public enum McpType
