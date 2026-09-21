@@ -88,6 +88,27 @@
                                     FontSize="12"
                                     Opacity="0.65"
                                     TextWrapping="Wrap" />
+                                <StackPanel
+                                    x:Name="StdioEnvironmentPanel"
+                                    Spacing="6"
+                                    Visibility="Collapsed"
+                                    HorizontalAlignment="Stretch">
+                                    <TextBox
+                                        x:Name="StdioEnvironmentBox"
+                                        Header="STDIO 环境变量"
+                                        PlaceholderText="每行一个 KEY=VALUE，例如 IJ_MCP_SERVER_PORT=64342"
+                                        AcceptsReturn="True"
+                                        TextWrapping="NoWrap"
+                                        MinHeight="96"
+                                        HorizontalAlignment="Stretch"
+                                        HorizontalScrollBarVisibility="Auto"
+                                        VerticalScrollBarVisibility="Auto" />
+                                    <TextBlock
+                                        Text="这些变量会注入本次 tunnel-client 进程，并由其启动的 STDIO MCP 子进程继承。"
+                                        FontSize="12"
+                                        Opacity="0.65"
+                                        TextWrapping="Wrap" />
+                                </StackPanel>
                             </StackPanel>
 
                             <StackPanel Spacing="10" HorizontalAlignment="Stretch">
