@@ -38,6 +38,16 @@ public sealed partial class MainWindow
                 return false;
             }
 
+            if (editor.McpType == McpType.Stdio)
+            {
+                try { _ = editor.StdioEnvironment; }
+                catch (ArgumentException exception)
+                {
+                    editor.ShowValidationError(exception.Message);
+                    return false;
+                }
+            }
+
             if (!editor.AdvancedEdited) return true;
             if (string.IsNullOrWhiteSpace(editor.RawText))
             {
@@ -72,7 +82,10 @@ public sealed partial class MainWindow
             {
                 Enabled = editor.Enabled,
                 AutoConnect = editor.AutoConnect,
-                AutoReconnect = editor.AutoReconnect
+                AutoReconnect = editor.AutoReconnect,
+                StdioEnvironment = editor.McpType == McpType.Stdio
+                    ? editor.StdioEnvironment
+                    : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             };
 
             if (editor.AdvancedEdited)
@@ -107,6 +120,7 @@ public sealed partial class MainWindow
                 data.TunnelId,
                 data.TargetKind,
                 data.TargetValue,
+                data.Preference.StdioEnvironment,
                 data.Preference.Enabled,
                 data.Preference.AutoConnect,
                 data.Preference.AutoReconnect,
@@ -127,6 +141,16 @@ public sealed partial class MainWindow
                 {
                     editor.ShowValidationError(string.Join(Environment.NewLine, errors));
                     return false;
+                }
+
+                if (data.TargetKind == "command")
+                {
+                    try { _ = editor.StdioEnvironment; }
+                    catch (ArgumentException exception)
+                    {
+                        editor.ShowValidationError(exception.Message);
+                        return false;
+                    }
                 }
 
                 if (string.IsNullOrWhiteSpace(editor.RawText))
@@ -171,7 +195,12 @@ public sealed partial class MainWindow
                 {
                     Enabled = editor.Enabled,
                     AutoConnect = editor.AutoConnect,
-                    AutoReconnect = editor.AutoReconnect
+                    AutoReconnect = editor.AutoReconnect,
+                    StdioEnvironment = data.TargetKind == "command"
+                        ? editor.StdioEnvironment
+                        : new Dictionary<string, string>(
+                            data.Preference.StdioEnvironment,
+                            StringComparer.OrdinalIgnoreCase)
                 },
                 editor.Secret,
                 editor.DeleteSecret);
@@ -206,7 +235,10 @@ public sealed partial class MainWindow
                 {
                     Enabled = enabled.IsChecked == true,
                     AutoConnect = autoConnect.IsChecked == true,
-                    AutoReconnect = autoReconnect.IsChecked == true
+                    AutoReconnect = autoReconnect.IsChecked == true,
+                    StdioEnvironment = new Dictionary<string, string>(
+                        preference.StdioEnvironment,
+                        StringComparer.OrdinalIgnoreCase)
                 },
                 secret.Password,
                 deleteSecret.IsChecked == true);
