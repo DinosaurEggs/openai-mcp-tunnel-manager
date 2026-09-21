@@ -29,6 +29,8 @@ public partial class ConnectionsViewModel
         if (IsTunnelClientUpdating)
             throw new InvalidOperationException("当前正在执行 tunnel-client 操作");
 
+        LastTunnelClientOperationFailed = false;
+        TunnelClientUpdateStatus = string.Empty;
         Settings.TunnelClientSource = TunnelClientSource.Managed;
         Settings.TunnelClientSetupCompleted = true;
         await _settingsStore.SaveAsync(Settings);
@@ -56,6 +58,8 @@ public partial class ConnectionsViewModel
 
         var validation = await _managedTunnelClient.ValidateCustomExecutableAsync(path, cancellationToken);
 
+        LastTunnelClientOperationFailed = false;
+        TunnelClientUpdateStatus = string.Empty;
         TunnelClientPath = validation.ExecutablePath;
         CustomTunnelClientVersionText = validation.VersionText;
         Settings.TunnelClientSource = TunnelClientSource.Custom;
