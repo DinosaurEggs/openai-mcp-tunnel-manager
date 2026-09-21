@@ -11,7 +11,8 @@ public sealed class TunnelClientProcessRunner(TunnelClientOptions options)
     public ProcessStartInfo CreateStartInfo(
         IEnumerable<string> arguments,
         string? secretRef = null,
-        string? secret = null)
+        string? secret = null,
+        IReadOnlyDictionary<string, string>? environment = null)
     {
         var info = new ProcessStartInfo
         {
@@ -31,6 +32,28 @@ public sealed class TunnelClientProcessRunner(TunnelClientOptions options)
             info.ArgumentList.Add(argument);
         }
 
+        if (environment is not null)
+        {
+            foreach (var pair in environment)
+            {
+                var name = pair.Key?.Trim() ?? string.Empty;
+                if (name.Length == 0 || name.Contains('=') || name.Contains('\0'))
+                {
+                    throw new ArgumentException($"无效的 STDIO 环境变量名称：{pair.Key}", nameof(environment));
+                }
+
+                var value = pair.Value ?? string.Empty;
+                if (value.Contains('\0'))
+                {
+                    throw new ArgumentException($"STDIO 环境变量 {name} 的值包含无效字符", nameof(environment));
+                }
+
+                info.Environment[name] = value;
+            }
+        }
+
+        // Manager-owned directory overrides and credentials have higher precedence than
+        // per-profile process environment values.
         options.ApplyChildEnvironment(info);
         if (!string.IsNullOrWhiteSpace(secret) &&
             !string.IsNullOrWhiteSpace(secretRef) &&
@@ -49,10 +72,11 @@ public sealed class TunnelClientProcessRunner(TunnelClientOptions options)
         CancellationToken cancellationToken = default,
         TimeSpan? timeout = null,
         string? secretRef = null,
-        string? secret = null)
+        string? secret = null,
+        IReadOnlyDictionary<string, string>? environment = null)
     {
         var args = arguments.ToArray();
-        var info = CreateStartInfo(args, secretRef, secret);
+        var info = CreateStartInfo(args, secretRef, secret, environment);
         using var process = new Process { StartInfo = info };
 
         try
