@@ -20,6 +20,24 @@ public sealed record ManagedTunnelClientInstallResult(
     bool Updated,
     string Message);
 
+public enum ManagedTunnelClientProgressStage
+{
+    Checking,
+    Downloading,
+    Verifying,
+    Installing
+}
+
+public sealed record ManagedTunnelClientProgress(
+    ManagedTunnelClientProgressStage Stage,
+    string Message,
+    long BytesReceived = 0,
+    long? TotalBytes = null);
+
+public sealed record TunnelClientValidationResult(
+    string ExecutablePath,
+    string VersionText);
+
 public sealed class ManagedTunnelClientService : IDisposable
 {
     private const string LatestReleaseApi = "https://api.github.com/repos/openai/tunnel-client/releases/latest";
@@ -154,8 +172,12 @@ public sealed class ManagedTunnelClientService : IDisposable
     public async Task<ManagedTunnelClientInstallResult> InstallLatestAsync(
         string currentVersion,
         bool forceDownload = false,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IProgress<ManagedTunnelClientProgress>? progress = null)
     {
+        progress?.Report(new ManagedTunnelClientProgress(
+            ManagedTunnelClientProgressStage.Checking,
+            "正在检查官方最新版本…"));
         var release = await GetLatestReleaseAsync(cancellationToken).ConfigureAwait(false);
         var executablePath = GetExecutablePath(release.Version);
 
@@ -172,7 +194,7 @@ public sealed class ManagedTunnelClientService : IDisposable
 
         if (!forceDownload && File.Exists(executablePath))
         {
-            await ValidateExecutableAsync(executablePath, cancellationToken).ConfigureAwait(false);
+            _ = await ValidateExecutableAsync(executablePath, cancellationToken).ConfigureAwait(false);
             return new ManagedTunnelClientInstallResult(
                 release.Version,
                 executablePath,
@@ -180,12 +202,56 @@ public sealed class ManagedTunnelClientService : IDisposable
                 $"已切换到已下载的 tunnel-client {release.Version}");
         }
 
-        await DownloadAndInstallAsync(release, cancellationToken).ConfigureAwait(false);
+        await DownloadAndInstallAsync(release, progress, cancellationToken).ConfigureAwait(false);
         return new ManagedTunnelClientInstallResult(
             release.Version,
             executablePath,
             true,
             $"已安装 tunnel-client {release.Version}");
+    }
+
+    public async Task<TunnelClientValidationResult> ValidateCustomExecutableAsync(
+        string executablePath,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(executablePath))
+            throw new FileNotFoundException("未选择 tunnel-client.exe");
+
+        var fullPath = Path.GetFullPath(executablePath.Trim());
+        var version = await ValidateExecutableAsync(fullPath, cancellationToken).ConfigureAwait(false);
+        return new TunnelClientValidationResult(fullPath, version);
+    }
+
+    public int CleanupDownloadedVersions(string currentVersion)
+    {
+        if (string.IsNullOrWhiteSpace(currentVersion) ||
+            !Directory.Exists(_paths.ManagedTunnelClientVersionsDirectory))
+        {
+            return 0;
+        }
+
+        string currentDirectory;
+        try
+        {
+            currentDirectory = Path.GetFullPath(_paths.GetManagedTunnelClientVersionDirectory(currentVersion));
+        }
+        catch (InvalidDataException)
+        {
+            return 0;
+        }
+
+        var deleted = 0;
+        foreach (var directory in Directory.EnumerateDirectories(_paths.ManagedTunnelClientVersionsDirectory))
+        {
+            var full = Path.GetFullPath(directory);
+            if (string.Equals(full, currentDirectory, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (TryDeleteDirectory(full))
+                deleted++;
+        }
+
+        return deleted;
     }
 
     public void CleanupOldVersions(string currentVersion, int versionsToKeep = 2)
@@ -240,6 +306,7 @@ public sealed class ManagedTunnelClientService : IDisposable
 
     private async Task DownloadAndInstallAsync(
         TunnelClientReleaseInfo release,
+        IProgress<ManagedTunnelClientProgress>? progress,
         CancellationToken cancellationToken)
     {
         var operationDirectory = Path.Combine(
@@ -262,6 +329,7 @@ public sealed class ManagedTunnelClientService : IDisposable
                        timeoutCts.Token).ConfigureAwait(false))
             {
                 response.EnsureSuccessStatusCode();
+                var totalBytes = response.Content.Headers.ContentLength;
                 await using var source = await response.Content.ReadAsStreamAsync(timeoutCts.Token).ConfigureAwait(false);
                 await using var destination = new FileStream(
                     zipPath,
@@ -270,10 +338,34 @@ public sealed class ManagedTunnelClientService : IDisposable
                     FileShare.None,
                     128 * 1024,
                     FileOptions.Asynchronous | FileOptions.SequentialScan);
-                await source.CopyToAsync(destination, timeoutCts.Token).ConfigureAwait(false);
+
+                var buffer = new byte[128 * 1024];
+                long bytesReceived = 0;
+                progress?.Report(new ManagedTunnelClientProgress(
+                    ManagedTunnelClientProgressStage.Downloading,
+                    $"正在下载 {release.Version}…",
+                    0,
+                    totalBytes));
+
+                while (true)
+                {
+                    var read = await source.ReadAsync(buffer, timeoutCts.Token).ConfigureAwait(false);
+                    if (read == 0) break;
+                    await destination.WriteAsync(buffer.AsMemory(0, read), timeoutCts.Token).ConfigureAwait(false);
+                    bytesReceived += read;
+                    progress?.Report(new ManagedTunnelClientProgress(
+                        ManagedTunnelClientProgressStage.Downloading,
+                        $"正在下载 {release.Version}…",
+                        bytesReceived,
+                        totalBytes));
+                }
+
                 await destination.FlushAsync(timeoutCts.Token).ConfigureAwait(false);
             }
 
+            progress?.Report(new ManagedTunnelClientProgress(
+                ManagedTunnelClientProgressStage.Verifying,
+                "正在验证下载文件…"));
             var actualSha256 = await ComputeSha256Async(zipPath, cancellationToken).ConfigureAwait(false);
             if (!string.Equals(actualSha256, release.Sha256, StringComparison.OrdinalIgnoreCase))
             {
@@ -281,6 +373,9 @@ public sealed class ManagedTunnelClientService : IDisposable
                     $"tunnel-client 下载校验失败：期望 {release.Sha256}，实际 {actualSha256}");
             }
 
+            progress?.Report(new ManagedTunnelClientProgress(
+                ManagedTunnelClientProgressStage.Installing,
+                "正在安装…"));
             ExtractZipSafely(zipPath, extractDirectory);
             var extractedExecutable = Directory
                 .EnumerateFiles(extractDirectory, "tunnel-client.exe", SearchOption.AllDirectories)
@@ -295,7 +390,7 @@ public sealed class ManagedTunnelClientService : IDisposable
             var packageDirectory = Path.GetDirectoryName(extractedExecutable)!;
             CopyDirectory(packageDirectory, installDirectory);
             var stagedExecutable = Path.Combine(installDirectory, "tunnel-client.exe");
-            await ValidateExecutableAsync(stagedExecutable, cancellationToken).ConfigureAwait(false);
+            _ = await ValidateExecutableAsync(stagedExecutable, cancellationToken).ConfigureAwait(false);
 
             if (Directory.Exists(targetDirectory))
             {
@@ -391,7 +486,7 @@ public sealed class ManagedTunnelClientService : IDisposable
         }
     }
 
-    private static async Task ValidateExecutableAsync(
+    private static async Task<string> ValidateExecutableAsync(
         string executablePath,
         CancellationToken cancellationToken)
     {
@@ -428,8 +523,16 @@ public sealed class ManagedTunnelClientService : IDisposable
         if (process.ExitCode != 0)
         {
             throw new InvalidDataException(
-                $"下载后的 tunnel-client.exe --version 失败（exit {process.ExitCode}）：{FirstNonEmpty(standardError, standardOutput)}");
+                $"tunnel-client.exe --version 失败（exit {process.ExitCode}）：{FirstNonEmpty(standardError, standardOutput)}");
         }
+
+        var versionText = FirstNonEmpty(standardOutput, standardError)
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .FirstOrDefault() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(versionText))
+            throw new InvalidDataException("tunnel-client.exe --version 未返回版本信息");
+
+        return versionText;
     }
 
     private static async Task<string> ComputeSha256Async(string path, CancellationToken cancellationToken)
@@ -500,14 +603,17 @@ public sealed class ManagedTunnelClientService : IDisposable
         }
     }
 
-    private static void TryDeleteDirectory(string path)
+    private static bool TryDeleteDirectory(string path)
     {
         try
         {
-            if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
+            if (!Directory.Exists(path)) return false;
+            Directory.Delete(path, recursive: true);
+            return !Directory.Exists(path);
         }
         catch
         {
+            return false;
         }
     }
 }
