@@ -96,12 +96,6 @@ public sealed partial class MainWindow : Window
             RequestResponsiveLayout();
             AppLog.Info($"Initial tunnel-client load completed: {ViewModel.StatusMessage}");
 
-            if (!firstRunSetupNeeded &&
-                ViewModel.TunnelClientSetupCompleted &&
-                ViewModel.UsesManagedTunnelClient)
-            {
-                _ = CheckForManagedTunnelClientUpdatesAsync();
-            }
         }
         catch (Exception exception)
         {
