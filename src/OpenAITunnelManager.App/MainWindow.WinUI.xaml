@@ -473,27 +473,80 @@
                                 <TextBlock Text="常规设置" FontSize="16" FontWeight="SemiBold" Margin="0,2,0,-4" />
                                 <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="10">
                                     <StackPanel>
-                                        <Grid x:Name="SettingsClientGrid" Padding="18" ColumnSpacing="16">
+                                        <Grid x:Name="SettingsClientGrid" Padding="18" ColumnSpacing="12" RowSpacing="8">
                                             <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="28*" />
-                                                <ColumnDefinition Width="72*" />
+                                                <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
-                                            <StackPanel Spacing="3">
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                            </Grid.RowDefinitions>
+
+                                            <StackPanel x:Name="SettingsClientSummary" Spacing="3" VerticalAlignment="Center">
                                                 <TextBlock Text="tunnel-client" FontWeight="SemiBold" />
-                                                <TextBlock Text="{Binding TunnelClientModeText}" Opacity="0.65" FontSize="12" />
+                                                <TextBlock x:Name="TunnelClientSummaryText" Text="当前：托管版本 · 尚未安装" Opacity="0.65" FontSize="12" TextTrimming="CharacterEllipsis" />
                                             </StackPanel>
-                                            <StackPanel Grid.Column="1" Spacing="5">
-                                                <TextBlock Text="{Binding ManagedTunnelClientVersionText}" />
-                                                <TextBlock Text="{Binding ManagedTunnelClientPath}" Opacity="0.65" FontSize="12" TextTrimming="CharacterEllipsis" />
-                                                <TextBox Text="{Binding TunnelClientPath}" IsReadOnly="True" PlaceholderText="自定义 tunnel-client.exe 路径（可选）" />
-                                                <TextBlock Text="{Binding TunnelClientUpdateStatus}" Opacity="0.65" FontSize="12" TextWrapping="Wrap" />
+
+                                            <StackPanel x:Name="SettingsClientActions" Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                                <ComboBox
+                                                    x:Name="TunnelClientSourceCombo"
+                                                    MinWidth="120"
+                                                    SelectedValuePath="Tag"
+                                                    SelectionChanged="TunnelClientSourceCombo_SelectionChanged">
+                                                    <ComboBoxItem Content="托管版本" Tag="managed" />
+                                                    <ComboBoxItem Content="自定义版本" Tag="custom" />
+                                                </ComboBox>
+                                                <Button
+                                                    x:Name="TunnelClientPrimaryActionButton"
+                                                    MinWidth="76"
+                                                    Content="下载"
+                                                    Click="TunnelClientPrimaryAction_Click" />
+                                                <DropDownButton x:Name="TunnelClientMoreButton" Padding="10,6">
+                                                    <DropDownButton.Content>
+                                                        <FontIcon Glyph="&#xE712;" FontSize="14" />
+                                                    </DropDownButton.Content>
+                                                    <DropDownButton.Flyout>
+                                                        <MenuFlyout>
+                                                            <MenuFlyoutItem Text="打开文件位置" Click="OpenTunnelClientLocation_Click">
+                                                                <MenuFlyoutItem.Icon>
+                                                                    <FontIcon Glyph="&#xE838;" />
+                                                                </MenuFlyoutItem.Icon>
+                                                            </MenuFlyoutItem>
+                                                            <MenuFlyoutItem x:Name="CleanupManagedVersionsMenuItem" Text="清理已下载版本" Click="CleanupManagedVersions_Click">
+                                                                <MenuFlyoutItem.Icon>
+                                                                    <FontIcon Glyph="&#xE74D;" />
+                                                                </MenuFlyoutItem.Icon>
+                                                            </MenuFlyoutItem>
+                                                        </MenuFlyout>
+                                                    </DropDownButton.Flyout>
+                                                </DropDownButton>
                                             </StackPanel>
-                                            <StackPanel Grid.Column="2" Spacing="6" VerticalAlignment="Center">
-                                                <ProgressRing Width="18" Height="18" IsActive="{Binding IsTunnelClientUpdating}" />
-                                                <Button Content="下载/更新" Click="DownloadManagedTunnelClient_Click" />
-                                                <Button Content="浏览自定义" Click="BrowseTunnelClient_Click" />
-                                            </StackPanel>
+
+                                            <Grid
+                                                x:Name="TunnelClientProgressPanel"
+                                                Grid.Row="1"
+                                                Grid.ColumnSpan="2"
+                                                Visibility="Collapsed"
+                                                RowSpacing="4">
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="Auto" />
+                                                </Grid.RowDefinitions>
+                                                <ProgressBar
+                                                    x:Name="TunnelClientDownloadProgressBar"
+                                                    Minimum="0"
+                                                    Maximum="100"
+                                                    Height="4" />
+                                                <Grid Grid.Row="1">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock x:Name="TunnelClientOperationText" FontSize="12" Opacity="0.65" />
+                                                    <TextBlock x:Name="TunnelClientTransferText" Grid.Column="1" FontSize="12" Opacity="0.65" Margin="12,0,0,0" />
+                                                </Grid>
+                                            </Grid>
                                         </Grid>
                                         <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}" />
                                         <Grid Padding="18">
