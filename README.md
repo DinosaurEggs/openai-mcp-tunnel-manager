@@ -2,7 +2,7 @@
 
 Windows 上的 `tunnel-client` 可视化管理器，使用 C# / WinUI 3 开发，不包含 Python、WinForms 或 WPF UI 组件。
 
-当前版本：**1.1.0**
+当前版本：**1.2.0**
 
 ## 技术基线
 
@@ -66,9 +66,11 @@ OpenAITunnelManager.exe
 
 因此发布目录必须可写。
 
-首次启动时，Manager 会提示下载 OpenAI 官方最新 `tunnel-client`，或继续使用自定义 `tunnel-client.exe`。自动管理模式会按当前 Manager 架构选择官方 `windows-amd64` / `windows-arm64` Release 资产，校验 Release digest 与 `SHA256SUMS.txt`，验证 `tunnel-client.exe --version` 成功后才切换版本。以后每次启动都会检查最新正式 Release；检查或下载失败时继续使用当前已安装版本。
+首次启动时，Manager 会让用户选择“托管版本”或“自定义版本”。选择托管版本并点击下载后会先进入设置页，再显示下载进度；选择自定义版本后会自动执行 `tunnel-client.exe --version` 验证，验证失败不会保存错误路径。
 
-自动管理版本按版本号安装到 `tunnel-client\\versions\\<version>`。更新不会覆盖正在运行的旧 EXE，并保留当前版本之外的一个旧版本用于回退清理。
+托管模式只在用户点击“下载”或“更新”时访问 GitHub，不在应用启动时自动检查新版本。Manager 会按当前架构精确选择官方 `windows-amd64` / `windows-arm64` Release 资产，校验 Release digest 与 `SHA256SUMS.txt`，并在新版本通过 `--version` 验证后才切换。更新失败时继续使用当前已安装版本。
+
+托管版本按版本号安装到 `tunnel-client\\versions\\<version>`。正常更新保留当前版本和一个旧版本；设置页“清理已下载版本”会删除当前未使用的其他托管版本。
 
 `config/settings.json` 只保存 Manager 本机偏好：
 
@@ -109,7 +111,7 @@ Runtime API Key 明文只进入 Windows Credential Manager，不写入 `settings
 
 概览是纯 Dashboard，不显示连接实体列表。它包含系统状态、四张运行统计卡、`tunnel-client` 信息和 Manager 本机状态。旧的全局底部状态条已删除。
 
-设置页分为“常规设置”和“高级设置”。高级设置始终显示，不使用 Expander；Profile / State 目录使用只读路径框和 WinUI `FolderPicker`。保存设置位于页头，不显示 `settings.json` 路径。
+设置页分为“常规设置”和“高级设置”。`tunnel-client` 使用紧凑设置项：当前状态、来源下拉框、一个主操作按钮和“更多”菜单；只有下载/安装过程中才临时显示进度条。主按钮在托管模式下按状态显示“下载 / 更新 / 重试 / 取消”，自定义模式下显示“重新选择”。高级设置始终显示，不使用 Expander；Profile / State 目录使用只读路径框和 WinUI `FolderPicker`。
 
 ## 主要功能
 
@@ -133,6 +135,8 @@ Runtime API Key 明文只进入 Windows Credential Manager，不写入 `settings
 - 打开配置 / 日志文件所在位置；
 - 纯 WinUI 系统托盘；
 - Windows 登录启动；
+- 托管 / 自定义 tunnel-client 来源切换；托管下载带进度、取消、SHA-256 校验、版本回退与旧版本清理；
+- 自定义 tunnel-client 选择后自动验证，验证成功前不写入配置；
 - Windows App SDK `AppInstance` 单实例。
 
 以下功能已从最终产品**直接删除**，不保留隐藏控件或隐藏后端：
@@ -243,7 +247,7 @@ Wide     >= 1000 epx
 - 生命周期按钮只在 Narrow 纵向排列，Compact / Wide 保持横向；
 - 日志筛选：Wide 单行，Compact 两列重排，Narrow 单列；
 - 诊断：Wide 双栏，Compact / Narrow 纵向；
-- 设置：窄屏时标题操作、tunnel-client 路径和目录选择控件重排，长路径不会撑宽窗口。
+- 设置：tunnel-client 紧凑设置项在窄屏下自动换行，下载进度只在操作期间出现；高级目录选择控件继续按断点重排。
 
 ## 构建与 CI
 
