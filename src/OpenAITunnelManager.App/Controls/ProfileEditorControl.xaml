@@ -101,8 +101,8 @@
                                         TextWrapping="NoWrap"
                                         MinHeight="96"
                                         HorizontalAlignment="Stretch"
-                                        HorizontalScrollBarVisibility="Auto"
-                                        VerticalScrollBarVisibility="Auto" />
+                                        ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                        ScrollViewer.VerticalScrollBarVisibility="Auto" />
                                     <TextBlock
                                         Text="这些变量会注入本次 tunnel-client 进程，并由其启动的 STDIO MCP 子进程继承。"
                                         FontSize="12"
