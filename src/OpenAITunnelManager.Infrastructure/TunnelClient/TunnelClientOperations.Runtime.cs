@@ -7,16 +7,20 @@ namespace OpenAITunnelManager.Infrastructure.TunnelClient;
 
 public sealed partial class TunnelClientOperations
 {
-    public async Task StartAsync(TunnelConnection connection, string? secret, CancellationToken cancellationToken = default)
+    public async Task StartAsync(
+        TunnelConnection connection,
+        string? secret,
+        CancellationToken cancellationToken = default,
+        IReadOnlyDictionary<string, string>? environment = null)
     {
         if (connection.HasRuntime)
         {
-            await ConnectRuntimeAsync(connection, secret, cancellationToken);
+            await ConnectRuntimeAsync(connection, secret, cancellationToken, environment);
             return;
         }
         if (connection.HasProfile)
         {
-            await StartProfileAsync(connection, secret, cancellationToken);
+            await StartProfileAsync(connection, secret, cancellationToken, environment);
             return;
         }
         throw new InvalidOperationException("该项目没有可启动的 Runtime 或 Profile");
@@ -37,10 +41,14 @@ public sealed partial class TunnelClientOperations
         throw new InvalidOperationException("该项目没有可停止的 Runtime 或 Profile");
     }
 
-    public async Task RestartAsync(TunnelConnection connection, string? secret, CancellationToken cancellationToken = default)
+    public async Task RestartAsync(
+        TunnelConnection connection,
+        string? secret,
+        CancellationToken cancellationToken = default,
+        IReadOnlyDictionary<string, string>? environment = null)
     {
         await StopAsync(connection, cancellationToken);
-        await StartAsync(connection, secret, cancellationToken);
+        await StartAsync(connection, secret, cancellationToken, environment);
     }
 
     public async Task RemoveRuntimeAsync(string alias, CancellationToken cancellationToken = default)
@@ -49,7 +57,11 @@ public sealed partial class TunnelClientOperations
         await RunAsync(["runtimes", "rm", alias, "--json"], false, cancellationToken, TimeSpan.FromSeconds(30));
     }
 
-    private async Task ConnectRuntimeAsync(TunnelConnection connection, string? secret, CancellationToken cancellationToken)
+    private async Task ConnectRuntimeAsync(
+        TunnelConnection connection,
+        string? secret,
+        CancellationToken cancellationToken,
+        IReadOnlyDictionary<string, string>? environment)
     {
         var profilePath = FirstNonEmpty(connection.RuntimeProfilePath, connection.ProfilePath);
         var metadata = ProfileMetadataReader.Read(profilePath);
@@ -71,10 +83,14 @@ public sealed partial class TunnelClientOperations
         else if (kind is "command" or "mcp_command" or "stdio") args.AddRange(["--mcp-command", target]);
         else throw new InvalidOperationException($"不支持的 Runtime MCP target 类型：{connection.TargetKind}");
         args.Add("--json");
-        await RunAsync(args, false, cancellationToken, TimeSpan.FromSeconds(90), metadata.ApiKeyRef, secret);
+        await RunAsync(args, false, cancellationToken, TimeSpan.FromSeconds(90), metadata.ApiKeyRef, secret, environment);
     }
 
-    private async Task StartProfileAsync(TunnelConnection connection, string? secret, CancellationToken cancellationToken)
+    private async Task StartProfileAsync(
+        TunnelConnection connection,
+        string? secret,
+        CancellationToken cancellationToken,
+        IReadOnlyDictionary<string, string>? environment)
     {
         var name = connection.ProfileName;
         if (_foreground.TryGetValue(name, out var existing) && !existing.Process.HasExited) return;
@@ -96,7 +112,8 @@ public sealed partial class TunnelClientOperations
         var info = CreateStartInfo(
             ["run", "--profile", name, "--health.listen-addr", "127.0.0.1:0", "--health.url-file", healthFile],
             metadata.ApiKeyRef,
-            secret);
+            secret,
+            environment);
         var process = new Process { StartInfo = info, EnableRaisingEvents = true };
         var logStream = new FileStream(logPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete, 64 * 1024, FileOptions.SequentialScan);
         var logWriter = new StreamWriter(logStream, new UTF8Encoding(false)) { AutoFlush = true };
