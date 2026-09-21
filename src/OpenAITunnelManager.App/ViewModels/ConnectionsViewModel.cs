@@ -225,7 +225,11 @@ public partial class ConnectionsViewModel : ObservableObject
         try
         {
             var secret = ReadSavedSecret(item);
-            await _operations.RestartAsync(item, secret);
+            var preference = FindPreference(item) ?? new ProfilePreference();
+            await _operations.RestartAsync(
+                item,
+                secret,
+                environment: GetStdioEnvironment(item, preference));
             await RefreshAfterOperationAsync(item.Identity, $"{item.Name} 已重启");
         }
         catch (Exception exception)
@@ -315,7 +319,13 @@ public partial class ConnectionsViewModel : ObservableObject
     {
         var item = SelectedConnection ?? throw new InvalidOperationException("请先选择一个配置");
         var pref = FindPreference(item) ?? new ProfilePreference();
-        return new ProfilePreference { Enabled = pref.Enabled, AutoConnect = pref.AutoConnect, AutoReconnect = pref.AutoReconnect };
+        return new ProfilePreference
+        {
+            Enabled = pref.Enabled,
+            AutoConnect = pref.AutoConnect,
+            AutoReconnect = pref.AutoReconnect,
+            StdioEnvironment = new Dictionary<string, string>(pref.StdioEnvironment, StringComparer.OrdinalIgnoreCase)
+        };
     }
 
     public Task SaveSelectedPreferenceAsync(ProfilePreference preference, string? newSecret = null, bool deleteSecret = false)
@@ -483,7 +493,10 @@ public partial class ConnectionsViewModel : ObservableObject
         StatusMessage = $"正在启动 {item.Name}...";
         try
         {
-            await _operations.StartAsync(item, ReadSavedSecret(item));
+            await _operations.StartAsync(
+                item,
+                ReadSavedSecret(item),
+                environment: GetStdioEnvironment(item, pref));
             await RefreshAfterOperationAsync(item.Identity, $"{item.Name} 启动命令已完成");
         }
         catch (Exception exception)
@@ -552,7 +565,11 @@ public partial class ConnectionsViewModel : ObservableObject
             {
                 try
                 {
-                    await _operations.StartAsync(item, ReadSavedSecret(item));
+                    var preference = FindPreference(item) ?? new ProfilePreference();
+                    await _operations.StartAsync(
+                        item,
+                        ReadSavedSecret(item),
+                        environment: GetStdioEnvironment(item, preference));
                 }
                 catch (Exception exception)
                 {
@@ -578,6 +595,17 @@ public partial class ConnectionsViewModel : ObservableObject
     {
         foreach (var key in PreferenceKeys(item)) if (Settings.ProfilePreferences.TryGetValue(key, out var pref)) return pref;
         return null;
+    }
+
+    private static IReadOnlyDictionary<string, string>? GetStdioEnvironment(
+        TunnelConnection item,
+        ProfilePreference preference)
+    {
+        if (preference.StdioEnvironment.Count == 0) return null;
+        var kind = item.TargetKind.Trim().ToLowerInvariant().Replace('-', '_');
+        return kind is "command" or "mcp_command" or "stdio"
+            ? preference.StdioEnvironment
+            : null;
     }
 
     private static IEnumerable<string> PreferenceKeys(TunnelConnection item)
