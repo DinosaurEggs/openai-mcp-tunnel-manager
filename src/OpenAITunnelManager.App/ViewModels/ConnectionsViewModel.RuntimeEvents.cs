@@ -145,7 +145,11 @@ public partial class ConnectionsViewModel
                 try
                 {
                     StatusMessage = $"正在自动重连 {displayName}...";
-                    await _operations.StartAsync(current, ReadSavedSecret(current), cancellation.Token);
+                    await _operations.StartAsync(
+                        current,
+                        ReadSavedSecret(current),
+                        cancellation.Token,
+                        GetStdioEnvironment(current, preference));
                     await RefreshAfterOperationAsync(identity, $"{displayName} 已自动重连");
                     return;
                 }
