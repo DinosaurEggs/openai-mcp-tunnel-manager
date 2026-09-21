@@ -1,4 +1,4 @@
-# OpenAI MCP Tunnel Manager 1.1.0 功能验收
+# OpenAI MCP Tunnel Manager 1.2.0 功能验收
 
 此表用于验证 C# / WinUI 3 版本的最终产品行为。`tunnel-client` 仍是 Profile / Runtime 唯一事实来源；已明确移除的功能不保留隐藏 UI 或隐藏后端。
 
@@ -12,7 +12,13 @@
 | Runtime / Profile 同名仍是不同实体 | `runtime:<alias>` / `profile:<name>` | 单元 + 集成测试 |
 | 一个 Profile 可被多个 Runtime alias 共用 | 不折叠多个 runtime | 集成测试 |
 | custom Runtime Profile 与同名 listed Profile 分离 | Profile path 严格匹配后才合并 | 集成测试 |
-| 设置 tunnel-client.exe | WinUI `FileOpenPicker` | explicit path 测试 |
+| tunnel-client 来源切换 | 设置页下拉框选择 Managed / Custom | WinUI shell |
+| 托管版本下载 / 更新 | 用户点击后查询 GitHub latest，按架构精确选资产 | service tests + publish |
+| 托管完整性校验 | Release digest / SHA256SUMS + 安全解压 + `--version` | service tests |
+| 托管更新不在启动时自动检查 | 只有“下载 / 更新”主按钮触发网络检查 | WinUI shell |
+| 托管下载进度 / 取消 | 检查、下载、验证、安装阶段 + byte progress | service + WinUI shell |
+| 自定义 tunnel-client | FileOpenPicker 后自动 `--version`，成功才保存 | validation path |
+| 清理已下载版本 | 手动清理保留当前使用版本；常规更新保留一个回退版本 | service test |
 | 显式错误路径不 fallback | `TunnelClientOptions.ResolveExecutablePath` | 行为测试 |
 | Manager 配置不保存 Tunnel ID / target / API Key | schema 3 `config/settings.json` | 设置测试 |
 | 旧版 settings / tunnels[] 单向迁移 | 保留本机偏好、清除旧 Tunnel 定义 | 兼容测试 |
