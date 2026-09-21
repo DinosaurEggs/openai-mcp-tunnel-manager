@@ -113,6 +113,27 @@ public sealed class ManagedTunnelClientServiceTests
         Assert.Contains("不一致", error.Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void CleanupDownloadedVersionsKeepsCurrentVersionOnly()
+    {
+        using var temp = new TempDirectory();
+        var paths = new AppDataPaths(temp.Path);
+        foreach (var version in new[] { "v1.0.0", "v1.1.0", "v1.2.0" })
+        {
+            Directory.CreateDirectory(paths.GetManagedTunnelClientVersionDirectory(version));
+        }
+
+        using var client = new HttpClient(new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.NotFound)));
+        using var service = new ManagedTunnelClientService(client, paths);
+
+        var deleted = service.CleanupDownloadedVersions("v1.1.0");
+
+        Assert.Equal(2, deleted);
+        Assert.False(Directory.Exists(paths.GetManagedTunnelClientVersionDirectory("v1.0.0")));
+        Assert.True(Directory.Exists(paths.GetManagedTunnelClientVersionDirectory("v1.1.0")));
+        Assert.False(Directory.Exists(paths.GetManagedTunnelClientVersionDirectory("v1.2.0")));
+    }
+
     private static HttpResponseMessage Json(string text) => new(HttpStatusCode.OK)
     {
         Content = new StringContent(text, Encoding.UTF8, "application/json")
