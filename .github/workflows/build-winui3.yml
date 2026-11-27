@@ -9,6 +9,7 @@ on:
     paths:
       - "src/OpenAITunnelManager.**/**"
       - "tests/**"
+      - "scripts/**"
       - "package/**"
       - "Directory.Build.props"
       - "Directory.Build.targets"
@@ -126,6 +127,10 @@ jobs:
 
       - name: Run behavior tests
         run: dotnet test tests/OpenAITunnelManager.Tests/OpenAITunnelManager.Tests.csproj -c Release --no-restore
+
+      - name: Official tunnel-client local contract
+        shell: pwsh
+        run: ./scripts/Test-OfficialTunnelClient.ps1 -Version v0.0.21
 
   build:
     needs: test
