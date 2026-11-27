@@ -59,6 +59,7 @@ public sealed class ManagerUpdateService(HttpClient httpClient)
                 await using var destination = new FileStream(archive, FileMode.CreateNew, FileAccess.Write, FileShare.None, 128 * 1024, true);
                 var buffer = new byte[128 * 1024];
                 long downloaded = 0;
+                var lastPercent = -1;
                 progress?.Report(null);
                 while (true)
                 {
@@ -66,7 +67,11 @@ public sealed class ManagerUpdateService(HttpClient httpClient)
                     if (count == 0) break;
                     await destination.WriteAsync(buffer.AsMemory(0, count), token).ConfigureAwait(false);
                     downloaded += count;
-                    if (length is > 0) progress?.Report((int)Math.Clamp(downloaded * 100d / length.Value, 0d, 100d));
+                    if (length is > 0)
+                    {
+                        var percent = (int)Math.Clamp(downloaded * 100d / length.Value, 0d, 100d);
+                        if (percent != lastPercent) progress?.Report(lastPercent = percent);
+                    }
                 }
             }
             if (!string.IsNullOrWhiteSpace(release.Digest))

@@ -13,6 +13,7 @@
 | 一个 Profile 可被多个 Runtime alias 共用 | 不折叠多个 runtime | 集成测试 |
 | custom Runtime Profile 与同名 listed Profile 分离 | Profile path 严格匹配后才合并 | 集成测试 |
 | tunnel-client 来源切换 | 设置页下拉框选择 Managed / Custom | WinUI shell |
+| Manager 自身更新 | 设置手动检查 GitHub 正式 Release，确认后下载对应架构包、退出安装并重启 | service tests + publish + UI 验收 |
 | 托管版本下载 / 更新 | 用户点击后查询 GitHub latest，按架构精确选资产 | service tests + publish |
 | 托管完整性校验 | Release digest / SHA256SUMS + 安全解压 + `--version` | service tests |
 | 托管更新不在启动时自动检查 | 只有“下载 / 更新”主按钮触发网络检查 | WinUI shell |

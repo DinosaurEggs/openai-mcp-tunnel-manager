@@ -17,6 +17,10 @@ Windows 上的 `tunnel-client` 可视化管理器，使用 C# / WinUI 3 开发�
 
 目标框架为 `net10.0-windows10.0.19041.0`，发布为 unpackaged、self-contained 的 `win-x64` / `win-arm64`。
 
+## Manager 自身更新
+
+设置页中的“Manager 更新”显示当前应用版本，点击“检查更新”查询本仓库 GitHub 最新正式 Release。发现新版本时展示版本及 Release 更新说明，由用户确认或取消。确认后按进程架构下载对应 ZIP，校验发布 digest（若提供），正常退出 Manager、覆盖发布文件并重新启动。没有新版本时提示当前已是最新版本。更新保留 config、logs、state 和 tunnel-client；应用退出会停止 Manager 持有的前台连接，Native Runtime 保持原有生命周期。不在后台自动检查更新。
+
 ## 支持的 tunnel-client 版本
 
 本版本以官方 Full Client v0.0.21 为开发与测试基线。客户端选择不设最低版本号，检查所需 CLI 命令是否可用。旧版本不在本轮兼容性测试范围内。
@@ -264,6 +268,9 @@ dotnet publish .\src\OpenAITunnelManager.App\OpenAITunnelManager.App.csproj `
   -p:Platform=x64 `
   -r win-x64 `
   --self-contained true
+# 在同一发布目录中包含独立更新进程
+# 将 -o 路径替换为上一步的实际 publish 输出目录下的 updater 子目录
+dotnet publish .\src\OpenAITunnelManager.Updater\OpenAITunnelManager.Updater.csproj -c Release -r win-x64 --self-contained true -o artifacts/win-x64/updater
 ```
 
 GitHub Actions 门禁：

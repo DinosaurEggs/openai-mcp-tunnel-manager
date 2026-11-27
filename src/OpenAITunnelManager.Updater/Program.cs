@@ -27,12 +27,12 @@ internal static class Program
                 }
             }
             ManagerUpdateInstaller.Apply(root, payload, backup);
-            TryDelete(backup);
-            TryDelete(payload);
+            TryDelete(stage);
             File.WriteAllText(resultFile, "Manager 已更新至最新安装的版本。");
         }
         catch (Exception error)
         {
+            if (error is not AggregateException) TryDelete(stage);
             File.WriteAllText(resultFile, $"Manager 更新失败：{error.Message}");
         }
 

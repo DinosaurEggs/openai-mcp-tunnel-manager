@@ -34,6 +34,7 @@ public sealed partial class MainWindow : Window
         ViewModel = viewModel;
         InitializeComponent();
         RootGrid.DataContext = ViewModel;
+        ManagerVersionText.Text = $"当前版本：v{ManagerVersion.ToString(3)}";
         ViewModel.PropertyChanged += ViewModel_TunnelClientUiPropertyChanged;
         ConnectionsList.RightTapped += ConnectionsList_RightTapped;
         ConfigureUiPolish();
@@ -95,6 +96,7 @@ public sealed partial class MainWindow : Window
             MissingClientInfo.IsOpen = !ViewModel.IsClientAvailable;
             RequestResponsiveLayout();
             AppLog.Info($"Initial tunnel-client load completed: {ViewModel.StatusMessage}");
+            await ShowManagerUpdateResultAsync();
 
         }
         catch (Exception exception)
@@ -271,10 +273,11 @@ public sealed partial class MainWindow : Window
         ViewModel.StatusMessage = "窗口已恢复";
     }
 
-    private async Task ExitApplicationAsync()
+    private async Task ExitApplicationAsync(Action? beforeClose = null)
     {
         if (_shutdownInProgress) return;
         _shutdownInProgress = true;
+        if (beforeClose is null) _managerUpdateCancellation?.Cancel();
         RootGrid.IsHitTestVisible = false;
         _logTimer.Stop();
         try
@@ -282,10 +285,13 @@ public sealed partial class MainWindow : Window
             await ViewModel.ShutdownAsync();
             await _logReadGate.WaitAsync();
             _logReadGate.Release();
+            beforeClose?.Invoke();
         }
         catch (Exception exception)
         {
             AppLog.Error("Application shutdown cleanup failed", exception);
+            if (beforeClose is not null)
+                await ShowErrorAsync($"更新未安装：{exception.Message}。请重新启动 Manager 后重试。");
         }
         finally
         {

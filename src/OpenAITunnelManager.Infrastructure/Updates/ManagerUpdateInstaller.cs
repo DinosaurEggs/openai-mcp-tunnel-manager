@@ -7,7 +7,7 @@ public static class ManagerUpdateInstaller
     public static void Apply(string root, string payload, string backup)
     {
         var changes = new Stack<(string Destination, string? Original)>();
-        var files = Directory.GetFiles(payload, "*", SearchOption.AllDirectories);
+        var files = Directory.GetFiles(payload, "*", SearchOption.AllDirectories).Order(StringComparer.OrdinalIgnoreCase);
         try
         {
             foreach (var source in files)
@@ -40,7 +40,7 @@ public static class ManagerUpdateInstaller
             {
                 try
                 {
-                    File.Delete(change.Destination);
+                    if (File.Exists(change.Destination)) File.Delete(change.Destination);
                     if (change.Original is not null) File.Move(change.Original, change.Destination);
                 }
                 catch (Exception error) { errors.Add(error); }
