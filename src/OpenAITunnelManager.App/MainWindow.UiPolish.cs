@@ -53,7 +53,6 @@ public sealed partial class MainWindow
 
         NormalizeHeaderActions(DashboardHeaderActions);
         NormalizeHeaderActions(ConnectionsHeaderActions);
-        NormalizeHeaderActions(LogsHeaderActions);
         NormalizeHeaderActions(DiagnosticsHeaderActions);
     }
 
