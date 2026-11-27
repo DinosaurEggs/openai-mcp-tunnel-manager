@@ -56,7 +56,12 @@ public sealed partial class MainWindow
             });
             var dialog = NewDialog("发现 Manager 新版本", content, "确认更新");
             dialog.DefaultButton = ContentDialogButton.Close;
-            if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+            {
+                ManagerUpdateStatusText.Text = "已取消更新";
+                return;
+            }
+            cancellation.Token.ThrowIfCancellationRequested();
 
             var root = AppDataPaths.Current.RootDirectory;
             var helper = Path.Combine(root, "updater", "OpenAITunnelManager.Updater.exe");

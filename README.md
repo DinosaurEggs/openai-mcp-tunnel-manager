@@ -267,9 +267,9 @@ dotnet publish .\src\OpenAITunnelManager.App\OpenAITunnelManager.App.csproj `
   -c Release `
   -p:Platform=x64 `
   -r win-x64 `
-  --self-contained true
+  --self-contained true `
+  -o artifacts/win-x64
 # 在同一发布目录中包含独立更新进程
-# 将 -o 路径替换为上一步的实际 publish 输出目录下的 updater 子目录
 dotnet publish .\src\OpenAITunnelManager.Updater\OpenAITunnelManager.Updater.csproj -c Release -r win-x64 --self-contained true -o artifacts/win-x64/updater
 ```
 
