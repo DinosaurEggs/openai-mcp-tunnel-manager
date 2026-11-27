@@ -444,11 +444,14 @@ public partial class ConnectionsViewModel : ObservableObject
         if (item is null) { HealthText = string.Empty; return; }
         try
         {
-            HealthText = await _operations.GetDetailedHealthAsync(item);
+            var result = await _operations.GetDetailedHealthAsync(item);
+            if (string.Equals(SelectedConnection?.Identity, item.Identity, StringComparison.OrdinalIgnoreCase))
+                HealthText = result;
         }
         catch (Exception exception)
         {
-            HealthText = $"读取 Health 失败：{exception.Message}";
+            if (string.Equals(SelectedConnection?.Identity, item.Identity, StringComparison.OrdinalIgnoreCase))
+                HealthText = $"读取 Health 失败：{exception.Message}";
         }
     }
 
