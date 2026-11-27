@@ -76,7 +76,7 @@ public sealed record ProfileSpec(string Name, string TunnelId, McpType McpType, 
         RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     private static readonly Regex TunnelIdPattern = new(
-        @"^tunnel_[0-9a-f]{32}$",
+        @"^tunnel_([a-z0-9]{4}_)?[a-z0-9]{32}$",
         RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     public IReadOnlyList<string> Validate()
@@ -93,7 +93,7 @@ public sealed record ProfileSpec(string Name, string TunnelId, McpType McpType, 
 
         if (!TunnelIdPattern.IsMatch(tunnelId))
         {
-            errors.Add("Tunnel ID 必须是 tunnel_ 加 32 个小写十六进制字符");
+            errors.Add("Tunnel ID 必须是 tunnel_ 加 32 个小写字母或数字，可包含四字符命名空间及下划线");
         }
 
         if (string.IsNullOrWhiteSpace(target))
