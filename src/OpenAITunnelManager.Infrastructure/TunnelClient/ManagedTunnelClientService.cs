@@ -82,11 +82,22 @@ public sealed class ManagedTunnelClientService : IDisposable
         }
     }
 
-    public async Task<TunnelClientReleaseInfo> GetLatestReleaseAsync(
-        CancellationToken cancellationToken = default)
+    public IReadOnlyList<string> ListInstalledVersions() =>
+        !Directory.Exists(_paths.ManagedTunnelClientVersionsDirectory) ? [] :
+        Directory.EnumerateDirectories(_paths.ManagedTunnelClientVersionsDirectory)
+            .Select(Path.GetFileName).OfType<string>().Where(IsInstalled)
+            .OrderByDescending(version => version, StringComparer.OrdinalIgnoreCase).ToArray();
+
+    public Task<TunnelClientReleaseInfo> GetLatestReleaseAsync(CancellationToken cancellationToken = default) =>
+        GetReleaseAsync(null, cancellationToken);
+
+    public async Task<TunnelClientReleaseInfo> GetReleaseAsync(string? tag, CancellationToken cancellationToken = default)
     {
+        if (tag is not null && !System.Text.RegularExpressions.Regex.IsMatch(tag, @"^v\d+\.\d+\.\d+$"))
+            throw new ArgumentException("请输入正式版本标签，例如 v0.0.21");
+        var releaseApi = tag is null ? LatestReleaseApi : "https://api.github.com/repos/openai/tunnel-client/releases/tags/" + Uri.EscapeDataString(tag);
         using var response = await _httpClient.GetAsync(
-            LatestReleaseApi,
+            releaseApi,
             HttpCompletionOption.ResponseHeadersRead,
             cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
@@ -106,6 +117,8 @@ public sealed class ManagedTunnelClientService : IDisposable
             throw new InvalidDataException("GitHub latest release 缺少 tag_name");
         }
 
+        if (tag is not null && !string.Equals(version, tag, StringComparison.Ordinal))
+            throw new InvalidDataException("官方返回的版本与请求不一致");
         var architecture = GetWindowsAssetArchitecture(RuntimeInformation.ProcessArchitecture);
         var assetName = $"tunnel-client-{version}-windows-{architecture}.zip";
         if (!root.TryGetProperty("assets", out var assets) || assets.ValueKind != JsonValueKind.Array)
@@ -173,12 +186,17 @@ public sealed class ManagedTunnelClientService : IDisposable
         string currentVersion,
         bool forceDownload = false,
         CancellationToken cancellationToken = default,
-        IProgress<ManagedTunnelClientProgress>? progress = null)
+        IProgress<ManagedTunnelClientProgress>? progress = null) =>
+        await InstallVersionAsync(currentVersion, null, forceDownload, cancellationToken, progress).ConfigureAwait(false);
+
+    public async Task<ManagedTunnelClientInstallResult> InstallVersionAsync(
+        string currentVersion, string? tag, bool forceDownload = false,
+        CancellationToken cancellationToken = default, IProgress<ManagedTunnelClientProgress>? progress = null)
     {
         progress?.Report(new ManagedTunnelClientProgress(
             ManagedTunnelClientProgressStage.Checking,
             "正在检查官方最新版本…"));
-        var release = await GetLatestReleaseAsync(cancellationToken).ConfigureAwait(false);
+        var release = await GetReleaseAsync(tag, cancellationToken).ConfigureAwait(false);
         var executablePath = GetExecutablePath(release.Version);
 
         if (!forceDownload &&
@@ -190,7 +208,7 @@ public sealed class ManagedTunnelClientService : IDisposable
                 release.Version,
                 executablePath,
                 false,
-                $"tunnel-client 已是最新版 {release.Version}");
+                $"tunnel-client 已安装 {release.Version}");
         }
 
         if (!forceDownload && File.Exists(executablePath))

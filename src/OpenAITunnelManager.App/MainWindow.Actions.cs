@@ -285,6 +285,27 @@ public sealed partial class MainWindow
         }
     }
 
+    private async void SwitchInstalledVersion_Click(object sender, RoutedEventArgs e)
+    {
+        var versions = ViewModel.GetInstalledTunnelClientVersions();
+        if (versions.Count == 0) { await ShowErrorAsync("尚无已安装的托管版本"); return; }
+        var box = new ComboBox { ItemsSource = versions, SelectedIndex = 0, HorizontalAlignment = HorizontalAlignment.Stretch };
+        if (await NewDialog("切换 / 回退 tunnel-client", box, "验证并切换").ShowAsync() != ContentDialogResult.Primary || box.SelectedItem is not string version) return;
+        try { await ViewModel.UseInstalledTunnelClientVersionAsync(version); }
+        catch (Exception exception) { await ShowErrorAsync(exception.Message); }
+        RefreshTunnelClientSettingsUi();
+    }
+
+    private async void DownloadSpecificVersion_Click(object sender, RoutedEventArgs e)
+    {
+        var box = new TextBox { Header = "正式版本标签", PlaceholderText = "v0.0.21" };
+        if (await NewDialog("安装指定 tunnel-client 版本", box, "下载并验证").ShowAsync() != ContentDialogResult.Primary) return;
+        try { await ViewModel.InstallManagedTunnelClientAsync(requestedVersion: box.Text.Trim()); }
+        catch (OperationCanceledException) { }
+        catch (Exception exception) { await ShowErrorAsync(exception.Message); }
+        RefreshTunnelClientSettingsUi();
+    }
+
     private async void CleanupManagedVersions_Click(object sender, RoutedEventArgs e)
     {
         if (!ViewModel.UsesManagedTunnelClient ||
@@ -304,7 +325,8 @@ public sealed partial class MainWindow
             "清理");
 
         if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
-        ViewModel.CleanupDownloadedTunnelClientVersions();
+        try { ViewModel.CleanupDownloadedTunnelClientVersions(); }
+        catch (Exception exception) { await ShowErrorAsync(exception.Message); }
         RefreshTunnelClientSettingsUi();
     }
 
