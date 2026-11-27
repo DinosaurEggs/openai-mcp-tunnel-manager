@@ -9,6 +9,7 @@ public partial class ConnectionsViewModel
 
     private readonly CancellationTokenSource _lifetimeCancellation = new();
     private readonly Dictionary<string, CancellationTokenSource> _reconnectCancellations = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<Task> _reconnectTasks = [];
     private SynchronizationContext? _uiSynchronizationContext;
     private bool _runtimeEventsStarted;
 
@@ -20,7 +21,7 @@ public partial class ConnectionsViewModel
         _operations.ForegroundProfileExited += Operations_ForegroundProfileExited;
     }
 
-    private Task StopRuntimeEventsAsync()
+    private async Task StopRuntimeEventsAsync()
     {
         if (_runtimeEventsStarted)
         {
@@ -38,9 +39,9 @@ public partial class ConnectionsViewModel
             try { cancellation.Cancel(); } catch { }
         }
 
+        await Task.WhenAll(_reconnectTasks.ToArray());
         _reconnectCancellations.Clear();
         _reconnectScheduled.Clear();
-        return Task.CompletedTask;
     }
 
     private void Operations_ForegroundProfileExited(string profileName)
@@ -106,14 +107,23 @@ public partial class ConnectionsViewModel
             return;
         }
 
-        if (item.ProcessRunning) return;
-        if (item.State is RuntimeState.Configured or RuntimeState.Starting or RuntimeState.Unknown) return;
+        if (item.ProcessRunning) { CancelReconnect(identity, resetAttempts: true); return; }
+        if (item.State is RuntimeState.Configured or RuntimeState.Starting or RuntimeState.Unknown || _lifetimeCancellation.IsCancellationRequested) return;
         if (_reconnectScheduled.Contains(identity)) return;
 
         _reconnectScheduled.Add(identity);
         var cancellation = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeCancellation.Token);
         _reconnectCancellations[identity] = cancellation;
-        _ = ReconnectLoopAsync(identity, item.Name, cancellation);
+        var task = ReconnectLoopAsync(identity, item.Name, cancellation);
+        _reconnectTasks.Add(task);
+        _ = ObserveReconnectAsync(task);
+        NotifyActionState();
+    }
+
+    private async Task ObserveReconnectAsync(Task task)
+    {
+        try { await task; }
+        finally { _reconnectTasks.Remove(task); }
     }
 
     private async Task ReconnectLoopAsync(
@@ -140,12 +150,16 @@ public partial class ConnectionsViewModel
 
                 await Task.Delay(delay, cancellation.Token);
 
+                while (IsBusy || IsTunnelClientUpdating)
+                    await Task.Delay(100, cancellation.Token);
+
                 current = Connections.FirstOrDefault(item =>
                     string.Equals(item.Identity, identity, StringComparison.OrdinalIgnoreCase));
                 if (current is null || current.ProcessRunning || _manualStopped.Contains(identity)) return;
                 preference = FindPreference(current);
                 if (preference is not { Enabled: true, AutoReconnect: true }) return;
 
+                IsBusy = true;
                 try
                 {
                     StatusMessage = $"正在自动重连 {displayName}...";
@@ -166,6 +180,7 @@ public partial class ConnectionsViewModel
                 {
                     StatusMessage = $"{displayName} 自动重连失败：{exception.Message}";
                 }
+                finally { IsBusy = false; }
             }
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
@@ -180,6 +195,7 @@ public partial class ConnectionsViewModel
                 _reconnectScheduled.Remove(identity);
             }
             cancellation.Dispose();
+            NotifyActionState();
         }
     }
 
@@ -191,5 +207,6 @@ public partial class ConnectionsViewModel
         }
         _reconnectScheduled.Remove(identity);
         if (resetAttempts) _reconnectAttempts.Remove(identity);
+        NotifyActionState();
     }
 }
