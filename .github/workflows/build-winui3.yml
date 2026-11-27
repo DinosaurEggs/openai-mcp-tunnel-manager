@@ -356,6 +356,7 @@ jobs:
           if ($LASTEXITCODE -eq 0) { throw "Release $tag already exists." }
           "value=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           Write-Host "Release version: $version"
+          exit 0
 
       - name: Clean runtime-generated files
         shell: pwsh
