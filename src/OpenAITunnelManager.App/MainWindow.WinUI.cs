@@ -219,6 +219,8 @@ public sealed partial class MainWindow : Window
                 Visibility = Visibility.Visible
             };
             _trayIcon.ForceCreate(enablesEfficiencyMode: false);
+            ViewModel.PropertyChanged += UpdateTraySummary;
+            UpdateTraySummary(null, new System.ComponentModel.PropertyChangedEventArgs(nameof(ViewModel.ActiveCount)));
             AppLog.Info("WinUI system tray icon created");
         }
         catch (Exception exception)
@@ -273,10 +275,13 @@ public sealed partial class MainWindow : Window
     {
         if (_shutdownInProgress) return;
         _shutdownInProgress = true;
+        RootGrid.IsHitTestVisible = false;
         _logTimer.Stop();
         try
         {
             await ViewModel.ShutdownAsync();
+            await _logReadGate.WaitAsync();
+            _logReadGate.Release();
         }
         catch (Exception exception)
         {
@@ -291,8 +296,15 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private void UpdateTraySummary(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (_trayIcon is not null && e.PropertyName is nameof(ViewModel.ActiveCount) or nameof(ViewModel.TotalCount) or nameof(ViewModel.ProblemCount))
+            _trayIcon.ToolTipText = $"OpenAI MCP Tunnel Manager\n运行 {ViewModel.ActiveCount}/{ViewModel.TotalCount} · 异常 {ViewModel.ProblemCount}";
+    }
+
     private void DisposeTray()
     {
+        ViewModel.PropertyChanged -= UpdateTraySummary;
         if (_trayIcon is null) return;
         try
         {

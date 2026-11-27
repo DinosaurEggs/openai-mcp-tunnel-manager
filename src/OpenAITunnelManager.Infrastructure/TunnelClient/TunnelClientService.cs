@@ -17,13 +17,14 @@ public sealed class TunnelClientService(TunnelClientProcessRunner runner) : ITun
         using var profilesJson = await RunJsonAsync(["profiles", "list", "--json"], cancellationToken).ConfigureAwait(false);
         using var runtimesJson = await RunJsonAsync(["runtimes", "list", "--json"], cancellationToken).ConfigureAwait(false);
         var stateRoot = GetString(runtimesJson.RootElement, "state_root");
+        if (string.IsNullOrWhiteSpace(stateRoot) || !Path.IsPathFullyQualified(stateRoot))
+            throw new InvalidOperationException("runtimes list JSON 缺少有效的 state_root");
         var profiles = ParseProfiles(profilesJson.RootElement);
         var profilesByName = profiles.ToDictionary(static p => p.Name, StringComparer.OrdinalIgnoreCase);
         var linkedProfiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var result = new List<TunnelConnection>();
 
-        // Inventory refresh deliberately does not query every runtime status. Dynamic state is
-        // handled by GetStatusAsync and the lightweight RuntimeMonitor in the ViewModel.
+        // Inventory and status are separate explicit CLI queries.
         foreach (var runtime in ParseRuntimes(runtimesJson.RootElement))
         {
             profilesByName.TryGetValue(runtime.ProfileName, out var listed);
@@ -172,7 +173,7 @@ public sealed class TunnelClientService(TunnelClientProcessRunner runner) : ITun
                 : runtimeState is "stopped" or "disconnected" or "not_running" or "missing_profile" ? RuntimeState.Stopped
                 : RuntimeState.Unknown;
             var errorMessage = FirstNonEmpty(GetString(root, "error", "remote_error"), command.ExitCode == 0 ? string.Empty : command.StandardError.Trim());
-            if (!stale && command.ExitCode != 0 && LooksLikeMissingAlias(errorMessage)) state = RuntimeState.Stopped;
+            if (!stale && !processRunning && command.ExitCode != 0 && LooksLikeMissingAlias(errorMessage)) state = RuntimeState.Stopped;
             return new RuntimeSnapshot(
                 alias,
                 state,
@@ -238,7 +239,7 @@ public sealed class TunnelClientService(TunnelClientProcessRunner runner) : ITun
             var value = GetString(process, "target_value");
             if (!string.IsNullOrWhiteSpace(kind) && !string.IsNullOrWhiteSpace(value)) return (kind, value);
         }
-        return (metadata.TargetKind, metadata.TargetValue);
+        return (string.Empty, string.Empty);
     }
 
     private static JsonElement Child(JsonElement element, string name) => TryGetProperty(element, name, out var value) ? value : default;
@@ -335,7 +336,10 @@ public sealed class TunnelClientService(TunnelClientProcessRunner runner) : ITun
     private static bool LooksLikeMissingAlias(string text)
     {
         var value = text.ToLowerInvariant();
-        return new[] { "not found", "unknown alias", "no runtime alias", "does not exist", "is not known" }.Any(value.Contains);
+        return value.Contains("unknown alias", StringComparison.Ordinal) ||
+            value.Contains("no runtime alias", StringComparison.Ordinal) ||
+            (value.Contains("alias", StringComparison.Ordinal) &&
+                (value.Contains("not found", StringComparison.Ordinal) || value.Contains("does not exist", StringComparison.Ordinal) || value.Contains("is not known", StringComparison.Ordinal)));
     }
 
     private static bool SamePath(string left, string right)

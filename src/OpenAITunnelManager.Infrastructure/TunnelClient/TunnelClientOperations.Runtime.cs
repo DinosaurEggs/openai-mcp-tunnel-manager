@@ -12,6 +12,7 @@ public sealed partial class TunnelClientOperations
 
     private async Task StartCoreAsync(TunnelConnection connection, string? secret, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (connection.HasRuntime && !connection.UseForeground && _foreground.ContainsKey(connection.Identity))
             throw new InvalidOperationException("请先停止 Manager 持有的前台进程");
         var metadata = ProfileMetadataReader.Read(FirstNonEmpty(connection.RuntimeProfilePath, connection.ProfilePath));
@@ -150,7 +151,7 @@ public sealed partial class TunnelClientOperations
                      (IsStdio(kind) || IsStdio(item.TargetKind))))
         {
             var status = await _inventory.GetStatusAsync(other, token);
-            if (status.ProcessRunning || status.State == RuntimeState.Unknown)
+            if (status.ProcessRunning || status.State is RuntimeState.Unknown or RuntimeState.Error)
                 throw new InvalidOperationException($"同一 STDIO Tunnel 已存在运行实例或状态不明：{other.Name}");
         }
     }
@@ -198,7 +199,7 @@ public sealed partial class TunnelClientOperations
         var logWriter = new RollingForegroundLog(logPath);
         void Append(string? line)
         {
-            if (line is not null) logWriter.WriteLine(line);
+            if (line is not null) logWriter.WriteLine(string.IsNullOrEmpty(secret) ? line : line.Replace(secret, "[REDACTED]", StringComparison.Ordinal));
         }
         process.OutputDataReceived += (_, e) => Append(e.Data);
         process.ErrorDataReceived += (_, e) => Append(e.Data);
@@ -214,15 +215,15 @@ public sealed partial class TunnelClientOperations
             throw;
         }
 
-        process.StandardInput.Close();
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
         _foreground[name] = new ForegroundProfile(process, healthFile, logPath, connection.ProfilePath, logWriter,
             FirstNonEmpty(metadata.TunnelId, connection.TunnelId), metadata.TargetKind, metadata.TargetValue,
             DateTimeOffset.UtcNow, info.FileName);
 
         try
         {
+            process.StandardInput.Close();
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
             var deadline = DateTimeOffset.UtcNow.AddSeconds(12);
             while (DateTimeOffset.UtcNow < deadline)
             {
@@ -316,11 +317,14 @@ public sealed partial class TunnelClientOperations
         }
     }
 
-    public async Task ShutdownForegroundProfilesAsync()
+    public Task ShutdownForegroundProfilesAsync() => CoordinateLifecycleAsync(async () =>
     {
+        var failures = new List<Exception>();
         foreach (var name in _foreground.Keys.ToArray())
         {
-            try { await StopProfileAsync(name); } catch { }
+            try { await StopProfileAsync(name); }
+            catch (Exception exception) { failures.Add(exception); }
         }
-    }
+        if (failures.Count > 0) throw new AggregateException("部分前台进程未能停止", failures);
+    }, CancellationToken.None);
 }

@@ -65,7 +65,7 @@ public partial class ConnectionsViewModel
         }
         catch (OperationCanceledException) { return; }
         catch (Exception exception) { StatusMessage = exception.Message; return; }
-        if (!Connections.Any(connection => connection.Identity == item.Identity)) return;
+        if (_lifetimeCancellation.IsCancellationRequested || !Connections.Any(connection => connection.Identity == item.Identity && connection.ProfilePath == item.ProfilePath)) return;
         var stopped = item with
         {
             State = RuntimeState.Stopped,
@@ -94,7 +94,7 @@ public partial class ConnectionsViewModel
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                return connection with { State = RuntimeState.Unknown, Error = exception.Message };
+                return connection with { State = RuntimeState.Unknown, UseForeground = FindPreference(connection)?.UseForeground == true, Error = exception.Message };
             }
             finally
             {
@@ -144,7 +144,7 @@ public partial class ConnectionsViewModel
             {
                 var current = Connections.FirstOrDefault(item =>
                     string.Equals(item.Identity, identity, StringComparison.OrdinalIgnoreCase));
-                if (current is null || current.ProcessRunning || _manualStopped.Contains(identity)) return;
+                if (current is null || current.ProcessRunning || _manualStopped.Contains(identity) || !IsClientAvailable || current.State == RuntimeState.Unknown) return;
 
                 var preference = FindPreference(current);
                 if (preference is not { Enabled: true, AutoReconnect: true }) return;

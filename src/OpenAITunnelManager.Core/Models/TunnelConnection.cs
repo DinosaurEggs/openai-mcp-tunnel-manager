@@ -78,7 +78,8 @@ public sealed record TunnelConnection(
         (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps) && string.IsNullOrEmpty(uri.UserInfo);
     public bool ConfigurationPending => ProcessRunning && !string.IsNullOrEmpty(RunningTargetValue) &&
         (!string.Equals(TargetKind, RunningTargetKind, StringComparison.Ordinal) || !string.Equals(TargetValue, RunningTargetValue, StringComparison.Ordinal));
-    public string ConfigurationStatusText => ConfigurationPending ? "磁盘配置与运行配置不同，重启后生效" : "未发现 MCP Target 变更";
+    public string ConfigurationStatusText => ConfigurationPending ? "磁盘 MCP Target 与运行实例不同，重启后生效" :
+        ProcessRunning && string.IsNullOrEmpty(RunningTargetValue) ? "尚未获取运行中的 MCP Target" : "未发现 MCP Target 变更";
     public string RepairText => string.Join(Environment.NewLine + Environment.NewLine,
         RepairActions.Select(action => $"{action.Id}: {action.Reason}{Environment.NewLine}{action.Command}"));
 

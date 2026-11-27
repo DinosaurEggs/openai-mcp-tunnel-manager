@@ -224,7 +224,7 @@ public sealed class BehaviorTests
     {
         public Task<string> GetVersionAsync(CancellationToken cancellationToken = default) => Task.FromResult("fake");
         public Task<IReadOnlyList<TunnelConnection>> GetConnectionsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<TunnelConnection>>([]);
-        public Task<TunnelConnection> GetStatusAsync(TunnelConnection connection, CancellationToken cancellationToken = default) => Task.FromResult(connection);
+        public Task<TunnelConnection> GetStatusAsync(TunnelConnection connection, CancellationToken cancellationToken = default, string? secret = null) => Task.FromResult(connection);
         public Task StopRuntimeAsync(string alias, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
