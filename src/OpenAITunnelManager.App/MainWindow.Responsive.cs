@@ -9,8 +9,8 @@ public sealed partial class MainWindow
 {
     private bool _responsiveLayoutEnabled;
     private string _lastResponsiveLayoutBucket = string.Empty;
-    private (bool SummaryWide, int ToolbarColumns, int PrimaryColumns, bool FiltersWide, int OptionColumns, bool HeaderCompact, bool DiagnosticsWide)? _lastDetailLayout;
-    private bool? _lastRemoteWide;
+    private (bool SummaryWide, int ToolbarColumns, int PrimaryColumns, bool FiltersWide, int OptionColumns, bool HeaderCompact, bool DiagnosticsWide, bool DiagnosticsHeaderCompact)? _lastDetailLayout;
+    private (bool Wide, bool CompactScope, int ActionColumns)? _lastRemoteLayout;
 
     internal void EnableResponsiveLayout()
     {
@@ -18,7 +18,7 @@ public sealed partial class MainWindow
         _responsiveLayoutEnabled = true;
         RootGrid.SizeChanged += ResponsiveRoot_SizeChanged;
         ContentGrid.SizeChanged += ResponsiveRoot_SizeChanged;
-        ConnectionTabs.SizeChanged += ResponsiveDetails_SizeChanged;
+        ConnectionsDetailsPanel.SizeChanged += ResponsiveDetails_SizeChanged;
         RemotePage.SizeChanged += ResponsiveRemote_SizeChanged;
         RootGrid.Loaded += ResponsiveRoot_Loaded;
         Navigation.SelectionChanged += ResponsiveNavigation_SelectionChanged;
@@ -130,12 +130,11 @@ public sealed partial class MainWindow
             Grid.SetRow(ConnectionsDetailsPanel, 0);
             Grid.SetColumn(ConnectionsDetailsPanel, 1);
         }
-
     }
 
     private void ApplyDetailLayout()
     {
-        var width = ConnectionTabs.ActualWidth - 4;
+        var width = ConnectionsDetailsPanel.ActualWidth - 36;
         if (width <= 1) return;
         var layout = (
             SummaryWide: width >= 800,
@@ -144,27 +143,29 @@ public sealed partial class MainWindow
             FiltersWide: width >= 800,
             OptionColumns: width >= 360 ? 3 : width >= 240 ? 2 : 1,
             HeaderCompact: width < 1100,
-            DiagnosticsWide: width >= 800);
+            DiagnosticsWide: width >= 800,
+            DiagnosticsHeaderCompact: width < 540);
         if (_lastDetailLayout == layout) return;
         _lastDetailLayout = layout;
 
         ConfigureHeader(LogsHeader, LogsHeaderTitle, LogsHeaderActions, layout.HeaderCompact);
         ArrangeControls(LogsHeaderActions, layout.ToolbarColumns);
         ArrangeControls(ConnectionsPrimaryActions, layout.PrimaryColumns);
-        ConfigureHeader(DiagnosticsHeader, DiagnosticsHeaderTitle, DiagnosticsHeaderActions, width < 540);
+        ConfigureHeader(DiagnosticsHeader, DiagnosticsHeaderTitle, DiagnosticsHeaderActions, layout.DiagnosticsHeaderCompact);
 
-        var cards = new[] { ConnectionInfoPanel, ConnectionHealthPanel, ConnectionControlPanel, ConnectionAuthPanel };
         ConnectionSummaryGrid.ColumnDefinitions.Clear();
         ConnectionSummaryGrid.RowDefinitions.Clear();
-        var columns = layout.SummaryWide ? 2 : 1;
-        for (var i = 0; i < columns; i++)
-            ConnectionSummaryGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        for (var i = 0; i < (cards.Length + columns - 1) / columns; i++)
-            ConnectionSummaryGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        for (var i = 0; i < cards.Length; i++)
+        ConnectionSummaryGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        if (layout.SummaryWide)
         {
-            Grid.SetRow(cards[i], i / columns);
-            Grid.SetColumn(cards[i], i % columns);
+            ConnectionSummaryGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            Grid.SetRow(ConnectionSummaryRight, 0); Grid.SetColumn(ConnectionSummaryRight, 1);
+        }
+        else
+        {
+            ConnectionSummaryGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            ConnectionSummaryGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            Grid.SetRow(ConnectionSummaryRight, 1); Grid.SetColumn(ConnectionSummaryRight, 0);
         }
 
         ApplyLogsLayout(layout.FiltersWide, layout.OptionColumns);
@@ -213,6 +214,34 @@ public sealed partial class MainWindow
             Grid.SetRow(LogOptionsGrid, 2); Grid.SetColumnSpan(LogOptionsGrid, 2);
         }
         ArrangeControls(LogOptionsGrid, optionColumns);
+
+        var searchButtons = LogSearchPanel.Children.OfType<FrameworkElement>().Where(child => child != LogSearchBox).ToArray();
+        LogSearchPanel.ColumnDefinitions.Clear();
+        LogSearchPanel.RowDefinitions.Clear();
+        if (optionColumns < 3)
+        {
+            for (var i = 0; i < searchButtons.Length; i++)
+                LogSearchPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            LogSearchPanel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            LogSearchPanel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            Grid.SetColumnSpan(LogSearchBox, searchButtons.Length);
+            for (var i = 0; i < searchButtons.Length; i++)
+            {
+                Grid.SetRow(searchButtons[i], 1);
+                Grid.SetColumn(searchButtons[i], i);
+            }
+        }
+        else
+        {
+            LogSearchPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            Grid.SetColumnSpan(LogSearchBox, 1);
+            for (var i = 0; i < searchButtons.Length; i++)
+            {
+                LogSearchPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                Grid.SetRow(searchButtons[i], 0);
+                Grid.SetColumn(searchButtons[i], i + 1);
+            }
+        }
     }
 
     private void ApplyRemoteLayout()
@@ -220,33 +249,58 @@ public sealed partial class MainWindow
         var width = RemotePage.ActualWidth;
         var height = RemotePage.ActualHeight;
         if (width <= 1 || height <= 1) return;
-        var wide = width >= 800;
-        // The outer scroll viewer handles short windows; a finite height lets the list
-        // and result viewer occupy the remaining space rather than collapsing to content.
-        RemoteContentGrid.Height = wide ? Math.Max(660, height) : double.NaN;
-        if (_lastRemoteWide == wide) return;
-        _lastRemoteWide = wide;
+        var layout = (Wide: width >= 800, CompactScope: width < 440, ActionColumns: width >= 360 ? 3 : 2);
+        // Give the inventory and result panes the remaining viewport height on wide screens.
+        // Narrow or short windows scroll without clipping the query controls.
+        RemoteContentGrid.Height = layout.Wide ? Math.Max(540, height) : double.NaN;
+        if (_lastRemoteLayout == layout) return;
+        _lastRemoteLayout = layout;
 
-        RemoteLayoutGrid.ColumnDefinitions.Clear();
-        RemoteLayoutGrid.RowDefinitions.Clear();
-        if (wide)
+        foreach (var (grid, second) in new[]
         {
-            RemoteLayoutGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(36, GridUnitType.Star), MaxWidth = 440 });
-            RemoteLayoutGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(64, GridUnitType.Star) });
-            Grid.SetRow(RemoteDetailsPanel, 0); Grid.SetColumn(RemoteDetailsPanel, 1);
-            RemoteTunnelList.Height = double.NaN;
-            RemoteResultText.Height = double.NaN;
+            (RemoteQueryGrid, RemoteScopePanel),
+            (RemoteLayoutGrid, RemoteDetailsPanel)
+        })
+        {
+            grid.ColumnDefinitions.Clear();
+            grid.RowDefinitions.Clear();
+            if (layout.Wide)
+            {
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(36, GridUnitType.Star), MaxWidth = 440 });
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(64, GridUnitType.Star) });
+                Grid.SetRow(second, 0); Grid.SetColumn(second, 1);
+            }
+            else
+            {
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                Grid.SetRow(second, 1); Grid.SetColumn(second, 0);
+            }
+        }
+
+        RemoteTunnelList.Height = layout.Wide ? double.NaN : 180;
+        RemoteResultText.Height = layout.Wide ? double.NaN : 280;
+        ArrangeControls(RemoteDetailActions, layout.ActionColumns);
+
+        RemoteScopeFields.ColumnDefinitions.Clear();
+        RemoteScopeFields.RowDefinitions.Clear();
+        if (layout.CompactScope)
+        {
+            RemoteScopeFields.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            for (var i = 0; i < 3; i++) RemoteScopeFields.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            Grid.SetRow(RemoteScopeId, 1); Grid.SetColumn(RemoteScopeId, 0);
+            Grid.SetRow(RemoteAdminSecret, 2); Grid.SetColumnSpan(RemoteAdminSecret, 1);
         }
         else
         {
-            RemoteLayoutGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            RemoteLayoutGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            RemoteLayoutGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            Grid.SetRow(RemoteDetailsPanel, 1); Grid.SetColumn(RemoteDetailsPanel, 0);
-            RemoteTunnelList.Height = 180;
-            RemoteResultText.Height = 280;
+            RemoteScopeFields.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            RemoteScopeFields.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            RemoteScopeFields.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            RemoteScopeFields.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            Grid.SetRow(RemoteScopeId, 0); Grid.SetColumn(RemoteScopeId, 1);
+            Grid.SetRow(RemoteAdminSecret, 1); Grid.SetColumnSpan(RemoteAdminSecret, 2);
         }
-        ArrangeControls(RemoteDetailActions, width >= 360 ? 3 : 2);
     }
 
     private void ApplyDiagnosticsLayout(string bucket)
