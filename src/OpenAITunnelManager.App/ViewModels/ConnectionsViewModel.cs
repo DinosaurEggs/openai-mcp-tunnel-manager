@@ -148,12 +148,7 @@ public partial class ConnectionsViewModel : ObservableObject
             ClientVersion = capabilities.Version;
 
             var statuses = await ReadStatusesAsync(itemsTask.Result, CancellationToken.None);
-            Connections.Clear();
-            foreach (var item in statuses)
-            {
-                if (!string.IsNullOrWhiteSpace(item.LogPath)) _lastLogPaths[item.Identity] = item.LogPath;
-                Connections.Add(item);
-            }
+            MergeConnections(statuses);
 
             SelectedConnection = Connections.FirstOrDefault(item =>
                                      string.Equals(item.Identity, selectedIdentity, StringComparison.OrdinalIgnoreCase))
@@ -542,12 +537,7 @@ public partial class ConnectionsViewModel : ObservableObject
     {
         var items = await _inventory.GetConnectionsAsync();
         var refreshed = await ReadStatusesAsync(items, CancellationToken.None);
-        Connections.Clear();
-        foreach (var item in refreshed)
-        {
-            if (!string.IsNullOrWhiteSpace(item.LogPath)) _lastLogPaths[item.Identity] = item.LogPath;
-            Connections.Add(item);
-        }
+        MergeConnections(refreshed);
         SelectedConnection = identity is null
             ? Connections.FirstOrDefault()
             : Connections.FirstOrDefault(item => string.Equals(item.Identity, identity, StringComparison.OrdinalIgnoreCase)) ?? Connections.FirstOrDefault();
@@ -617,6 +607,26 @@ public partial class ConnectionsViewModel : ObservableObject
     }
 
     private static string CredentialWriteId(TunnelConnection item) => CredentialIds(item).First();
+
+    private void MergeConnections(IReadOnlyList<TunnelConnection> updated)
+    {
+        var identities = updated.Select(item => item.Identity).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        for (var i = Connections.Count - 1; i >= 0; i--)
+            if (!identities.Contains(Connections[i].Identity)) Connections.RemoveAt(i);
+        for (var i = 0; i < updated.Count; i++)
+        {
+            var item = updated[i];
+            if (!string.IsNullOrWhiteSpace(item.LogPath)) _lastLogPaths[item.Identity] = item.LogPath;
+            var existing = Connections.FirstOrDefault(value => string.Equals(value.Identity, item.Identity, StringComparison.OrdinalIgnoreCase));
+            if (existing is null) Connections.Insert(i, item);
+            else
+            {
+                var index = Connections.IndexOf(existing);
+                if (index != i) Connections.Move(index, i);
+                if (existing != item) Connections[i] = item;
+            }
+        }
+    }
 
     private void ReplaceConnection(TunnelConnection updated)
     {
