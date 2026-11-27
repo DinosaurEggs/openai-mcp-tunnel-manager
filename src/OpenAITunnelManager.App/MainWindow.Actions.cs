@@ -296,6 +296,20 @@ public sealed partial class MainWindow
         RefreshTunnelClientSettingsUi();
     }
 
+    private async void RepairInstalledVersion_Click(object sender, RoutedEventArgs e)
+    {
+        var version = ViewModel.ManagedTunnelClientVersion;
+        if (string.IsNullOrWhiteSpace(version))
+        {
+            await ShowErrorAsync("尚无托管版本可重新下载");
+            return;
+        }
+        try { await ViewModel.InstallManagedTunnelClientAsync(forceDownload: true, requestedVersion: version); }
+        catch (OperationCanceledException) { }
+        catch (Exception exception) { await ShowErrorAsync(exception.Message); }
+        RefreshTunnelClientSettingsUi();
+    }
+
     private async void DownloadSpecificVersion_Click(object sender, RoutedEventArgs e)
     {
         var box = new TextBox { Header = "正式版本标签", PlaceholderText = "v0.0.21" };

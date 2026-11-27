@@ -578,6 +578,7 @@
                                                             </MenuFlyoutItem>
                                                             <MenuFlyoutItem Text="切换已安装版本" Click="SwitchInstalledVersion_Click" />
                                                             <MenuFlyoutItem Text="下载指定正式版本" Click="DownloadSpecificVersion_Click" />
+                                                            <MenuFlyoutItem Text="重新下载当前版本" Click="RepairInstalledVersion_Click" />
                                                             <MenuFlyoutItem x:Name="CleanupManagedVersionsMenuItem" Text="清理已下载版本" Click="CleanupManagedVersions_Click">
                                                                 <MenuFlyoutItem.Icon>
                                                                     <FontIcon Glyph="&#xE74D;" />

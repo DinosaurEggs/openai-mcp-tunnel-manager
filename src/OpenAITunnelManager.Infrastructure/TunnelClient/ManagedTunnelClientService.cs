@@ -203,7 +203,7 @@ public sealed class ManagedTunnelClientService : IDisposable
             string.Equals(currentVersion?.Trim(), release.Version, StringComparison.OrdinalIgnoreCase) &&
             File.Exists(executablePath))
         {
-            _ = await ValidateExecutableAsync(executablePath, cancellationToken).ConfigureAwait(false);
+            await ValidateInstalledVersionAsync(release.Version, cancellationToken).ConfigureAwait(false);
             return new ManagedTunnelClientInstallResult(
                 release.Version,
                 executablePath,
@@ -213,7 +213,7 @@ public sealed class ManagedTunnelClientService : IDisposable
 
         if (!forceDownload && File.Exists(executablePath))
         {
-            _ = await ValidateExecutableAsync(executablePath, cancellationToken).ConfigureAwait(false);
+            await ValidateInstalledVersionAsync(release.Version, cancellationToken).ConfigureAwait(false);
             return new ManagedTunnelClientInstallResult(
                 release.Version,
                 executablePath,
@@ -227,6 +227,19 @@ public sealed class ManagedTunnelClientService : IDisposable
             executablePath,
             true,
             $"已安装 tunnel-client {release.Version}");
+    }
+
+    public async Task ValidateInstalledVersionAsync(string version, CancellationToken cancellationToken = default)
+    {
+        var text = await ValidateExecutableAsync(GetExecutablePath(version), cancellationToken).ConfigureAwait(false);
+        VerifyVersion(text, version);
+    }
+
+    private static void VerifyVersion(string reported, string expected)
+    {
+        var pattern = @"(?<![A-Za-z0-9.])v?" + System.Text.RegularExpressions.Regex.Escape(expected.TrimStart('v')) + @"(?![A-Za-z0-9.])";
+        if (!System.Text.RegularExpressions.Regex.IsMatch(reported, pattern))
+            throw new InvalidDataException($"tunnel-client 版本不符：期望 {expected}，实际 {reported}");
     }
 
     public async Task<TunnelClientValidationResult> ValidateCustomExecutableAsync(
@@ -409,7 +422,8 @@ public sealed class ManagedTunnelClientService : IDisposable
             var packageDirectory = Path.GetDirectoryName(extractedExecutable)!;
             CopyDirectory(packageDirectory, installDirectory);
             var stagedExecutable = Path.Combine(installDirectory, "tunnel-client.exe");
-            _ = await ValidateExecutableAsync(stagedExecutable, cancellationToken).ConfigureAwait(false);
+            VerifyVersion(await ValidateExecutableAsync(stagedExecutable, cancellationToken).ConfigureAwait(false), release.Version);
+            cancellationToken.ThrowIfCancellationRequested();
 
             Directory.CreateDirectory(Path.GetDirectoryName(targetDirectory)!);
             var previousDirectory = Path.Combine(operationDirectory, "previous");
