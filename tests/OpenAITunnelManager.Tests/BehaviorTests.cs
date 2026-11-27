@@ -67,6 +67,27 @@ public sealed class BehaviorTests
     }
 
     [Fact]
+    public void ProfileDocumentEditor_UsesChannelRegardlessOfFieldOrder()
+    {
+        var source = """
+            control_plane:
+              tunnel_id: tunnel_0123456789abcdef0123456789abcdef
+            mcp:
+              server_urls:
+                - url: http://127.0.0.1:8001/mcp
+                  channel: secondary
+                - url: http://127.0.0.1:8002/mcp # preserve this
+                  channel: main
+            """;
+        var updated = ProfileDocumentEditor.ApplyCommonFields(source, TunnelId,
+            "server_url", "http://127.0.0.1:8002/mcp", TunnelId, "http://127.0.0.1:8003/mcp");
+        Assert.Contains("8001/mcp", updated);
+        Assert.Contains("8003/mcp", updated);
+        Assert.DoesNotContain("8002/mcp", updated);
+        Assert.Contains("# preserve this", updated);
+    }
+
+    [Fact]
     public async Task SettingsStore_OnlyPersistsManagerPreferences()
     {
         var cancellationToken = TestContext.Current.CancellationToken;
