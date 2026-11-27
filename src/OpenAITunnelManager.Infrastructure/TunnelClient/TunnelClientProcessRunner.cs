@@ -141,12 +141,7 @@ public sealed class TunnelClientProcessRunner(TunnelClientOptions options)
         if (string.IsNullOrWhiteSpace(reference)) return null;
         var name = reference.StartsWith("env:", StringComparison.OrdinalIgnoreCase) ? reference[4..]
             : reference.StartsWith("${", StringComparison.Ordinal) && reference.EndsWith('}') ? reference[2..^1]
-            : reference.StartsWith('(params string?[] values) =>
-        values.FirstOrDefault(static value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
-}
-
-public sealed record TunnelClientProcessResult(int ExitCode, string StandardOutput, string StandardError);
-) ? reference[1..] : string.Empty;
+            : reference.StartsWith('$') ? reference[1..] : string.Empty;
         return System.Text.RegularExpressions.Regex.IsMatch(name, "^[A-Za-z_][A-Za-z0-9_]*$") ? name : null;
     }
 

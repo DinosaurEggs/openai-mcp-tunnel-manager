@@ -44,9 +44,8 @@ public sealed class LogConsoleBuffer
 
     public IReadOnlyList<StructuredLogEntry> Snapshot(string? level = null, string? component = null)
     {
-        if (string.IsNullOrWhiteSpace(level) ||
-            string.Equals(level, "全部", StringComparison.OrdinalIgnoreCase))
-        if (string.IsNullOrWhiteSpace(component))
+        if ((string.IsNullOrWhiteSpace(level) ||
+            string.Equals(level, "全部", StringComparison.OrdinalIgnoreCase)) && string.IsNullOrWhiteSpace(component))
         {
             return _entries.ToArray();
         }
