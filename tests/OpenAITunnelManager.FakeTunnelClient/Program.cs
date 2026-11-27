@@ -248,9 +248,22 @@ public static class Program
         {
             var alias = args[2];
             var state = LoadState();
-            EnsureRuntimes(state).Remove(alias);
+            var runtimes = EnsureRuntimes(state);
+            var record = runtimes[alias] as JsonObject;
+            var removedPaths = new JsonArray();
+            if (record is not null)
+            {
+                foreach (var key in new[] { "profile_path", "config_path", "log_path" })
+                {
+                    var path = record[key]?.GetValue<string>();
+                    if (string.IsNullOrWhiteSpace(path)) continue;
+                    File.Delete(path);
+                    removedPaths.Add(path);
+                }
+            }
+            runtimes.Remove(alias);
             SaveState(state);
-            Console.WriteLine(new JsonObject { ["removed"] = alias }.ToJsonString(CompactJson));
+            Console.WriteLine(new JsonObject { ["removed"] = true, ["removed_paths"] = removedPaths }.ToJsonString(CompactJson));
             return 0;
         }
 
@@ -271,7 +284,7 @@ public static class Program
 
     private static async Task<int> ExecuteRunAsync(string[] args)
     {
-        var profile = Option(args, "--profile");
+        var profile = Option(args, "--profile", Option(args, "--profile-file"));
         var healthFile = Option(args, "--health.url-file");
         if (string.IsNullOrWhiteSpace(profile) || string.IsNullOrWhiteSpace(healthFile))
         {
