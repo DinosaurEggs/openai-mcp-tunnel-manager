@@ -16,6 +16,8 @@ public sealed class BehaviorTests
     {
         var valid = new ProfileSpec("idea", TunnelId, McpType.Http, "http://127.0.0.1:64343/stream");
         Assert.Empty(valid.Validate());
+        Assert.Empty((valid with { TunnelId = "tunnel_ab12_0123456789abcdef0123456789abcdef" }).Validate());
+        Assert.NotEmpty((valid with { TunnelId = "tunnel_abc_0123456789abcdef0123456789abcdef" }).Validate());
 
         var badName = new ProfileSpec(" bad profile", TunnelId, McpType.Http, "http://127.0.0.1:1/mcp");
         Assert.Contains(badName.Validate(), static message => message.Contains("Profile 名称", StringComparison.Ordinal));
@@ -93,6 +95,20 @@ public sealed class BehaviorTests
 
         var loaded = await store.LoadAsync(cancellationToken);
         Assert.True(loaded.ProfilePreferences["PROFILE:IDEA"].AutoConnect);
+    }
+
+    [Fact]
+    public async Task SettingsStore_ConcurrentSavesRetainLatestSnapshot()
+    {
+        var token = TestContext.Current.CancellationToken;
+        using var temp = new TempDirectory();
+        var store = new JsonSettingsStore(Path.Combine(temp.Path, "settings.json"));
+        var settings = new AppSettings { ThemeMode = "dark" };
+        var first = store.SaveAsync(settings, token);
+        settings.ThemeMode = "light";
+        var second = store.SaveAsync(settings, token);
+        await Task.WhenAll(first, second);
+        Assert.Equal("light", (await store.LoadAsync(token)).ThemeMode);
     }
 
     [Fact]
