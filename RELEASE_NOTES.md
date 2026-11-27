@@ -1,37 +1,23 @@
-# OpenAI MCP Tunnel Manager v1.3.0
+# OpenAI MCP Tunnel Manager v1.3.1
 
-## Manager 自身更新
+## 界面布局修复
 
-- 设置页显示当前 Manager 版本，手动检查 GitHub 最新正式 Release。
-- 发现新版本时显示版本号和更新说明，确认后下载对应架构的发布包，取消不下载。
-- 下载后由独立的 C# Updater 等待 Manager 退出、替换发布文件并重启。保留 config、logs、state 和 tunnel-client，安装失败时尝试恢复已替换的文件。
-- 从 1.2.0 首次升级需要手动下载完整发布包；后续版本可通过内置入口更新。Manager 持有的前台连接会随应用退出停止。
+- 配置列表使用两行紧凑头部，标题与批量操作、过期 Runtime 检查并排，搜索与状态筛选并排。缩小列表宽度上限及内部间距，为连接详情释放空间。
+- 常规详情按基本信息、健康状态、控制平面、认证 / Residency 分组，宽窗口采用独立双栏，窄窗口上下排列，减少不必要的留白。
+- 修复日志搜索框异常拉伸，重新排列搜索、等级、组件过滤及显示选项；工具栏按详情区实际宽度自动分行。
+- 远端 Tunnel 页面改为上方查询配置、下方列表与详情的布局，合理利用宽屏空间，支持窄窗口滚动。
+- 连接操作栏及诊断区域依据实际详情区宽度调整，保留原有业务功能与数据绑定。
 
-## tunnel-client 与 Profile 管理
+## 验证
 
-- 以官方 Full Client v0.0.21 为开发和测试基线。不设最低版本号，不执行旧版兼容性测试矩阵。
-- 支持指定正式版本下载、切换已安装版本及重新下载当前版本。
-- 支持官方 Profile 模板、更多常用配置字段和完整 YAML / JSON 编辑，保存失败后保留编辑内容。
-- 支持 Native Runtime 与完整 Profile 前台运行方式，避免重建 Native Runtime 时丢失高级配置。
-- 完善共享关联文件检查、进程生命周期及自动重连协调。
-- 本机偏好和凭据按 Profile 路径及 Runtime State Root + alias 隔离，settings schema 升级至 v4。
-- 复用官方 CLI 校验，移除全量 Profile 预校验和多余输入限制，支持相对 State Directory。
+- 修复分支 CI #45941329648：74 项行为测试全部通过，官方 tunnel-client v0.0.21 本地 CLI 契约测试通过。
+- Windows x64 / ARM64 主程序及 Updater 构建、发布文件检查、x64 启动和单实例测试通过。
+- 实机视觉验收仍待完成；CI 通过不代表所有 DPI 和窗口尺寸均已实测。
 
-## 连接、远端管理及诊断
+## 升级与下载
 
-- 连接列表支持搜索、过滤和批量操作。
-- 新增远端 Tunnel 与 Admin Profile 管理，支持官方过期 Runtime 清理预览及执行。
-- 展示 Control Plane、认证、Residency、远端查询和 Repair Actions 等状态信息。
-- 完善日志文件轮转、增量读取、组件过滤、原始 JSON 显示与托盘运行摘要。
-
-## 发布
-
-- 继续采用纯 C# / WinUI 3，提供 Windows x64 和 ARM64 self-contained 发布包，内含对应架构 Updater。
-- CI 仅手动触发。正式发布工作流在 master 上重新执行行为测试、官方 CLI 本地契约测试、双架构构建、发布文件检查及 x64 启动和单实例测试。
-- 完整手工 UI、真实远端认证与 CRUD、ARM64 原生运行及真实跨版本自动更新仍待实机验收。
-
-## 下载
+v1.3.0 用户可在设置页使用“Manager 更新 → 检查更新”升级至 v1.3.1，亦可手动下载对应架构发布包。更新保留本机配置、日志、状态及 tunnel-client。实际跨版本更新仍待实机验收。
 
 - `OpenAITunnelManager-win-x64.zip`
 - `OpenAITunnelManager-win-arm64.zip`
-- GitHub Package：`OpenAITunnelManager.Windows 1.3.0`
+- GitHub Package：`OpenAITunnelManager.Windows 1.3.1`
