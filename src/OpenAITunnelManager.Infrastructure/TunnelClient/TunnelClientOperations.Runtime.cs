@@ -93,13 +93,29 @@ public sealed partial class TunnelClientOperations
 
     private async Task StartProfileAsync(TunnelConnection connection, string? secret, CancellationToken cancellationToken)
     {
+        await _foregroundGate.WaitAsync(cancellationToken);
+        try { await StartProfileCoreAsync(connection, secret, cancellationToken); }
+        finally { _foregroundGate.Release(); }
+    }
+
+    private async Task StartProfileCoreAsync(TunnelConnection connection, string? secret, CancellationToken cancellationToken)
+    {
         var name = connection.ProfileName;
-        if (_foreground.TryGetValue(name, out var existing) && !existing.Process.HasExited) return;
-        if (existing is not null)
+        if (_foreground.TryGetValue(name, out var existing))
         {
-            _foreground.TryRemove(name, out _);
-            existing.LogWriter.Dispose();
-            existing.Process.Dispose();
+            lock (existing)
+            {
+                if (_foreground.TryGetValue(name, out var current) && ReferenceEquals(current, existing))
+                {
+                    if (!existing.Process.HasExited)
+                    {
+                        if (!SamePath(existing.ProfilePath, connection.ProfilePath))
+                            throw new InvalidOperationException("同名 Profile 正在使用其他目录中的配置");
+                        return;
+                    }
+                    RemoveForegroundRecord(name, existing);
+                }
+            }
         }
 
         var safeName = string.Concat(name.Select(ch => Path.GetInvalidFileNameChars().Contains(ch) ? '_' : ch));
@@ -169,7 +185,7 @@ public sealed partial class TunnelClientOperations
         }
         catch
         {
-            await StopProfileAsync(name);
+            await StopProfileCoreAsync(name);
             throw;
         }
 
@@ -185,36 +201,59 @@ public sealed partial class TunnelClientOperations
 
     private void HandleForegroundProfileExited(string name, Process process)
     {
-        if (!_foreground.TryGetValue(name, out var current) || !ReferenceEquals(current.Process, process)) return;
-        if (!_foreground.TryRemove(name, out var record) || !ReferenceEquals(record.Process, process)) return;
-
-        try { process.CancelOutputRead(); } catch { }
-        try { process.CancelErrorRead(); } catch { }
-        try { record.LogWriter.Dispose(); } catch { }
-        try { process.Dispose(); } catch { }
-
+        if (!_foreground.TryGetValue(name, out var record) || !ReferenceEquals(record.Process, process)) return;
+        lock (record)
+        {
+            if (record.Stopping || !RemoveForegroundRecord(name, record)) return;
+        }
         try { ForegroundProfileExited?.Invoke(name); } catch { }
     }
 
-    private Task StopProfileAsync(string name)
+    // Callers hold the record lock. Only remove the exact process instance.
+    private bool RemoveForegroundRecord(string name, ForegroundProfile record)
     {
-        if (!_foreground.TryRemove(name, out var record)) return Task.CompletedTask;
+        if (!_foreground.TryRemove(new KeyValuePair<string, ForegroundProfile>(name, record))) return false;
+        try { record.Process.CancelOutputRead(); } catch { }
+        try { record.Process.CancelErrorRead(); } catch { }
+        try { record.LogWriter.Dispose(); } catch { }
+        record.Process.Dispose();
+        return true;
+    }
+
+    private async Task StopProfileAsync(string name)
+    {
+        await _foregroundGate.WaitAsync();
+        try { await StopProfileCoreAsync(name); }
+        finally { _foregroundGate.Release(); }
+    }
+
+    private async Task StopProfileCoreAsync(string name)
+    {
+        if (!_foreground.TryGetValue(name, out var record)) return;
+        lock (record)
+        {
+            if (!_foreground.TryGetValue(name, out var current) || !ReferenceEquals(current, record)) return;
+            record.Stopping = true;
+        }
         try
         {
             if (!record.Process.HasExited)
             {
                 record.Process.Kill(entireProcessTree: true);
-                record.Process.WaitForExit(5000);
+                using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                await record.Process.WaitForExitAsync(deadline.Token);
             }
-            try { record.Process.CancelOutputRead(); } catch { }
-            try { record.Process.CancelErrorRead(); } catch { }
+            lock (record) { RemoveForegroundRecord(name, record); }
         }
-        finally
+        catch
         {
-            try { record.LogWriter.Dispose(); } catch { }
-            record.Process.Dispose();
+            lock (record)
+            {
+                record.Stopping = false;
+                if (record.Process.HasExited) RemoveForegroundRecord(name, record);
+            }
+            throw;
         }
-        return Task.CompletedTask;
     }
 
     public async Task ShutdownForegroundProfilesAsync()
