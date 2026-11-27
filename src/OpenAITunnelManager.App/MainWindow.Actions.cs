@@ -222,7 +222,7 @@ public sealed partial class MainWindow
         var item = ViewModel.SelectedConnection;
         if (item is null) return;
 
-        var profileLine = item.ProfileListed ? "\n• 如果没有其他 Runtime 共用该 Profile，则删除官方 Profile 文件" : string.Empty;
+        var profileLine = item.HasRuntime ? "\n• 官方 Runtime 删除会移除关联 Profile、配置及日志文件；共享 Profile 不允许直接删除" : "\n• 删除对应 Profile 文件";
         var confirm = NewDialog(
             "删除 tunnel-client 配置",
             new TextBlock
