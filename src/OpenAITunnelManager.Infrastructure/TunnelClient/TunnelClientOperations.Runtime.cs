@@ -46,6 +46,15 @@ public sealed partial class TunnelClientOperations
     public async Task RemoveRuntimeAsync(string alias, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(alias);
+        var inventory = await _inventory.GetConnectionsAsync(cancellationToken);
+        var current = inventory.SingleOrDefault(item => item.HasRuntime &&
+            string.Equals(item.RuntimeAlias, alias, StringComparison.OrdinalIgnoreCase));
+        if (current is null) throw new InvalidOperationException("Runtime 已变化，请刷新列表");
+        var path = FirstNonEmpty(current.RuntimeProfilePath, current.ProfilePath);
+        if (!string.IsNullOrWhiteSpace(path) && inventory.Any(item =>
+            !string.Equals(item.Identity, current.Identity, StringComparison.OrdinalIgnoreCase) &&
+            SamePath(path, FirstNonEmpty(item.RuntimeProfilePath, item.ProfilePath))))
+            throw new InvalidOperationException("该 Runtime 的 Profile 被其他连接共享，无法安全删除");
         await RunAsync(["runtimes", "rm", alias, "--json"], false, cancellationToken, TimeSpan.FromSeconds(30));
     }
 
@@ -102,7 +111,7 @@ public sealed partial class TunnelClientOperations
 
         var metadata = ProfileMetadataReader.Read(connection.ProfilePath);
         var info = CreateStartInfo(
-            ["run", "--profile", name, "--health.listen-addr", "127.0.0.1:0", "--health.url-file", healthFile],
+            ["run", "--profile-file", connection.ProfilePath, "--health.listen-addr", "127.0.0.1:0", "--health.url-file", healthFile],
             metadata.ApiKeyRef,
             secret);
         var process = new Process { StartInfo = info, EnableRaisingEvents = true };
