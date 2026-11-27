@@ -198,42 +198,55 @@
 
                         <Grid x:Name="ConnectionsSplitGrid" Grid.Row="2" ColumnSpacing="12">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="30*" />
+                                <ColumnDefinition Width="30*" MaxWidth="280" />
                                 <ColumnDefinition Width="70*" />
                             </Grid.ColumnDefinitions>
 
-                            <Border x:Name="ConnectionsListPanel" Padding="12" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="10">
+                            <Border x:Name="ConnectionsListPanel" Padding="10" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="10">
                                 <Grid>
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="10" />
+                                        <RowDefinition Height="6" />
                                         <RowDefinition Height="*" />
                                     </Grid.RowDefinitions>
-                                    <StackPanel Spacing="8">
-                                        <TextBlock Text="配置列表" FontSize="16" FontWeight="SemiBold" />
-                                        <TextBox PlaceholderText="搜索名称 / Tunnel ID / Target" Text="{Binding ConnectionSearch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                        <ComboBox HorizontalAlignment="Stretch" SelectedValuePath="Content" SelectedValue="{Binding ConnectionFilter, Mode=TwoWay}">
-                                            <ComboBoxItem Content="全部" IsSelected="True" />
-                                            <ComboBoxItem Content="运行中" />
-                                            <ComboBoxItem Content="已停止" />
-                                            <ComboBoxItem Content="异常 / 未知" />
-                                        </ComboBox>
-                                        <Button Content="批量操作" Click="BatchConnections_Click" HorizontalAlignment="Stretch" />
-                                        <Button Content="检查过期 Runtime" Click="CleanupStaleRuntime_Click" HorizontalAlignment="Stretch" />
+                                    <StackPanel Spacing="6">
+                                        <Grid ColumnSpacing="6">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="配置列表" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" TextWrapping="Wrap" />
+                                            <Button Grid.Column="1" Content="批量" FontSize="13" MinWidth="0" MinHeight="28" Padding="8,3" ToolTipService.ToolTip="批量操作" Click="BatchConnections_Click" />
+                                            <Button Grid.Column="2" Content="过期检查" FontSize="13" MinWidth="0" MinHeight="28" Padding="8,3" ToolTipService.ToolTip="检查过期 Runtime" Click="CleanupStaleRuntime_Click" />
+                                        </Grid>
+                                        <Grid ColumnSpacing="6">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBox PlaceholderText="搜索配置" ToolTipService.ToolTip="搜索名称 / Tunnel ID / Target" FontSize="13" MinWidth="0" MinHeight="28" Padding="8,3" Text="{Binding ConnectionSearch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                            <ComboBox Grid.Column="1" FontSize="13" MinWidth="0" Width="112" MinHeight="28" Padding="8,3" VerticalAlignment="Center" SelectedValuePath="Content" SelectedValue="{Binding ConnectionFilter, Mode=TwoWay}">
+                                                <ComboBoxItem Content="全部" IsSelected="True" />
+                                                <ComboBoxItem Content="运行中" />
+                                                <ComboBoxItem Content="已停止" />
+                                                <ComboBoxItem Content="异常 / 未知" />
+                                            </ComboBox>
+                                        </Grid>
                                     </StackPanel>
                                     <ListView x:Name="ConnectionsList" Grid.Row="2" ItemsSource="{Binding VisibleConnections}" SelectedItem="{Binding SelectedConnection, Mode=TwoWay}" SelectionMode="Single" SelectionChanged="ConnectionsList_SelectionChanged">
                                         <ListView.ItemTemplate>
                                             <DataTemplate>
-                                                <Grid Padding="8,10">
+                                                <Grid Padding="6,5" ColumnSpacing="4">
                                                     <Grid.ColumnDefinitions>
                                                         <ColumnDefinition Width="*" />
                                                         <ColumnDefinition Width="Auto" />
                                                     </Grid.ColumnDefinitions>
-                                                    <StackPanel Spacing="3">
+                                                    <StackPanel Spacing="2">
                                                         <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                                                         <TextBlock Text="{Binding Subtitle}" FontSize="12" Opacity="0.65" TextTrimming="CharacterEllipsis" />
                                                     </StackPanel>
-                                                    <Border Grid.Column="1" Padding="8,3" CornerRadius="8" VerticalAlignment="Center" Background="{ThemeResource ControlFillColorSecondaryBrush}">
+                                                    <Border Grid.Column="1" Padding="6,2" CornerRadius="6" VerticalAlignment="Center" Background="{ThemeResource ControlFillColorSecondaryBrush}">
                                                         <TextBlock Text="{Binding StatusLabel}" FontSize="12" />
                                                     </Border>
                                                 </Grid>
@@ -267,12 +280,19 @@
                                         </Border>
                                     </Grid>
 
-                                    <StackPanel x:Name="ConnectionsPrimaryActions" Grid.Row="2" Orientation="Horizontal" Spacing="8">
+                                    <Grid x:Name="ConnectionsPrimaryActions" Grid.Row="2" ColumnSpacing="8" RowSpacing="6" HorizontalAlignment="Left">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
                                         <Button Content="启动" Command="{Binding StartSelectedCommand}" IsEnabled="{Binding CanStartSelected}" />
-                                        <Button Content="停止" Command="{Binding StopSelectedCommand}" IsEnabled="{Binding CanStopSelected}" />
-                                        <Button Content="重启" Command="{Binding RestartSelectedCommand}" IsEnabled="{Binding CanRestartSelected}" />
-                                        <Button Content="编辑 Profile" IsEnabled="{Binding CanEditSelected}" Click="EditProfile_Click" />
-                                        <Button Content="更多" IsEnabled="{Binding CanDeleteSelected}">
+                                        <Button Grid.Column="1" Content="停止" Command="{Binding StopSelectedCommand}" IsEnabled="{Binding CanStopSelected}" />
+                                        <Button Grid.Column="2" Content="重启" Command="{Binding RestartSelectedCommand}" IsEnabled="{Binding CanRestartSelected}" />
+                                        <Button Grid.Column="3" Content="编辑 Profile" IsEnabled="{Binding CanEditSelected}" Click="EditProfile_Click" />
+                                        <Button Grid.Column="4" Content="更多" IsEnabled="{Binding CanDeleteSelected}">
                                             <Button.Flyout>
                                                 <MenuFlyout>
                                                     <MenuFlyoutItem Text="创建 Native Runtime" Click="CreateNativeRuntime_Click" />
@@ -284,75 +304,134 @@
                                                 </MenuFlyout>
                                             </Button.Flyout>
                                         </Button>
-                                    </StackPanel>
+                                    </Grid>
 
                                     <TabView x:Name="ConnectionTabs" Grid.Row="4" IsAddTabButtonVisible="False" CanDragTabs="False" CanReorderTabs="False" SelectionChanged="ConnectionTabs_SelectionChanged">
                                         <TabViewItem Header="常规" IsClosable="False">
-                                            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                                                <StackPanel Spacing="18" Padding="2,8,2,4">
-                                                    <TextBlock Text="基本信息" FontSize="16" FontWeight="SemiBold" />
-                                                    <Grid x:Name="ConnectionInfoGrid" ColumnSpacing="20" RowSpacing="10">
-                                                        <Grid.ColumnDefinitions>
-                                                            <ColumnDefinition Width="28*" />
-                                                            <ColumnDefinition Width="72*" />
-                                                        </Grid.ColumnDefinitions>
-                                                        <Grid.RowDefinitions>
-                                                            <RowDefinition Height="Auto" />
-                                                            <RowDefinition Height="Auto" />
-                                                            <RowDefinition Height="Auto" />
-                                                            <RowDefinition Height="Auto" />
-                                                            <RowDefinition Height="Auto" />
-                                                            <RowDefinition Height="Auto" />
-                                                            <RowDefinition Height="Auto" />
-                                                        </Grid.RowDefinitions>
-                                                        <TextBlock Text="来源" Opacity="0.65" />
-                                                        <TextBlock Grid.Column="1" Text="{Binding SelectedConnection.ExecutionModeText}" TextWrapping="Wrap" />
-                                                        <TextBlock Grid.Row="1" Text="Profile" Opacity="0.65" />
-                                                        <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SelectedConnection.ProfileName}" TextWrapping="Wrap" />
-                                                        <TextBlock Grid.Row="2" Text="Profile 路径" Opacity="0.65" />
-                                                        <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SelectedConnection.ProfilePath}" TextWrapping="Wrap" />
-                                                        <TextBlock Grid.Row="3" Text="Runtime Alias" Opacity="0.65" />
-                                                        <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SelectedConnection.RuntimeAlias}" TextWrapping="Wrap" />
-                                                        <TextBlock Grid.Row="4" Text="MCP Target" Opacity="0.65" />
-                                                        <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding SelectedConnection.TargetValue}" TextWrapping="Wrap" />
-                                                        <TextBlock Grid.Row="5" Text="PID" Opacity="0.65" />
-                                                        <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding SelectedConnection.ProcessId}" />
-                                                        <TextBlock Grid.Row="6" Text="日志文件" Opacity="0.65" />
-                                                        <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding CurrentLogPath}" TextWrapping="Wrap" />
-                                                    </Grid>
-
-                                                    <TextBlock Text="健康状态" FontSize="16" FontWeight="SemiBold" Margin="0,6,0,0" />
-                                                    <Grid x:Name="ConnectionHealthGrid" ColumnSpacing="20" RowSpacing="10">
-                                                        <Grid.ColumnDefinitions>
-                                                            <ColumnDefinition Width="28*" />
-                                                            <ColumnDefinition Width="72*" />
-                                                        </Grid.ColumnDefinitions>
-                                                        <Grid.RowDefinitions>
-                                                            <RowDefinition Height="Auto" />
-                                                            <RowDefinition Height="Auto" />
-                                                            <RowDefinition Height="Auto" />
-                                                            <RowDefinition Height="Auto" />
-                                                        </Grid.RowDefinitions>
-                                                        <TextBlock Text="状态" Opacity="0.65" />
-                                                        <TextBlock Grid.Column="1" Text="{Binding SelectedConnection.StateText}" />
-                                                        <TextBlock Grid.Row="1" Text="Health" Opacity="0.65" />
-                                                        <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SelectedConnection.HealthText}" />
-                                                        <TextBlock Grid.Row="2" Text="Ready" Opacity="0.65" />
-                                                        <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SelectedConnection.ReadyText}" />
-                                                        <TextBlock Grid.Row="3" Text="Health URL" Opacity="0.65" />
-                                                        <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SelectedConnection.HealthUrl}" TextWrapping="Wrap" />
-                                                    </Grid>
-                                                    <TextBlock Text="控制平面" FontWeight="SemiBold" />
-                                                    <TextBlock Text="{Binding SelectedConnection.ControlPlaneText}" TextWrapping="Wrap" />
-                                                    <TextBlock Text="{Binding SelectedConnection.ControlPlaneReason}" TextWrapping="Wrap" />
-                                                    <TextBlock Text="认证 / Residency" FontWeight="SemiBold" />
-                                                    <TextBlock Text="{Binding SelectedConnection.Authentication}" />
-                                                    <TextBlock Text="{Binding SelectedConnection.Residency}" />
-                                                    <TextBlock Text="{Binding SelectedConnection.RemoteResidency}" />
-                                                    <TextBlock Text="{Binding SelectedConnection.RemoteLookupStatus}" TextWrapping="Wrap" />
-                                                    <TextBlock Text="{Binding SelectedConnection.ConfigurationStatusText}" TextWrapping="Wrap" />
-                                                    <TextBlock Text="{Binding SelectedConnection.RefreshedText}" Opacity="0.65" />
-                                                </StackPanel>
+                                            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch">
+                                                <Grid x:Name="ConnectionSummaryGrid" Padding="2,8,2,4" ColumnSpacing="12" RowSpacing="12">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="*" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <Grid.RowDefinitions>
+                                                        <RowDefinition Height="Auto" />
+                                                        <RowDefinition Height="Auto" />
+                                                    </Grid.RowDefinitions>
+                                                    <StackPanel x:Name="ConnectionSummaryLeft" Spacing="12">
+                                                        <Border x:Name="ConnectionInfoPanel" Padding="14" VerticalAlignment="Top" Background="{ThemeResource ControlFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
+                                                            <StackPanel Spacing="10">
+                                                                <TextBlock Text="基本信息" FontSize="16" FontWeight="SemiBold" />
+                                                                <Grid x:Name="ConnectionInfoGrid" ColumnSpacing="12" RowSpacing="8">
+                                                                    <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="Auto" MinWidth="94" />
+                                                                        <ColumnDefinition Width="*" />
+                                                                    </Grid.ColumnDefinitions>
+                                                                    <Grid.RowDefinitions>
+                                                                        <RowDefinition Height="Auto" />
+                                                                        <RowDefinition Height="Auto" />
+                                                                        <RowDefinition Height="Auto" />
+                                                                        <RowDefinition Height="Auto" />
+                                                                        <RowDefinition Height="Auto" />
+                                                                        <RowDefinition Height="Auto" />
+                                                                        <RowDefinition Height="Auto" />
+                                                                    </Grid.RowDefinitions>
+                                                                    <TextBlock Grid.Row="0" Text="来源" Opacity="0.65" TextWrapping="Wrap" />
+                                                                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding SelectedConnection.ExecutionModeText}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                                                                    <TextBlock Grid.Row="1" Text="Profile" Opacity="0.65" TextWrapping="Wrap" />
+                                                                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SelectedConnection.ProfileName}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                                                                    <TextBlock Grid.Row="2" Text="Profile 路径" Opacity="0.65" TextWrapping="Wrap" />
+                                                                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SelectedConnection.ProfilePath}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                                                                    <TextBlock Grid.Row="3" Text="Runtime Alias" Opacity="0.65" TextWrapping="Wrap" />
+                                                                    <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SelectedConnection.RuntimeAlias}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                                                                    <TextBlock Grid.Row="4" Text="MCP Target" Opacity="0.65" TextWrapping="Wrap" />
+                                                                    <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding SelectedConnection.TargetValue}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                                                                    <TextBlock Grid.Row="5" Text="PID" Opacity="0.65" TextWrapping="Wrap" />
+                                                                    <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding SelectedConnection.ProcessId}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                                                                    <TextBlock Grid.Row="6" Text="日志文件" Opacity="0.65" TextWrapping="Wrap" />
+                                                                    <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding CurrentLogPath}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                                                                </Grid>
+                                                            </StackPanel>
+                                                        </Border>
+                                                        <Border x:Name="ConnectionControlPanel" Padding="14" VerticalAlignment="Top" Background="{ThemeResource ControlFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
+                                                            <StackPanel Spacing="10">
+                                                                <TextBlock Text="控制平面" FontSize="16" FontWeight="SemiBold" />
+                                                                <Grid ColumnSpacing="12" RowSpacing="8">
+                                                                    <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="Auto" MinWidth="94" />
+                                                                        <ColumnDefinition Width="*" />
+                                                                    </Grid.ColumnDefinitions>
+                                                                    <Grid.RowDefinitions>
+                                                                        <RowDefinition Height="Auto" />
+                                                                        <RowDefinition Height="Auto" />
+                                                                        <RowDefinition Height="Auto" />
+                                                                        <RowDefinition Height="Auto" />
+                                                                        <RowDefinition Height="Auto" />
+                                                                    </Grid.RowDefinitions>
+                                                                    <TextBlock Grid.Row="0" Text="状态" Opacity="0.65" TextWrapping="Wrap" />
+                                                                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding SelectedConnection.ControlPlaneText}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                                                                    <TextBlock Grid.Row="1" Text="原因" Opacity="0.65" TextWrapping="Wrap" />
+                                                                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SelectedConnection.ControlPlaneReason}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                                                                    <TextBlock Grid.Row="2" Text="远端查询" Opacity="0.65" TextWrapping="Wrap" />
+                                                                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SelectedConnection.RemoteLookupStatus}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                                                                    <TextBlock Grid.Row="3" Text="配置状态" Opacity="0.65" TextWrapping="Wrap" />
+                                                                    <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SelectedConnection.ConfigurationStatusText}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                                                                    <TextBlock Grid.Row="4" Text="刷新时间" Opacity="0.65" TextWrapping="Wrap" />
+                                                                    <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding SelectedConnection.RefreshedText}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                                                                </Grid>
+                                                            </StackPanel>
+                                                        </Border>
+                                                    </StackPanel>
+                                                    <StackPanel x:Name="ConnectionSummaryRight" Grid.Column="1" Spacing="12">
+                                                        <Border x:Name="ConnectionHealthPanel" Padding="14" VerticalAlignment="Top" Background="{ThemeResource ControlFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
+                                                            <StackPanel Spacing="10">
+                                                                <TextBlock Text="健康状态" FontSize="16" FontWeight="SemiBold" />
+                                                                <Grid x:Name="ConnectionHealthGrid" ColumnSpacing="12" RowSpacing="8">
+                                                                    <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="Auto" MinWidth="94" />
+                                                                        <ColumnDefinition Width="*" />
+                                                                    </Grid.ColumnDefinitions>
+                                                                    <Grid.RowDefinitions>
+                                                                        <RowDefinition Height="Auto" />
+                                                                        <RowDefinition Height="Auto" />
+                                                                        <RowDefinition Height="Auto" />
+                                                                        <RowDefinition Height="Auto" />
+                                                                    </Grid.RowDefinitions>
+                                                                    <TextBlock Grid.Row="0" Text="状态" Opacity="0.65" TextWrapping="Wrap" />
+                                                                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding SelectedConnection.StateText}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                                                                    <TextBlock Grid.Row="1" Text="Health" Opacity="0.65" TextWrapping="Wrap" />
+                                                                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SelectedConnection.HealthText}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                                                                    <TextBlock Grid.Row="2" Text="Ready" Opacity="0.65" TextWrapping="Wrap" />
+                                                                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SelectedConnection.ReadyText}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                                                                    <TextBlock Grid.Row="3" Text="Health URL" Opacity="0.65" TextWrapping="Wrap" />
+                                                                    <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SelectedConnection.HealthUrl}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                                                                </Grid>
+                                                            </StackPanel>
+                                                        </Border>
+                                                        <Border x:Name="ConnectionAuthPanel" Padding="14" VerticalAlignment="Top" Background="{ThemeResource ControlFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8">
+                                                            <StackPanel Spacing="10">
+                                                                <TextBlock Text="认证 / Residency" FontSize="16" FontWeight="SemiBold" />
+                                                                <Grid ColumnSpacing="12" RowSpacing="8">
+                                                                    <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="Auto" MinWidth="94" />
+                                                                        <ColumnDefinition Width="*" />
+                                                                    </Grid.ColumnDefinitions>
+                                                                    <Grid.RowDefinitions>
+                                                                        <RowDefinition Height="Auto" />
+                                                                        <RowDefinition Height="Auto" />
+                                                                        <RowDefinition Height="Auto" />
+                                                                    </Grid.RowDefinitions>
+                                                                    <TextBlock Grid.Row="0" Text="认证" Opacity="0.65" TextWrapping="Wrap" />
+                                                                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding SelectedConnection.Authentication}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                                                                    <TextBlock Grid.Row="1" Text="Residency" Opacity="0.65" TextWrapping="Wrap" />
+                                                                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SelectedConnection.Residency}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                                                                    <TextBlock Grid.Row="2" Text="远端 Residency" Opacity="0.65" TextWrapping="Wrap" />
+                                                                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SelectedConnection.RemoteResidency}" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                                                                </Grid>
+                                                            </StackPanel>
+                                                        </Border>
+                                                    </StackPanel>
+                                                </Grid>
                                             </ScrollViewer>
                                         </TabViewItem>
 
@@ -374,26 +453,39 @@
                                                         <TextBlock Text="运行日志" FontSize="18" FontWeight="SemiBold" />
                                                         <TextBlock x:Name="LogConsoleStatus" Text="未选择可读取的日志" Opacity="0.7" TextWrapping="Wrap" />
                                                     </StackPanel>
-                                                    <StackPanel x:Name="LogsHeaderActions" Grid.Column="1" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="8">
-                                                        <Button x:Name="LogPauseButton" Content="暂停输出" Click="LogPause_Click" />
-                                                        <Button x:Name="LogScrollEndButton" Content="滚动到底部" Click="LogScrollToEnd_Click" />
-                                                        <Button Content="刷新" Click="LogManualRefresh_Click" />
-                                                        <Button Content="清空" Click="LogClear_Click" />
-                                                        <Button Content="复制" Click="LogCopy_Click" />
-                                                        <Button Content="全选" Click="LogSelectAll_Click" />
-                                                        <Button Content="保存控制台" Click="LogSaveConsole_Click" />
-                                                        <Button Content="打开文件位置" IsEnabled="{Binding CanOpenLogSelected}" Click="OpenLogLocation_Click" />
-                                                    </StackPanel>
+                                                    <Grid x:Name="LogsHeaderActions" Grid.Column="1" ColumnSpacing="6" RowSpacing="6" HorizontalAlignment="Right">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <Button Grid.Column="0" x:Name="LogPauseButton" Content="暂停输出" Click="LogPause_Click" />
+                                                        <Button Grid.Column="1" x:Name="LogScrollEndButton" Content="滚动到底部" Click="LogScrollToEnd_Click" />
+                                                        <Button Grid.Column="2" Content="刷新" Click="LogManualRefresh_Click" />
+                                                        <Button Grid.Column="3" Content="清空" Click="LogClear_Click" />
+                                                        <Button Grid.Column="4" Content="复制" Click="LogCopy_Click" />
+                                                        <Button Grid.Column="5" Content="全选" Click="LogSelectAll_Click" />
+                                                        <Button Grid.Column="6" Content="保存控制台" Click="LogSaveConsole_Click" />
+                                                        <Button Grid.Column="7" Content="打开文件位置" IsEnabled="{Binding CanOpenLogSelected}" Click="OpenLogLocation_Click" />
+                                                    </Grid>
                                                 </Grid>
 
-                                                <Grid x:Name="LogsFilterGrid" Grid.Row="2" ColumnSpacing="10">
+                                                <Grid x:Name="LogsFilterGrid" Grid.Row="2" ColumnSpacing="8" RowSpacing="6">
                                                     <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="50*" />
-                                                        <ColumnDefinition Width="18*" />
-                                                        <ColumnDefinition Width="16*" />
-                                                        <ColumnDefinition Width="16*" />
+                                                        <ColumnDefinition Width="3*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="2*" />
                                                     </Grid.ColumnDefinitions>
-                                                    <Grid ColumnSpacing="6">
+                                                    <Grid.RowDefinitions>
+                                                        <RowDefinition Height="Auto" />
+                                                        <RowDefinition Height="Auto" />
+                                                    </Grid.RowDefinitions>
+                                                    <Grid x:Name="LogSearchPanel" ColumnSpacing="4" VerticalAlignment="Center">
                                                         <Grid.ColumnDefinitions>
                                                             <ColumnDefinition Width="*" />
                                                             <ColumnDefinition Width="Auto" />
@@ -401,13 +493,13 @@
                                                             <ColumnDefinition Width="Auto" />
                                                             <ColumnDefinition Width="Auto" />
                                                         </Grid.ColumnDefinitions>
-                                                        <TextBox PlaceholderText="搜索 Message / Request ID / Trace ID" Text="{Binding LogSearch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                        <TextBox x:Name="LogSearchBox" PlaceholderText="搜索 Message / Request ID / Trace ID" MinWidth="0" VerticalAlignment="Center" Text="{Binding LogSearch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                                         <Button Grid.Column="1" Content="↑" ToolTipService.ToolTip="上一个匹配" Click="LogFindPrevious_Click" />
                                                         <Button Grid.Column="2" Content="↓" ToolTipService.ToolTip="下一个匹配" Click="LogFindNext_Click" />
-                                                        <ToggleButton Grid.Column="3" Content="Aa" ToolTipService.ToolTip="区分大小写" IsChecked="{Binding LogSearchCaseSensitive, Mode=TwoWay}" />
-                                                        <ToggleButton Grid.Column="4" Content=".*" ToolTipService.ToolTip="正则表达式" IsChecked="{Binding LogSearchRegex, Mode=TwoWay}" />
+                                                        <ToggleButton Grid.Column="3" Content="Aa" VerticalAlignment="Center" ToolTipService.ToolTip="区分大小写" IsChecked="{Binding LogSearchCaseSensitive, Mode=TwoWay}" />
+                                                        <ToggleButton Grid.Column="4" Content=".*" VerticalAlignment="Center" ToolTipService.ToolTip="正则表达式" IsChecked="{Binding LogSearchRegex, Mode=TwoWay}" />
                                                     </Grid>
-                                                    <ComboBox Grid.Column="1" x:Name="LogLevelCombo" SelectedValue="{Binding LogLevel, Mode=TwoWay}" SelectedValuePath="Content">
+                                                    <ComboBox Grid.Column="1" x:Name="LogLevelCombo" MinWidth="96" VerticalAlignment="Center" SelectedValue="{Binding LogLevel, Mode=TwoWay}" SelectedValuePath="Content">
                                                         <ComboBoxItem Content="全部" IsSelected="True" />
                                                         <ComboBoxItem Content="TRACE" />
                                                         <ComboBoxItem Content="DEBUG" />
@@ -415,12 +507,17 @@
                                                         <ComboBoxItem Content="WARN" />
                                                         <ComboBoxItem Content="ERROR" />
                                                     </ComboBox>
-                                                    <CheckBox Grid.Column="2" Content="自动换行" IsChecked="{Binding LogWrap, Mode=TwoWay}" VerticalAlignment="Center" />
-                                                    <StackPanel Grid.Column="3" Spacing="4">
-                                                        <CheckBox Content="折叠重复" IsChecked="{Binding LogFoldDuplicates, Mode=TwoWay}" />
-                                                        <CheckBox Content="原始 JSON" IsChecked="{Binding LogRaw, Mode=TwoWay}" />
-                                                        <TextBox PlaceholderText="组件过滤" Text="{Binding LogComponent, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                                    </StackPanel>
+                                                    <TextBox x:Name="LogComponentBox" Grid.Column="2" MinWidth="0" VerticalAlignment="Center" PlaceholderText="组件过滤" Text="{Binding LogComponent, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                    <Grid x:Name="LogOptionsGrid" Grid.Row="1" Grid.ColumnSpan="3" ColumnSpacing="12" RowSpacing="4" HorizontalAlignment="Left">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <CheckBox Content="自动换行" MinWidth="0" IsChecked="{Binding LogWrap, Mode=TwoWay}" />
+                                                        <CheckBox Grid.Column="1" Content="折叠重复" MinWidth="0" IsChecked="{Binding LogFoldDuplicates, Mode=TwoWay}" />
+                                                        <CheckBox Grid.Column="2" Content="原始 JSON" MinWidth="0" IsChecked="{Binding LogRaw, Mode=TwoWay}" />
+                                                    </Grid>
                                                 </Grid>
 
                                                 <Border Grid.Row="4" Background="{ThemeResource ControlFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="4">
@@ -491,35 +588,126 @@
                     </Grid>
 
                     <Grid x:Name="RemotePage" Visibility="Collapsed">
-                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                            <StackPanel Spacing="12">
-                                <TextBlock Text="远端 Tunnel 管理" Style="{StaticResource TitleTextBlockStyle}" />
-                                <TextBlock Text="通过官方 Admin CLI 管理远端资源。Admin Key 与 Runtime Key 独立，保存的 Admin Profile 仅包含引用。" TextWrapping="Wrap" Opacity="0.7" />
-                                <ComboBox x:Name="AdminProfileCombo" Header="Admin Profile" DisplayMemberPath="Name" HorizontalAlignment="Stretch" SelectionChanged="AdminProfile_SelectionChanged" />
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <Button Content="刷新配置" Click="RefreshAdminProfiles_Click" />
-                                    <Button Content="新增 / 修改" Click="SaveAdminProfile_Click" />
-                                    <Button Content="设为活动" Click="ActivateAdminProfile_Click" />
-                                    <Button Content="删除配置" Click="DeleteAdminProfile_Click" />
+                        <ScrollViewer x:Name="RemoteScrollViewer" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch">
+                            <Grid x:Name="RemoteContentGrid" RowSpacing="12">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                </Grid.RowDefinitions>
+                                <StackPanel Spacing="4">
+                                    <TextBlock Text="远端 Tunnel 管理" Style="{StaticResource TitleTextBlockStyle}" />
+                                    <TextBlock Text="通过官方 Admin CLI 管理远端资源。Admin Key 与 Runtime Key 独立，保存的 Admin Profile 仅包含引用。" TextWrapping="Wrap" Opacity="0.7" />
+                                    <TextBlock x:Name="RemoteStatusText" TextWrapping="Wrap" />
                                 </StackPanel>
-                                <ComboBox x:Name="RemoteScopeType" Header="查询范围" HorizontalAlignment="Stretch" SelectedIndex="0">
-                                    <ComboBoxItem Content="Organization" />
-                                    <ComboBoxItem Content="Workspace" />
-                                    <ComboBoxItem Content="Tenant" />
-                                </ComboBox>
-                                <TextBox x:Name="RemoteScopeId" Header="Scope ID" />
-                                <PasswordBox x:Name="RemoteAdminSecret" Header="本次 Admin Key（可选）" PlaceholderText="留空使用所选 Admin Profile 的环境变量 / 文件引用" />
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <Button Content="查询 Tunnel" Click="ListRemoteTunnels_Click" />
-                                    <Button Content="创建 Tunnel" Click="CreateRemoteTunnel_Click" />
-                                    <Button Content="刷新详情" Click="GetRemoteTunnel_Click" />
-                                    <Button Content="编辑" Click="UpdateRemoteTunnel_Click" />
-                                    <Button Content="删除 Tunnel" Click="DeleteRemoteTunnel_Click" />
-                                </StackPanel>
-                                <ListView x:Name="RemoteTunnelList" DisplayMemberPath="DisplayName" SelectionMode="Single" MinHeight="100" MaxHeight="280" />
-                                <TextBlock x:Name="RemoteStatusText" TextWrapping="Wrap" />
-                                <TextBox x:Name="RemoteResultText" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="140" />
-                            </StackPanel>
+                                <Grid x:Name="RemoteQueryGrid" Grid.Row="1" ColumnSpacing="12" RowSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="36*" MaxWidth="440" />
+                                        <ColumnDefinition Width="64*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border x:Name="RemoteProfilePanel" Padding="14" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="10">
+                                        <StackPanel Spacing="10">
+                                            <TextBlock Text="Admin Profile" FontSize="16" FontWeight="SemiBold" />
+                                            <ComboBox x:Name="AdminProfileCombo" DisplayMemberPath="Name" HorizontalAlignment="Stretch" SelectionChanged="AdminProfile_SelectionChanged" />
+                                            <Grid ColumnSpacing="6" RowSpacing="6">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="Auto" />
+                                                </Grid.RowDefinitions>
+                                                <Button Content="刷新配置" HorizontalAlignment="Stretch" Click="RefreshAdminProfiles_Click" />
+                                                <Button Grid.Column="1" Content="新增 / 修改" HorizontalAlignment="Stretch" Click="SaveAdminProfile_Click" />
+                                                <Button Grid.Row="1" Content="设为活动" HorizontalAlignment="Stretch" Click="ActivateAdminProfile_Click" />
+                                                <Button Grid.Row="1" Grid.Column="1" Content="删除配置" HorizontalAlignment="Stretch" Click="DeleteAdminProfile_Click" />
+                                            </Grid>
+                                        </StackPanel>
+                                    </Border>
+                                    <Border x:Name="RemoteScopePanel" Grid.Column="1" Padding="14" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="10">
+                                        <StackPanel Spacing="10">
+                                            <TextBlock Text="查询条件" FontSize="16" FontWeight="SemiBold" />
+                                            <Grid x:Name="RemoteScopeFields" ColumnSpacing="8" RowSpacing="8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="Auto" />
+                                                </Grid.RowDefinitions>
+                                                <ComboBox x:Name="RemoteScopeType" Header="查询范围" HorizontalAlignment="Stretch" SelectedIndex="0">
+                                                    <ComboBoxItem Content="Organization" />
+                                                    <ComboBoxItem Content="Workspace" />
+                                                    <ComboBoxItem Content="Tenant" />
+                                                </ComboBox>
+                                                <TextBox x:Name="RemoteScopeId" Grid.Column="1" Header="Scope ID" MinWidth="0" />
+                                                <PasswordBox x:Name="RemoteAdminSecret" Grid.Row="1" Grid.ColumnSpan="2" Header="本次 Admin Key（可选）" PlaceholderText="留空使用 Profile 引用" MinWidth="0" />
+                                            </Grid>
+                                            <Grid ColumnSpacing="6" HorizontalAlignment="Left">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <Button Content="查询 Tunnel" Click="ListRemoteTunnels_Click" />
+                                                <Button Grid.Column="1" Content="创建 Tunnel" Click="CreateRemoteTunnel_Click" />
+                                            </Grid>
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+                                <Grid x:Name="RemoteLayoutGrid" Grid.Row="2" ColumnSpacing="12" RowSpacing="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="36*" MaxWidth="440" />
+                                        <ColumnDefinition Width="64*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border x:Name="RemoteListPanel" Padding="12" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="10">
+                                        <Grid RowSpacing="8">
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="*" />
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Text="Tunnel 列表" FontSize="16" FontWeight="SemiBold" />
+                                            <ListView x:Name="RemoteTunnelList" Grid.Row="1" SelectionMode="Single" MinHeight="110">
+                                                <ListView.ItemContainerStyle>
+                                                    <Style TargetType="ListViewItem">
+                                                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                                    </Style>
+                                                </ListView.ItemContainerStyle>
+                                                <ListView.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <StackPanel Spacing="3" Padding="4,6">
+                                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                                            <TextBlock Text="{Binding Id}" FontSize="12" Opacity="0.65" TextTrimming="CharacterEllipsis" />
+                                                        </StackPanel>
+                                                    </DataTemplate>
+                                                </ListView.ItemTemplate>
+                                            </ListView>
+                                        </Grid>
+                                    </Border>
+                                    <Border x:Name="RemoteDetailsPanel" Grid.Column="1" Padding="14" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="10">
+                                        <Grid RowSpacing="10">
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="*" />
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Text="Tunnel 详情" FontSize="16" FontWeight="SemiBold" />
+                                            <Grid x:Name="RemoteDetailActions" Grid.Row="1" ColumnSpacing="6" RowSpacing="6" HorizontalAlignment="Left">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <Button Content="刷新详情" Click="GetRemoteTunnel_Click" />
+                                                <Button Grid.Column="1" Content="编辑" Click="UpdateRemoteTunnel_Click" />
+                                                <Button Grid.Column="2" Content="删除 Tunnel" Click="DeleteRemoteTunnel_Click" />
+                                            </Grid>
+                                            <TextBox x:Name="RemoteResultText" Grid.Row="2" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="140" MinWidth="0" FontFamily="Cascadia Mono" ScrollViewer.VerticalScrollBarVisibility="Auto" PlaceholderText="查询并选择 Tunnel 后，点击刷新详情" />
+                                        </Grid>
+                                    </Border>
+                                </Grid>
+                            </Grid>
                         </ScrollViewer>
                     </Grid>
 
