@@ -91,6 +91,7 @@ public sealed class JsonSettingsStore : ISettingsStore
         var settings = new AppSettings
         {
             SchemaVersion = 4,
+            LegacyConnectionDataMigrated = ReadBool(root, false, "legacyConnectionDataMigrated"),
             TunnelClientSource = source,
             TunnelClientPath = path,
             TunnelClientSetupCompleted = schema >= 3

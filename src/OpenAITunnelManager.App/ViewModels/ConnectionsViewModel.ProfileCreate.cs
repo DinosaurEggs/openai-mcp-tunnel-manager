@@ -37,9 +37,7 @@ public sealed partial class ConnectionsViewModel
         try
         {
             await _operations.CreateProfileTextAsync(spec.Name.Trim(), updated);
-            Settings.ProfilePreferences[$"profile:{spec.Name.Trim()}"] = preference;
-            if (!string.IsNullOrWhiteSpace(secret)) _credentials.Set(spec.Name.Trim(), secret);
-            await _settingsStore.SaveAsync(Settings);
+            await SaveCreatedProfilePreferencesAsync(spec.Name.Trim(), preference, secret);
             await RefreshAfterOperationAsync($"profile:{spec.Name.Trim()}", $"Profile 已创建：{spec.Name.Trim()}");
         }
         finally

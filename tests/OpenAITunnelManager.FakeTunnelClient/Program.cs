@@ -142,7 +142,7 @@ public static class Program
             {
                 if (pair.Value is JsonObject runtime) aliases.Add(runtime.DeepClone());
             }
-            Console.WriteLine(new JsonObject { ["aliases"] = aliases }.ToJsonString(CompactJson));
+            Console.WriteLine(new JsonObject { ["aliases"] = aliases, ["state_root"] = RuntimeDirectory }.ToJsonString(CompactJson));
             return 0;
         }
 

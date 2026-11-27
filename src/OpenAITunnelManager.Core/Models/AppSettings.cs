@@ -14,40 +14,14 @@ public sealed class AppSettings
     public string ThemeMode { get; set; } = "system";
     public string ProfileDirectoryOverride { get; set; } = string.Empty;
     public string StateDirectoryOverride { get; set; } = string.Empty;
+    public bool LegacyConnectionDataMigrated { get; set; } = true;
     public Dictionary<string, ProfilePreference> ProfilePreferences { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
-    public ProfilePreference GetPreference(TunnelConnection connection)
-    {
-        foreach (var key in PreferenceKeys(connection))
-        {
-            if (ProfilePreferences.TryGetValue(key, out var preference))
-            {
-                return preference;
-            }
-        }
+    public ProfilePreference GetPreference(TunnelConnection connection) =>
+        ConnectionScope.Keys(connection).Select(key => ProfilePreferences.GetValueOrDefault(key)).FirstOrDefault(pref => pref is not null)
+        ?? new ProfilePreference();
 
-        var created = new ProfilePreference();
-        ProfilePreferences[connection.HasProfile ? $"profile:{connection.ProfileName}" : connection.Identity] = created;
-        return created;
-    }
-
-    public string GetPreferenceKey(TunnelConnection connection) =>
-        connection.HasProfile ? $"profile:{connection.ProfileName}" : connection.Identity;
-
-    private static IEnumerable<string> PreferenceKeys(TunnelConnection connection)
-    {
-        yield return connection.Identity;
-        if (connection.HasProfile)
-        {
-            yield return $"profile:{connection.ProfileName}";
-            yield return connection.ProfileName;
-        }
-
-        if (connection.HasRuntime)
-        {
-            yield return connection.RuntimeAlias;
-        }
-    }
+    public string GetPreferenceKey(TunnelConnection connection) => ConnectionScope.Primary(connection);
 }
 
 public enum TunnelClientSource

@@ -147,6 +147,7 @@ public partial class ConnectionsViewModel : ObservableObject
                 throw new InvalidOperationException("请选择包含 profiles、runtimes 和 doctor 的完整 tunnel-client");
             ClientVersion = capabilities.Version;
 
+            var migration = await MigrateConnectionDataAsync(itemsTask.Result);
             var statuses = await ReadStatusesAsync(itemsTask.Result, CancellationToken.None);
             MergeConnections(statuses);
 
@@ -156,6 +157,7 @@ public partial class ConnectionsViewModel : ObservableObject
             StatusMessage = Connections.Count == 0
                 ? "未发现 Profile 或 Runtime"
                 : $"已从 tunnel-client 读取 {Connections.Count} 个配置/运行实例";
+            if (migration > 0) StatusMessage += $"；{migration} 项历史凭据归属不明确，请重新配置";
             NotifyOverviewState();
         }
         catch (Exception exception)
@@ -247,9 +249,7 @@ public partial class ConnectionsViewModel : ObservableObject
         try
         {
             await _operations.CreateProfileAsync(spec);
-            Settings.ProfilePreferences[$"profile:{spec.Name.Trim()}"] = preference;
-            if (!string.IsNullOrWhiteSpace(secret)) _credentials.Set(spec.Name.Trim(), secret);
-            await _settingsStore.SaveAsync(Settings);
+            await SaveCreatedProfilePreferencesAsync(spec.Name.Trim(), preference, secret);
             await RefreshAfterOperationAsync($"profile:{spec.Name.Trim()}", $"Profile 已创建：{spec.Name.Trim()}");
         }
         finally
@@ -272,7 +272,7 @@ public partial class ConnectionsViewModel : ObservableObject
             metadata.TargetKind,
             metadata.TargetValue,
             GetSelectedPreferenceCopy(),
-            HasSavedSecret(item));
+            HasOwnSavedSecret(item));
     }
 
     public async Task SaveSelectedProfileAsync(
@@ -338,14 +338,14 @@ public partial class ConnectionsViewModel : ObservableObject
             item = item with { UseForeground = preference.UseForeground };
             ReplaceConnection(item);
         }
-        Settings.ProfilePreferences[item.Identity] = preference;
+        Settings.ProfilePreferences[ConnectionScope.Primary(item)] = preference;
         if (deleteSecret)
         {
-            foreach (var id in CredentialIds(item)) _credentials.Delete(id);
+            _credentials.Delete(ConnectionScope.Primary(item));
         }
         else if (!string.IsNullOrWhiteSpace(newSecret))
         {
-            _credentials.Set(CredentialWriteId(item), newSecret);
+            _credentials.Set(ConnectionScope.Primary(item), newSecret);
         }
         await _settingsStore.SaveAsync(Settings);
         if (!preference.Enabled || !preference.AutoReconnect)
@@ -394,21 +394,14 @@ public partial class ConnectionsViewModel : ObservableObject
                 profileDeleted = true;
             }
 
-            if (profileDeleted)
-            {
-                foreach (var id in CredentialIds(original)) _credentials.Delete(id);
-            }
-            else if (original.HasRuntime)
-            {
-                _credentials.Delete(original.RuntimeAlias);
-            }
-
-            Settings.ProfilePreferences.Remove(original.Identity);
-            Settings.ProfilePreferences.Remove(original.Name);
+            var primary = ConnectionScope.Primary(original);
+            _credentials.Delete(primary);
+            Settings.ProfilePreferences.Remove(primary);
             if (profileDeleted && original.HasProfile)
             {
-                Settings.ProfilePreferences.Remove($"profile:{original.ProfileName}");
-                Settings.ProfilePreferences.Remove(original.ProfileName);
+                var profileKey = ConnectionScope.Profile(original.ProfilePath);
+                _credentials.Delete(profileKey);
+                Settings.ProfilePreferences.Remove(profileKey);
             }
             await _settingsStore.SaveAsync(Settings);
             _manualStopped.Remove(original.Identity);
@@ -464,10 +457,11 @@ public partial class ConnectionsViewModel : ObservableObject
     }
 
     public bool HasSavedSecret(TunnelConnection item) => ReadSavedSecret(item) is not null;
+    public bool HasOwnSavedSecret(TunnelConnection item) => !string.IsNullOrEmpty(_credentials.Get(ConnectionScope.Primary(item)));
 
     public string? ReadSavedSecret(TunnelConnection item)
     {
-        foreach (var id in CredentialIds(item))
+        foreach (var id in ConnectionScope.Keys(item))
         {
             var secret = _credentials.Get(id);
             if (!string.IsNullOrEmpty(secret)) return secret;
@@ -596,28 +590,30 @@ public partial class ConnectionsViewModel : ObservableObject
 
     private ProfilePreference? FindPreference(TunnelConnection item)
     {
-        foreach (var key in PreferenceKeys(item)) if (Settings.ProfilePreferences.TryGetValue(key, out var pref)) return pref;
+        foreach (var key in ConnectionScope.Keys(item))
+            if (Settings.ProfilePreferences.TryGetValue(key, out var preference)) return preference;
         return null;
     }
 
-    private static IEnumerable<string> PreferenceKeys(TunnelConnection item)
+    private async Task SaveCreatedProfilePreferencesAsync(string name, ProfilePreference preference, string? secret)
     {
-        yield return item.Identity;
-        if (item.HasProfile) { yield return $"profile:{item.ProfileName}"; yield return item.ProfileName; }
-        if (item.HasRuntime) yield return item.RuntimeAlias;
-        if (!string.IsNullOrWhiteSpace(item.RuntimeProfileName)) yield return $"profile:{item.RuntimeProfileName}";
+        var item = (await _inventory.GetConnectionsAsync()).Single(connection =>
+            connection.ProfileListed && string.Equals(connection.ProfileName, name, StringComparison.Ordinal));
+        var key = ConnectionScope.Profile(item.ProfilePath);
+        Settings.ProfilePreferences[key] = preference;
+        if (!string.IsNullOrWhiteSpace(secret)) _credentials.Set(key, secret);
+        await _settingsStore.SaveAsync(Settings);
     }
 
-    private static IEnumerable<string> CredentialIds(TunnelConnection item)
+    private async Task<int> MigrateConnectionDataAsync(IReadOnlyList<TunnelConnection> items)
     {
-        var values = new List<string>();
-        if (item.ProfileListed && !string.IsNullOrWhiteSpace(item.ProfileName)) values.Add(item.ProfileName);
-        foreach (var value in new[] { item.CredentialId, item.RuntimeAlias, item.ProfileName, item.RuntimeProfileName, item.Name })
-            if (!string.IsNullOrWhiteSpace(value) && !values.Contains(value, StringComparer.OrdinalIgnoreCase)) values.Add(value);
-        return values;
+        if (Settings.LegacyConnectionDataMigrated) return 0;
+        var ambiguous = ConnectionScope.MigrateLegacy(items, Settings, _credentials);
+        Settings.LegacyConnectionDataMigrated = true;
+        try { await _settingsStore.SaveAsync(Settings); }
+        catch { Settings.LegacyConnectionDataMigrated = false; throw; }
+        return ambiguous;
     }
-
-    private static string CredentialWriteId(TunnelConnection item) => CredentialIds(item).First();
 
     private void MergeConnections(IReadOnlyList<TunnelConnection> updated)
     {

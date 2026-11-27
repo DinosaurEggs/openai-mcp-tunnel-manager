@@ -16,6 +16,7 @@ public sealed class TunnelClientService(TunnelClientProcessRunner runner) : ITun
     {
         using var profilesJson = await RunJsonAsync(["profiles", "list", "--json"], cancellationToken).ConfigureAwait(false);
         using var runtimesJson = await RunJsonAsync(["runtimes", "list", "--json"], cancellationToken).ConfigureAwait(false);
+        var stateRoot = GetString(runtimesJson.RootElement, "state_root");
         var profiles = ParseProfiles(profilesJson.RootElement);
         var profilesByName = profiles.ToDictionary(static p => p.Name, StringComparer.OrdinalIgnoreCase);
         var linkedProfiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -56,7 +57,7 @@ public sealed class TunnelClientService(TunnelClientProcessRunner runner) : ITun
                 McpHealthUrl: string.Empty,
                 LogPath: string.Empty,
                 ProcessId: null,
-                Error: string.Empty));
+                Error: string.Empty) { StateRoot = stateRoot });
         }
 
         foreach (var profile in profiles)
@@ -83,7 +84,7 @@ public sealed class TunnelClientService(TunnelClientProcessRunner runner) : ITun
                 McpHealthUrl: string.Empty,
                 LogPath: string.Empty,
                 ProcessId: null,
-                Error: string.Empty));
+                Error: string.Empty) { StateRoot = stateRoot });
         }
 
         return result.OrderBy(static x => x.Name, StringComparer.OrdinalIgnoreCase)
