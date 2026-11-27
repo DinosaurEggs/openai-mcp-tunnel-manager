@@ -6,7 +6,7 @@ namespace OpenAITunnelManager.Infrastructure.TunnelClient;
 // existing command adapter cannot reproduce before invoking the destructive CLI.
 internal static class NativeRuntimeProfileGuard
 {
-    public static void Validate(string text, string stateRoot, string alias)
+    public static IReadOnlyList<string> Validate(string text, string stateRoot, string alias)
     {
         var yaml = new YamlStream();
         using var reader = new StringReader(text);
@@ -17,10 +17,23 @@ internal static class NativeRuntimeProfileGuard
         RequireKeys(root, "config_version", "control_plane", "mcp", "health", "log", "admin_ui");
         if (Scalar(root, "config_version") != "1") throw Unsupported();
         var control = Mapping(root, "control_plane");
-        RequireKeys(control, "tunnel_id", "api_key", "base_url");
-        var baseUrl = Scalar(control, "base_url");
-        if (!string.IsNullOrEmpty(baseUrl) && baseUrl != "https://api.openai.com")
-            throw Unsupported();
+        RequireKeys(control, "tunnel_id", "api_key", "base_url", "url_path", "residency");
+        if (string.IsNullOrWhiteSpace(Scalar(control, "tunnel_id"))) throw Unsupported();
+        var keyRef = Scalar(control, "api_key");
+        if (!string.IsNullOrEmpty(keyRef) &&
+            !keyRef.StartsWith("env:", StringComparison.Ordinal) &&
+            !keyRef.StartsWith("file:", StringComparison.Ordinal)) throw Unsupported();
+        var flags = new List<string>();
+        foreach (var (key, flag) in new[]
+        {
+            ("base_url", "--control-plane-base-url"),
+            ("url_path", "--control-plane-url-path"),
+            ("residency", "--control-plane-residency")
+        })
+        {
+            var value = Scalar(control, key);
+            if (!string.IsNullOrWhiteSpace(value)) flags.AddRange([flag, value]);
+        }
 
         var mcp = Mapping(root, "mcp");
         RequireKeys(mcp, "server_urls", "commands");
@@ -59,6 +72,7 @@ internal static class NativeRuntimeProfileGuard
             RequireKeys(admin, "open_browser");
             if (Scalar(admin, "open_browser") != "false") throw Unsupported();
         }
+        return flags;
     }
 
     private static void RequireKeys(YamlMappingNode map, params string[] allowed)
