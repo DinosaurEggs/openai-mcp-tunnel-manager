@@ -201,7 +201,8 @@ public sealed class TunnelClientService(TunnelClientProcessRunner runner) : ITun
 
     private static IReadOnlyList<RuntimeEntry> ParseRuntimes(JsonElement root)
     {
-        if (root.ValueKind != JsonValueKind.Object || !TryGetProperty(root, "aliases", out var aliases) || aliases.ValueKind != JsonValueKind.Array) return [];
+        if (root.ValueKind != JsonValueKind.Object || !TryGetProperty(root, "aliases", out var aliases) || aliases.ValueKind != JsonValueKind.Array)
+            throw new InvalidOperationException("runtimes list JSON 缺少 aliases 数组");
         return aliases.EnumerateArray().Where(static item => item.ValueKind == JsonValueKind.Object)
             .Select(item => new RuntimeEntry(
                 GetString(item, "alias"),
