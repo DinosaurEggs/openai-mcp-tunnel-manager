@@ -134,29 +134,6 @@ public sealed class ManagedTunnelClientServiceTests
         Assert.False(Directory.Exists(paths.GetManagedTunnelClientVersionDirectory("v1.2.0")));
     }
 
-    [Theory]
-    [InlineData("v0.0.14", false)]
-    [InlineData("v0.0.20", false)]
-    [InlineData("v0.0.21", true)]
-    [InlineData("v0.0.21 (git sha: abc123)", true)]
-    [InlineData("v0.0.21-rc.1", false)]
-    [InlineData("v0.0.22", true)]
-    [InlineData("v0.1.0", true)]
-    [InlineData("unknown", false)]
-    public void SupportedReleaseVersionPolicy(string reported, bool supported)
-    {
-        Assert.Equal(supported, TunnelClientVersionPolicy.IsSupported(reported));
-    }
-
-    [Fact]
-    public async Task OlderRequestedReleaseIsRejectedBeforeNetworkAccess()
-    {
-        using var temp = new TempDirectory();
-        using var client = new HttpClient(new StubHandler(_ => throw new InvalidOperationException("Unexpected request")));
-        using var service = new ManagedTunnelClientService(client, new AppDataPaths(temp.Path));
-        await Assert.ThrowsAsync<InvalidDataException>(() => service.GetReleaseAsync("v0.0.20", TestContext.Current.CancellationToken));
-    }
-
     private static HttpResponseMessage Json(string text) => new(HttpStatusCode.OK)
     {
         Content = new StringContent(text, Encoding.UTF8, "application/json")

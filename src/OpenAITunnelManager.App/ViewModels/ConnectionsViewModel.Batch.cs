@@ -47,9 +47,9 @@ public partial class ConnectionsViewModel
         EnsureClientAvailable();
         if (profile.HasRuntime || !profile.HasProfile || profile.ProcessRunning)
             throw new InvalidOperationException("请选择已停止且未绑定 Runtime 的 Profile");
-        alias = alias.Trim();
-        if (!System.Text.RegularExpressions.Regex.IsMatch(alias, "^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$"))
-            throw new ArgumentException("Runtime alias 只能包含小写字母、数字和内部连字符");
+        // Match the official alias normalization so collision checks use the actual identity.
+        alias = System.Text.RegularExpressions.Regex.Replace(alias.Trim().ToLowerInvariant(), "[^a-z0-9]+", "-").Trim('-');
+        ArgumentException.ThrowIfNullOrWhiteSpace(alias);
         IsBusy = true;
         try
         {

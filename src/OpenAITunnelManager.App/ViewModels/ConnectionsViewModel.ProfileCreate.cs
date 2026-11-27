@@ -28,34 +28,21 @@ public sealed partial class ConnectionsViewModel
     }
 
     public async Task CreateProfileFromTextAsync(
-        ProfileSpec spec,
+        string name,
         string rawText,
         string? secret,
         ProfilePreference preference)
     {
         EnsureClientAvailable();
-        var errors = spec.Validate();
-        if (errors.Count > 0) throw new ArgumentException(string.Join("；", errors));
-        if (string.IsNullOrWhiteSpace(rawText)) throw new ArgumentException("Profile 内容不能为空", nameof(rawText));
-
-        var metadata = ProfileDocumentEditor.ReadMetadata(rawText);
-        var expectedTargetKind = spec.McpType == McpType.Stdio ? "command" : "server_url";
-        if (!string.Equals(metadata.TargetKind, expectedTargetKind, StringComparison.Ordinal))
-        {
-            throw new InvalidOperationException(
-                $"高级配置中的 main MCP 类型为 {metadata.TargetKind}，与基本页选择的 {expectedTargetKind} 不一致。请保持一致后再保存。");
-        }
-
-        if (metadata.TunnelId != spec.TunnelId || metadata.TargetValue != spec.McpTarget)
-            throw new InvalidOperationException("Profile 内容与创建参数不一致");
+        name = name.Trim();
 
         IsBusy = true;
-        StatusMessage = $"正在创建 Profile：{spec.Name}";
+        StatusMessage = $"正在创建 Profile：{name}";
         try
         {
-            await _operations.CreateProfileTextAsync(spec.Name.Trim(), rawText);
-            await SaveCreatedProfilePreferencesAsync(spec.Name.Trim(), preference, secret);
-            await RefreshAfterOperationAsync($"profile:{spec.Name.Trim()}", $"Profile 已创建：{spec.Name.Trim()}");
+            await _operations.CreateProfileTextAsync(name, rawText);
+            await SaveCreatedProfilePreferencesAsync(name, preference, secret);
+            await RefreshAfterOperationAsync($"profile:{name}", $"Profile 已创建：{name}");
         }
         finally
         {

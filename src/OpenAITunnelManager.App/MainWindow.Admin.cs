@@ -122,9 +122,8 @@ public sealed partial class MainWindow
     {
         var tunnel = SelectedRemoteTunnel;
         var profile = SelectedAdminProfile;
-        var confirm = new TextBox { Header = $"请输入完整 Tunnel ID：{tunnel.Id}" };
+        var confirm = new TextBlock { Text = $"永久删除远端 Tunnel {tunnel.Name} ({tunnel.Id})？", TextWrapping = TextWrapping.Wrap };
         if (await NewDialog("永久删除远端 Tunnel", confirm, "删除").ShowAsync() != ContentDialogResult.Primary) return;
-        if (confirm.Text.Trim() != tunnel.Id) throw new InvalidOperationException("Tunnel ID 不匹配，未执行删除");
         await ViewModel.ExecuteAdminAsync(service => service.DeleteTunnelAsync(profile, tunnel.Id, AdminSecret));
         RemoteTunnelList.ItemsSource = null;
         RemoteResultText.Text = string.Empty;
@@ -138,8 +137,6 @@ public sealed partial class MainWindow
             var preview = await ViewModel.ExecuteAdminAsync(service => service.CleanupAsync(false));
             var box = new TextBox { Text = preview, IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap };
             if (await NewDialog("官方 Runtime 清理预览", box, "清理过期记录").ShowAsync() != ContentDialogResult.Primary) return;
-            if (ViewModel.Connections.Any(item => item.ProcessRunning && item.RunsInForeground))
-                throw new InvalidOperationException("请先停止 Manager 持有的前台连接");
             var result = await ViewModel.ExecuteAdminAsync(service => service.CleanupAsync(true));
             await ViewModel.RefreshAsync();
             await NewDialog("清理结果", new TextBlock { Text = result, TextWrapping = TextWrapping.Wrap }, "确定").ShowAsync();

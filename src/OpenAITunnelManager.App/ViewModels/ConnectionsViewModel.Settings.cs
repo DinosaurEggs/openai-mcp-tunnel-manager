@@ -1,6 +1,5 @@
 using OpenAITunnelManager.Core.Models;
 using OpenAITunnelManager.Infrastructure.TunnelClient;
-using OpenAITunnelManager.Infrastructure.Settings;
 
 namespace OpenAITunnelManager.App.ViewModels;
 
@@ -123,7 +122,6 @@ public partial class ConnectionsViewModel
         try
         {
             var validation = await _managedTunnelClient.ValidateCustomExecutableAsync(path, linked.Token);
-            await ValidateProfilesForClientAsync(validation.ExecutablePath, linked.Token);
             await CommitClientSelectionAsync(TunnelClientSource.Custom, validation.ExecutablePath,
                 Settings.ManagedTunnelClientVersion, linked.Token);
             LastTunnelClientOperationFailed = false;
@@ -171,7 +169,6 @@ public partial class ConnectionsViewModel
                 linkedCts.Token,
                 progress);
 
-            await ValidateProfilesForClientAsync(result.ExecutablePath, linkedCts.Token);
             await CommitClientSelectionAsync(TunnelClientSource.Managed, Settings.TunnelClientPath,
                 result.Version, linkedCts.Token);
 
@@ -224,7 +221,6 @@ public partial class ConnectionsViewModel
         {
             var path = _managedTunnelClient.GetExecutablePath(version);
             await _managedTunnelClient.ValidateInstalledVersionAsync(version, _lifetimeCancellation.Token);
-            await ValidateProfilesForClientAsync(path, _lifetimeCancellation.Token);
             await CommitClientSelectionAsync(TunnelClientSource.Managed, Settings.TunnelClientPath,
                 version, _lifetimeCancellation.Token);
             LastTunnelClientOperationFailed = false;
@@ -232,36 +228,6 @@ public partial class ConnectionsViewModel
             await RefreshAsync();
         }
         finally { IsTunnelClientUpdating = false; }
-    }
-
-    private async Task ValidateProfilesForClientAsync(string executablePath, CancellationToken token)
-    {
-        var candidate = new TunnelClientOptions
-        {
-            Source = TunnelClientSource.Custom, ExecutablePath = executablePath,
-            ProfileDirectoryOverride = Settings.ProfileDirectoryOverride,
-            StateDirectoryOverride = Settings.StateDirectoryOverride
-        };
-        var inventory = await new TunnelClientService(new TunnelClientProcessRunner(candidate)).GetConnectionsAsync(token);
-        var files = inventory.Where(item => item.HasProfile).Select(item => item.ProfilePath)
-            .Distinct(StringComparer.OrdinalIgnoreCase).Where(File.Exists).ToArray();
-        if (files.Length == 0) return;
-        var directory = Path.Combine(AppDataPaths.Current.TempDirectory, "validate-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(directory);
-        try
-        {
-            var runner = new TunnelClientProcessRunner(new TunnelClientOptions
-            {
-                Source = TunnelClientSource.Custom, ExecutablePath = executablePath,
-                ProfileDirectoryOverride = directory, StateDirectoryOverride = directory
-            });
-            for (var index = 0; index < files.Length; index++)
-            {
-                var result = await runner.RunAsync(["profiles", "add", "check-" + index, "--from-file", files[index]], true, token);
-                if (result.ExitCode != 0) throw new InvalidOperationException($"所选版本无法验证 Profile {Path.GetFileName(files[index])}：{result.StandardError}");
-            }
-        }
-        finally { Directory.Delete(directory, true); }
     }
 
     public int CleanupDownloadedTunnelClientVersions()

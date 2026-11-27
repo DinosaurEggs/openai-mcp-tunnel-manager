@@ -48,22 +48,18 @@ public sealed class TunnelAdminService(TunnelClientOptions options)
     public async Task<RemoteTunnelInfo> CreateTunnelAsync(AdminProfileInfo profile, string name, string description, string scope, string scopeId, string? secret, CancellationToken token = default)
     {
         if (scope == "Tenant") throw new InvalidOperationException("创建 Tunnel 必须使用 Organization 或 Workspace");
-        ArgumentException.ThrowIfNullOrWhiteSpace(name);
-        ArgumentException.ThrowIfNullOrWhiteSpace(description);
         using var result = await ExecuteAdminAsync(profile, ["create", "--name", name, "--description", description, ScopeFlag(scope), scopeId], secret, token);
         return ParseTunnel(result.RootElement);
     }
 
     public async Task<RemoteTunnelInfo> UpdateTunnelAsync(AdminProfileInfo profile, string id, string name, string description, string? secret, CancellationToken token = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(name);
         using var result = await ExecuteAdminAsync(profile, ["update", id, "--name", name, "--description", description], secret, token);
         return ParseTunnel(result.RootElement);
     }
 
     public async Task DeleteTunnelAsync(AdminProfileInfo profile, string id, string? secret, CancellationToken token = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(id);
         using var result = await ExecuteAdminAsync(profile, ["delete", id, "--confirm"], secret, token);
     }
 

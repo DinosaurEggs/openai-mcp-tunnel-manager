@@ -19,7 +19,7 @@ Windows 上的 `tunnel-client` 可视化管理器，使用 C# / WinUI 3 开发�
 
 ## 支持的 tunnel-client 版本
 
-本版本以官方 Full Client v0.0.21 为最低支持版本。低于 v0.0.21 的版本不再支持，下载、切换与自定义客户端校验均执行版本检查。以后发布的正式版本可通过更新入口安装；本轮实际验收基线为 v0.0.21。
+本版本以官方 Full Client v0.0.21 为开发与测试基线。客户端选择不设最低版本号，检查所需 CLI 命令是否可用。旧版本不在本轮兼容性测试范围内。
 
 ## 数据来源与刷新模型
 
@@ -74,7 +74,7 @@ OpenAITunnelManager.exe
 
 托管模式只在用户点击“下载”或“更新”时访问 GitHub，不在应用启动时自动检查新版本。Manager 会按当前架构精确选择官方 `windows-amd64` / `windows-arm64` Release 资产，校验 Release digest 与 `SHA256SUMS.txt`，并在新版本通过 `--version` 验证后才切换。更新失败时继续使用当前已安装版本。
 
-托管版本按版本号安装到 `tunnel-client\\versions\\<version>`。开发分支支持手动选择已安装版本、安装指定正式版本与重新下载当前版本；保留已安装的受支持版本供切换，并由设置页显式清理其他版本。
+托管版本按版本号安装到 `tunnel-client\\versions\\<version>`。开发分支支持手动选择已安装版本、安装指定正式版本与重新下载当前版本；保留已安装版本供切换，并由设置页显式清理其他版本。
 
 `config/settings.json` 只保存 Manager 本机偏好：
 

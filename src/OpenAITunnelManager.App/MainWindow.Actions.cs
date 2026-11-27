@@ -49,16 +49,13 @@ public sealed partial class MainWindow
         await ShowProfileEditorDialogAsync("新建 Profile", editor, "创建", async () =>
         {
             var raw = editor.PrepareDocument();
-            var metadata = ProfileDocumentEditor.ReadMetadata(raw);
-            var spec = new ProfileSpec(editor.ProfileName, metadata.TunnelId,
-                metadata.TargetKind == "command" ? McpType.Stdio : McpType.Http, metadata.TargetValue);
             var preference = new ProfilePreference
             {
                 Enabled = editor.Enabled,
                 AutoConnect = editor.AutoConnect,
                 AutoReconnect = editor.AutoReconnect
             };
-            await ViewModel.CreateProfileFromTextAsync(spec, raw, editor.Secret, preference);
+            await ViewModel.CreateProfileFromTextAsync(editor.ProfileName, raw, editor.Secret, preference);
         });
     }
 

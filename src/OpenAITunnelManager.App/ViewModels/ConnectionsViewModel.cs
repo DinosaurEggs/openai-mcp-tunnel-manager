@@ -297,7 +297,6 @@ public partial class ConnectionsViewModel : ObservableObject
         }
 
         EnsureClientAvailable();
-        _ = ProfileDocumentEditor.ReadMetadata(rawText);
         IsBusy = true;
         try
         {
@@ -699,7 +698,7 @@ public partial class ConnectionsViewModel : ObservableObject
         if (IsBusy || IsTunnelClientUpdating || _lifetimeCancellation.IsCancellationRequested)
             throw new InvalidOperationException("当前正在执行其他操作或应用正在退出");
         if (!IsClientAvailable)
-            throw new InvalidOperationException("请先在设置中配置受支持的完整 tunnel-client，然后刷新");
+            throw new InvalidOperationException("请先在设置中配置可用的完整 tunnel-client，然后刷新");
         _ = _operations.ResolveExecutablePath();
     }
 
