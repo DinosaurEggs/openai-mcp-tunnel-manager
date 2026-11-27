@@ -362,6 +362,8 @@ public partial class ConnectionsViewModel : ObservableObject
                 !string.Equals(item.Identity, target.Identity, StringComparison.OrdinalIgnoreCase) &&
                 item.HasProfile &&
                 PathsEqual(item.ProfilePath, target.ProfilePath));
+            if (sharedProfile) throw new InvalidOperationException("该 Profile 被其他连接共享，无法安全删除");
+            CancelReconnect(original.Identity, resetAttempts: true);
             var profileDeleted = false;
 
             if (target.HasRuntime)
@@ -369,9 +371,10 @@ public partial class ConnectionsViewModel : ObservableObject
                 var status = await _operations.GetStatusAsync(target);
                 if (status.ProcessRunning) await _operations.StopAsync(status);
                 await _operations.RemoveRuntimeAsync(target.RuntimeAlias);
+                profileDeleted = target.HasProfile && !File.Exists(target.ProfilePath);
             }
 
-            if (target.ProfileListed && target.HasProfile && !sharedProfile)
+            if (target.ProfileListed && target.HasProfile && !profileDeleted)
             {
                 await _operations.DeleteProfileAsync(target.ProfileName, target.ProfilePath);
                 profileDeleted = true;
