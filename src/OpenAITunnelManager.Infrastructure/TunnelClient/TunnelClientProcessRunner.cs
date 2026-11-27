@@ -32,13 +32,9 @@ public sealed class TunnelClientProcessRunner(TunnelClientOptions options)
         }
 
         options.ApplyChildEnvironment(info);
-        if (!string.IsNullOrWhiteSpace(secret) &&
-            !string.IsNullOrWhiteSpace(secretRef) &&
-            secretRef.StartsWith("env:", StringComparison.OrdinalIgnoreCase) &&
-            secretRef.Length > 4)
-        {
-            info.Environment[secretRef[4..]] = secret;
-        }
+        var environmentName = SecretEnvironmentName(secretRef);
+        if (!string.IsNullOrEmpty(secret) && environmentName is not null)
+            info.Environment[environmentName] = secret;
 
         return info;
     }
@@ -51,6 +47,7 @@ public sealed class TunnelClientProcessRunner(TunnelClientOptions options)
         string? secretRef = null,
         string? secret = null)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var args = arguments.ToArray();
         var info = CreateStartInfo(args, secretRef, secret);
         using var process = new Process { StartInfo = info };
@@ -66,6 +63,8 @@ public sealed class TunnelClientProcessRunner(TunnelClientOptions options)
         {
             throw new InvalidOperationException($"无法启动 tunnel-client：{info.FileName}", exception);
         }
+
+        process.StandardInput.Close();
 
         // Do not bind the stream readers to the caller token. If cancellation or timeout
         // happens we first terminate the process tree, then let both readers drain to EOF.
@@ -93,8 +92,8 @@ public sealed class TunnelClientProcessRunner(TunnelClientOptions options)
 
         var result = new TunnelClientProcessResult(
             process.ExitCode,
-            await stdoutTask.ConfigureAwait(false),
-            await stderrTask.ConfigureAwait(false));
+            Redact(await stdoutTask.ConfigureAwait(false), secret),
+            Redact(await stderrTask.ConfigureAwait(false), secret));
 
         if (!allowFailure && result.ExitCode != 0)
         {
@@ -136,6 +135,23 @@ public sealed class TunnelClientProcessRunner(TunnelClientOptions options)
             // Cleanup is bounded even when the OS refuses to terminate the process.
         }
     }
+
+    public static string? SecretEnvironmentName(string? reference)
+    {
+        if (string.IsNullOrWhiteSpace(reference)) return null;
+        var name = reference.StartsWith("env:", StringComparison.OrdinalIgnoreCase) ? reference[4..]
+            : reference.StartsWith("${", StringComparison.Ordinal) && reference.EndsWith('}') ? reference[2..^1]
+            : reference.StartsWith('(params string?[] values) =>
+        values.FirstOrDefault(static value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
+}
+
+public sealed record TunnelClientProcessResult(int ExitCode, string StandardOutput, string StandardError);
+) ? reference[1..] : string.Empty;
+        return System.Text.RegularExpressions.Regex.IsMatch(name, "^[A-Za-z_][A-Za-z0-9_]*$") ? name : null;
+    }
+
+    private static string Redact(string text, string? secret) =>
+        string.IsNullOrEmpty(secret) ? text : text.Replace(secret, "[REDACTED]", StringComparison.Ordinal);
 
     private static string FirstNonEmpty(params string?[] values) =>
         values.FirstOrDefault(static value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;

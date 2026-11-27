@@ -14,6 +14,14 @@ namespace OpenAITunnelManager.App;
 
 public sealed partial class MainWindow
 {
+    private async void OpenAdminUi_Click(object sender, RoutedEventArgs e)
+    {
+        var item = ViewModel.SelectedConnection;
+        if (item?.CanOpenAdminUi != true) return;
+        try { Process.Start(new ProcessStartInfo(item.AdminUiUrl) { UseShellExecute = true }); }
+        catch (Exception exception) { await ShowErrorAsync(exception.Message); }
+    }
+
     private async void AddProfile_Click(object sender, RoutedEventArgs e)
     {
         if (!ViewModel.IsClientAvailable)

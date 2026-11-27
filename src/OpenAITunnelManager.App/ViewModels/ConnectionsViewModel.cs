@@ -111,14 +111,16 @@ public partial class ConnectionsViewModel : ObservableObject
     public bool CanOpenLogSelected => !string.IsNullOrWhiteSpace(CurrentLogPath);
     public int TotalCount => Connections.Count;
     public int ActiveCount => Connections.Count(static item => item.ProcessRunning);
-    public int HealthyCount => Connections.Count(static item => item.ProcessRunning && item.Healthy && item.Ready);
-    public int ProblemCount => Connections.Count(static item => item.State is RuntimeState.Error or RuntimeState.Stale || (item.ProcessRunning && (!item.Healthy || !item.Ready)));
+    public int HealthyCount => Connections.Count(static item => item.ProcessRunning && item.Healthy && item.Ready && !IsControlPlaneDegraded(item));
+    public int ProblemCount => Connections.Count(static item => item.State is RuntimeState.Error or RuntimeState.Stale || (item.ProcessRunning && (!item.Healthy || !item.Ready || IsControlPlaneDegraded(item))));
+    private static bool IsControlPlaneDegraded(TunnelConnection item) => item.ControlPlaneState is not ("" or "unknown" or "healthy" or "direct");
 
     partial void OnSelectedConnectionChanged(TunnelConnection? value)
     {
         if (value is not null && _lastLogPaths.TryGetValue(value.Identity, out var path)) CurrentLogPath = path;
         else CurrentLogPath = value?.LogPath ?? string.Empty;
         HealthText = string.Empty;
+        DiagnosticText = string.Empty;
         NotifyActionState();
     }
 
@@ -189,12 +191,12 @@ public partial class ConnectionsViewModel : ObservableObject
         if (item is null || !IsClientAvailable || IsBusy) return;
         try
         {
-            var status = await _operations.GetStatusAsync(item);
+            var status = await _operations.GetStatusAsync(item, secret: ReadSavedSecret(item));
             ReplaceConnection(status);
             if (!string.IsNullOrWhiteSpace(status.LogPath))
             {
                 _lastLogPaths[status.Identity] = status.LogPath;
-                CurrentLogPath = status.LogPath;
+                if (string.Equals(SelectedConnection?.Identity, status.Identity, StringComparison.OrdinalIgnoreCase)) CurrentLogPath = status.LogPath;
             }
             EvaluateRuntimeReconnect(status);
             NotifyOverviewState();
@@ -423,12 +425,13 @@ public partial class ConnectionsViewModel : ObservableObject
         DiagnosticText = "正在运行 tunnel-client doctor --explain ...";
         try
         {
-            DiagnosticText = await _operations.DoctorAsync(item, ReadSavedSecret(item));
+            var result = await _operations.DoctorAsync(item, ReadSavedSecret(item));
+            if (string.Equals(SelectedConnection?.Identity, item.Identity, StringComparison.OrdinalIgnoreCase)) DiagnosticText = result;
             StatusMessage = $"{item.Name} 诊断完成";
         }
         catch (Exception exception)
         {
-            DiagnosticText = $"诊断失败：{Environment.NewLine}{exception.Message}";
+            if (string.Equals(SelectedConnection?.Identity, item.Identity, StringComparison.OrdinalIgnoreCase)) DiagnosticText = $"诊断失败：{Environment.NewLine}{exception.Message}";
             StatusMessage = exception.Message;
         }
         finally
@@ -445,7 +448,7 @@ public partial class ConnectionsViewModel : ObservableObject
         if (item is null) { HealthText = string.Empty; return; }
         try
         {
-            var result = await _operations.GetDetailedHealthAsync(item);
+            var result = await _operations.GetDetailedHealthAsync(item, secret: ReadSavedSecret(item));
             if (string.Equals(SelectedConnection?.Identity, item.Identity, StringComparison.OrdinalIgnoreCase))
                 HealthText = result;
         }

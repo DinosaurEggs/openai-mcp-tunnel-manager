@@ -57,7 +57,7 @@ public sealed class TunnelClientService(TunnelClientProcessRunner runner) : ITun
                 McpHealthUrl: string.Empty,
                 LogPath: string.Empty,
                 ProcessId: null,
-                Error: string.Empty) { StateRoot = stateRoot });
+                Error: string.Empty) { StateRoot = stateRoot, Residency = metadata.Residency, Authentication = metadata.Authentication });
         }
 
         foreach (var profile in profiles)
@@ -84,7 +84,7 @@ public sealed class TunnelClientService(TunnelClientProcessRunner runner) : ITun
                 McpHealthUrl: string.Empty,
                 LogPath: string.Empty,
                 ProcessId: null,
-                Error: string.Empty) { StateRoot = stateRoot });
+                Error: string.Empty) { StateRoot = stateRoot, Residency = metadata.Residency, Authentication = metadata.Authentication });
         }
 
         return result.OrderBy(static x => x.Name, StringComparer.OrdinalIgnoreCase)
@@ -93,20 +93,37 @@ public sealed class TunnelClientService(TunnelClientProcessRunner runner) : ITun
             .ToArray();
     }
 
-    public async Task<TunnelConnection> GetStatusAsync(TunnelConnection connection, CancellationToken cancellationToken = default)
+    public async Task<TunnelConnection> GetStatusAsync(TunnelConnection connection, CancellationToken cancellationToken = default, string? secret = null)
     {
         if (!connection.HasRuntime) return connection;
-        var status = await ReadStatusAsync(connection.RuntimeAlias, cancellationToken).ConfigureAwait(false);
+        var auth = ProfileMetadataReader.Read(FirstNonEmpty(connection.RuntimeProfilePath, connection.ProfilePath));
+        var status = await ReadStatusAsync(connection.RuntimeAlias, auth.ApiKeyRef, secret, cancellationToken).ConfigureAwait(false);
         var profilePath = FirstNonEmpty(connection.ProfilePath, connection.RuntimeProfilePath, status.ProfilePath);
         var metadata = ProfileMetadataReader.Read(profilePath);
         var target = ResolveTarget(status.Raw, metadata);
+        var poll = Child(status.Raw, "control_plane_poll_health");
+        var remote = Child(status.Raw, "remote");
+        var process = Child(status.Raw, "process");
+        var repair = Child(status.Raw, "repair_actions");
         return connection with
         {
             ProfilePath = FirstNonEmpty(connection.ProfilePath, status.ProfilePath),
             RuntimeProfilePath = FirstNonEmpty(status.ProfilePath, connection.RuntimeProfilePath),
             TunnelId = FirstNonEmpty(status.TunnelId, connection.TunnelId, metadata.TunnelId),
-            TargetKind = target.Kind,
-            TargetValue = target.Value,
+            TargetKind = FirstNonEmpty(metadata.TargetKind, target.Kind),
+            TargetValue = FirstNonEmpty(metadata.TargetValue, target.Value),
+            RunningTargetKind = status.ProcessRunning ? target.Kind : string.Empty,
+            RunningTargetValue = status.ProcessRunning ? target.Value : string.Empty,
+            ControlPlaneState = GetString(poll, "state"),
+            ControlPlaneReason = GetString(poll, "reason"),
+            AdminUiUrl = FirstNonEmpty(GetString(status.Raw, "ui_url"), GetString(Child(Child(status.Raw, "local"), "effective_health"), "ui")),
+            RemoteResidency = GetString(remote, "residency"),
+            RemoteLookupStatus = GetBoolean(status.Raw, "remote_lookup_attempted") ? FirstNonEmpty(GetString(status.Raw, "remote_error"), "已查询") : GetString(status.Raw, "remote_skipped_reason"),
+            RepairActions = repair.ValueKind == JsonValueKind.Array ? repair.EnumerateArray().Where(action => action.ValueKind == JsonValueKind.Object).Select(action => new RuntimeRepairAction(GetString(action, "id"), GetString(action, "reason"), GetString(action, "command"))).ToArray() : [],
+            StartedAt = GetString(process, "started_at"),
+            Residency = metadata.Residency,
+            Authentication = metadata.Authentication,
+            RefreshedAt = DateTimeOffset.UtcNow,
             State = status.State,
             ProcessRunning = status.ProcessRunning,
             Healthy = status.Healthy,
@@ -126,13 +143,13 @@ public sealed class TunnelClientService(TunnelClientProcessRunner runner) : ITun
         await RunAsync(["runtimes", "stop", alias, "--json"], false, cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task<RuntimeSnapshot> ReadStatusAsync(string alias, CancellationToken cancellationToken)
+    private async Task<RuntimeSnapshot> ReadStatusAsync(string alias, string? secretRef, string? secret, CancellationToken cancellationToken)
     {
-        var command = await RunAsync(["runtimes", "status", alias, "--json"], true, cancellationToken).ConfigureAwait(false);
+        var command = await runner.RunAsync(["runtimes", "status", alias, "--json"], true, cancellationToken, secretRef: secretRef, secret: secret).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(command.StandardOutput))
         {
             var error = FirstNonEmpty(command.StandardError.Trim(), $"Runtime {alias} 状态为空");
-            return command.ExitCode == 0 || LooksLikeMissingAlias(error)
+            return LooksLikeMissingAlias(error)
                 ? RuntimeSnapshot.Stopped(alias, error)
                 : RuntimeSnapshot.Failed(alias, error);
         }
@@ -153,7 +170,7 @@ public sealed class TunnelClientService(TunnelClientProcessRunner runner) : ITun
                 : processRunning ? RuntimeState.Starting
                 : runtimeState is "error" or "failed" ? RuntimeState.Error
                 : runtimeState is "stopped" or "disconnected" or "not_running" or "missing_profile" ? RuntimeState.Stopped
-                : command.ExitCode == 0 ? RuntimeState.Stopped : RuntimeState.Error;
+                : RuntimeState.Unknown;
             var errorMessage = FirstNonEmpty(GetString(root, "error", "remote_error"), command.ExitCode == 0 ? string.Empty : command.StandardError.Trim());
             if (!stale && command.ExitCode != 0 && LooksLikeMissingAlias(errorMessage)) state = RuntimeState.Stopped;
             return new RuntimeSnapshot(
@@ -163,12 +180,12 @@ public sealed class TunnelClientService(TunnelClientProcessRunner runner) : ITun
                 healthy,
                 ready,
                 GetString(root, "tunnel_id"),
-                FindString(root, "profile_path", "profile_file", "config_path"),
-                FindString(root, "health_url", "health_base_url"),
-                FindString(root, "health_details_url"),
-                FindString(root, "mcp_health_url"),
-                FindString(root, "log_path", "log_file", "log_file_path", "runtime_log", "logs_path", "logs"),
-                FindInt32(root, "pid", "process_id"),
+                FirstNonEmpty(GetString(root, "profile_path", "profile_file"), GetString(Child(root, "process"), "profile_path"), GetString(root, "config_path")),
+                FirstNonEmpty(GetString(root, "health_url", "health_base_url"), GetString(Child(Child(root, "local"), "effective_health"), "url")),
+                FirstNonEmpty(GetString(root, "health_details_url"), GetString(Child(Child(root, "local"), "effective_health"), "health_details_url")),
+                FirstNonEmpty(GetString(root, "mcp_health_url"), GetString(Child(Child(root, "local"), "effective_health"), "mcp_health_url")),
+                FirstNonEmpty(GetString(Child(root, "process"), "log_path"), GetString(root, "log_path", "log_file"), GetString(Child(Child(root, "local"), "log"), "path")),
+                FindInt32(Child(root, "process"), "pid", "process_id") ?? FindInt32(root, "pid", "process_id"),
                 errorMessage,
                 root.Clone());
         }
@@ -223,6 +240,8 @@ public sealed class TunnelClientService(TunnelClientProcessRunner runner) : ITun
         }
         return (metadata.TargetKind, metadata.TargetValue);
     }
+
+    private static JsonElement Child(JsonElement element, string name) => TryGetProperty(element, name, out var value) ? value : default;
 
     private static string GetString(JsonElement element, params string[] names)
     {
@@ -344,6 +363,6 @@ public sealed class TunnelClientService(TunnelClientProcessRunner runner) : ITun
         JsonElement Raw)
     {
         public static RuntimeSnapshot Stopped(string alias, string error = "") => new(alias, RuntimeState.Stopped, false, false, false, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, null, error, default);
-        public static RuntimeSnapshot Failed(string alias, string error) => new(alias, RuntimeState.Error, false, false, false, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, null, error, default);
+        public static RuntimeSnapshot Failed(string alias, string error) => new(alias, RuntimeState.Unknown, false, false, false, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, null, error, default);
     }
 }

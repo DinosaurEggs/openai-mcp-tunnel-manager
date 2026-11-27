@@ -18,8 +18,8 @@ public sealed partial class TunnelClientOperations
         {
             if (connection.HasRuntime)
             {
-                var native = await _inventory.GetStatusAsync(connection, cancellationToken);
-                if (native.ProcessRunning || native.State == RuntimeState.Unknown)
+                var native = await _inventory.GetStatusAsync(connection, cancellationToken, secret);
+                if (native.ProcessRunning || native.State is RuntimeState.Unknown or RuntimeState.Error)
                     throw new InvalidOperationException("请先确认 Native Runtime 已停止");
             }
             await StartProfileAsync(connection, secret, cancellationToken);
@@ -30,7 +30,7 @@ public sealed partial class TunnelClientOperations
 
     public async Task StopAsync(TunnelConnection connection, CancellationToken cancellationToken = default)
     {
-        if (connection.HasRuntime && !connection.UseForeground)
+        if (connection.HasRuntime && !_foreground.ContainsKey(connection.Identity))
         {
             await RunAsync(["runtimes", "stop", connection.RuntimeAlias, "--json"], false, cancellationToken, TimeSpan.FromSeconds(30));
             return;

@@ -11,9 +11,10 @@ public sealed partial class TunnelClientOperations
     private const int MaxHealthResponseBytes = 1024 * 1024;
     private static readonly HttpClient HealthClient = CreateHealthClient();
 
-    public async Task<TunnelConnection> GetStatusAsync(TunnelConnection connection, CancellationToken cancellationToken = default)
+    public async Task<TunnelConnection> GetStatusAsync(TunnelConnection connection, CancellationToken cancellationToken = default, string? secret = null)
     {
-        if (connection.HasRuntime && !connection.UseForeground) return await _inventory.GetStatusAsync(connection, cancellationToken);
+        if (connection.HasRuntime && (!connection.UseForeground || !_foreground.ContainsKey(connection.Identity)))
+            return await _inventory.GetStatusAsync(connection, cancellationToken, secret);
         if (!connection.HasProfile || !_foreground.TryGetValue(connection.Identity, out var record)) return connection with { State = RuntimeState.Configured, ProcessRunning = false, Healthy = false, Ready = false, ProcessId = null };
         int processId;
         lock (record)
@@ -41,8 +42,38 @@ public sealed partial class TunnelClientOperations
         var ready = !string.IsNullOrWhiteSpace(healthUrl) && await ProbeAsync(healthUrl, "/readyz", cancellationToken);
         if (!_foreground.TryGetValue(connection.Identity, out var live) || !ReferenceEquals(live, record))
             return connection with { State = RuntimeState.Stopped, ProcessRunning = false, Healthy = false, Ready = false, ProcessId = null, LogPath = record.LogPath };
+        var metadata = ProfileMetadataReader.Read(connection.ProfilePath);
+        var detailsUrl = string.Empty;
+        var mcpUrl = string.Empty;
+        var adminUrl = string.Empty;
+        if (healthy && TryLoopbackUri(healthUrl, out var localUri))
+        {
+            var candidate = new Uri(localUri, "/health/mcp").AbsoluteUri;
+            var payload = await FetchHealthAsync(candidate, cancellationToken);
+            try
+            {
+                using var snapshot = JsonDocument.Parse(payload);
+                var root = snapshot.RootElement;
+                if (root.TryGetProperty("schema_version", out var schema) && schema.TryGetInt32(out var version) && version == 1 &&
+                    root.TryGetProperty("component", out var component) && component.GetString() == "mcp")
+                {
+                    mcpUrl = candidate;
+                    detailsUrl = new Uri(localUri, "/health?details=true").AbsoluteUri;
+                }
+            }
+            catch (JsonException) { }
+            catch (InvalidOperationException) { }
+            var basePath = metadata.AdminBasePath.Trim('/');
+            adminUrl = new Uri(localUri, "/" + (basePath.Length == 0 ? "" : basePath + "/") + "ui").AbsoluteUri;
+        }
         return connection with
         {
+            HealthDetailsUrl = detailsUrl,
+            McpHealthUrl = mcpUrl,
+            AdminUiUrl = adminUrl,
+            Residency = metadata.Residency,
+            Authentication = metadata.Authentication,
+            RefreshedAt = DateTimeOffset.UtcNow,
             State = ready ? RuntimeState.Ready : healthy ? RuntimeState.Running : RuntimeState.Starting,
             ProcessRunning = true,
             Healthy = healthy,
@@ -90,12 +121,16 @@ public sealed partial class TunnelClientOperations
         return string.Join(Environment.NewLine, lines).TrimEnd('\r', '\n');
     }
 
-    public async Task<string> GetDetailedHealthAsync(TunnelConnection connection, CancellationToken cancellationToken = default)
+    public async Task<string> GetDetailedHealthAsync(TunnelConnection connection, CancellationToken cancellationToken = default, string? secret = null)
     {
-        var current = await GetStatusAsync(connection, cancellationToken);
+        var current = await GetStatusAsync(connection, cancellationToken, secret);
         var endpoints = new[] { ("Health details", current.HealthDetailsUrl), ("MCP health", current.McpHealthUrl) };
-        if (endpoints.All(static endpoint => string.IsNullOrWhiteSpace(endpoint.Item2))) return "未声明详细健康接口";
         var output = new StringBuilder();
+        if (!string.IsNullOrWhiteSpace(current.ControlPlaneState)) output.AppendLine($"Control Plane: {current.ControlPlaneState} {current.ControlPlaneReason}");
+        if (!string.IsNullOrWhiteSpace(current.RemoteLookupStatus)) output.AppendLine($"Remote lookup: {current.RemoteLookupStatus}");
+        if (current.RepairActions.Count > 0) output.AppendLine(current.RepairText).AppendLine();
+        if (endpoints.All(static endpoint => string.IsNullOrWhiteSpace(endpoint.Item2)))
+            return output.AppendLine("未声明详细健康接口").ToString().TrimEnd();
         foreach (var (title, url) in endpoints)
         {
             if (string.IsNullOrWhiteSpace(url)) continue;
@@ -123,7 +158,8 @@ public sealed partial class TunnelClientOperations
             using var response = await HealthClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             return response.IsSuccessStatusCode;
         }
-        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException) { return false; }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception exception) when (exception is HttpRequestException or OperationCanceledException) { return false; }
     }
 
     private static async Task<string> FetchHealthAsync(string url, CancellationToken cancellationToken)
@@ -182,7 +218,7 @@ public sealed partial class TunnelClientOperations
     private static bool TryLoopbackUri(string value, out Uri uri)
     {
         if (Uri.TryCreate(value, UriKind.Absolute, out var parsed) &&
-            (parsed.Scheme == Uri.UriSchemeHttp || parsed.Scheme == Uri.UriSchemeHttps) &&
+            (parsed.Scheme == Uri.UriSchemeHttp || parsed.Scheme == Uri.UriSchemeHttps) && string.IsNullOrEmpty(parsed.UserInfo) &&
             (string.Equals(parsed.Host, "localhost", StringComparison.OrdinalIgnoreCase) ||
              (IPAddress.TryParse(parsed.DnsSafeHost.Trim('[', ']'), out var address) && IPAddress.IsLoopback(address))))
         {

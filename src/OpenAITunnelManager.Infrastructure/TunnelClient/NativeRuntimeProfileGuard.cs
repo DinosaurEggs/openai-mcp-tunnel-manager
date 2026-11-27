@@ -21,7 +21,7 @@ internal static class NativeRuntimeProfileGuard
         if (string.IsNullOrWhiteSpace(Scalar(control, "tunnel_id"))) throw Unsupported();
         var keyRef = Scalar(control, "api_key");
         if (!string.IsNullOrEmpty(keyRef) &&
-            !keyRef.StartsWith("env:", StringComparison.Ordinal) &&
+            TunnelClientProcessRunner.SecretEnvironmentName(keyRef) is null &&
             !keyRef.StartsWith("file:", StringComparison.Ordinal)) throw Unsupported();
         var flags = new List<string>();
         foreach (var (key, flag) in new[]

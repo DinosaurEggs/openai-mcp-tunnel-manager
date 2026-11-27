@@ -262,6 +262,7 @@
                                             <Button.Flyout>
                                                 <MenuFlyout>
                                                     <MenuFlyoutItem Text="本机偏好 / 密钥" Click="EditPreference_Click" />
+                                                    <MenuFlyoutItem Text="打开 Admin UI" IsEnabled="{Binding SelectedConnection.CanOpenAdminUi}" Click="OpenAdminUi_Click" />
                                                     <MenuFlyoutItem Text="打开配置位置" IsEnabled="{Binding CanOpenConfigSelected}" Click="OpenConfigLocation_Click" />
                                                     <MenuFlyoutSeparator />
                                                     <MenuFlyoutItem Text="删除" Click="DeleteSelected_Click" />
@@ -326,6 +327,16 @@
                                                         <TextBlock Grid.Row="3" Text="Health URL" Opacity="0.65" />
                                                         <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SelectedConnection.HealthUrl}" TextWrapping="Wrap" />
                                                     </Grid>
+                                                    <TextBlock Text="控制平面" FontWeight="SemiBold" />
+                                                    <TextBlock Text="{Binding SelectedConnection.ControlPlaneText}" TextWrapping="Wrap" />
+                                                    <TextBlock Text="{Binding SelectedConnection.ControlPlaneReason}" TextWrapping="Wrap" />
+                                                    <TextBlock Text="认证 / Residency" FontWeight="SemiBold" />
+                                                    <TextBlock Text="{Binding SelectedConnection.Authentication}" />
+                                                    <TextBlock Text="{Binding SelectedConnection.Residency}" />
+                                                    <TextBlock Text="{Binding SelectedConnection.RemoteResidency}" />
+                                                    <TextBlock Text="{Binding SelectedConnection.RemoteLookupStatus}" TextWrapping="Wrap" />
+                                                    <TextBlock Text="{Binding SelectedConnection.ConfigurationStatusText}" TextWrapping="Wrap" />
+                                                    <TextBlock Text="{Binding SelectedConnection.RefreshedText}" Opacity="0.65" />
                                                 </StackPanel>
                                             </ScrollViewer>
                                         </TabViewItem>

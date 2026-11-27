@@ -83,7 +83,7 @@ public partial class ConnectionsViewModel
             await concurrency.WaitAsync(cancellationToken);
             try
             {
-                return await _operations.GetStatusAsync(connection with { UseForeground = FindPreference(connection)?.UseForeground == true }, cancellationToken);
+                return await _operations.GetStatusAsync(connection with { UseForeground = FindPreference(connection)?.UseForeground == true }, cancellationToken, ReadSavedSecret(connection));
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {

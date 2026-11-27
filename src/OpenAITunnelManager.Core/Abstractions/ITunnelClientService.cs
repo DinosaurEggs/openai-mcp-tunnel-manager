@@ -6,6 +6,6 @@ public interface ITunnelClientService
 {
     Task<string> GetVersionAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<TunnelConnection>> GetConnectionsAsync(CancellationToken cancellationToken = default);
-    Task<TunnelConnection> GetStatusAsync(TunnelConnection connection, CancellationToken cancellationToken = default);
+    Task<TunnelConnection> GetStatusAsync(TunnelConnection connection, CancellationToken cancellationToken = default, string? secret = null);
     Task StopRuntimeAsync(string alias, CancellationToken cancellationToken = default);
 }
