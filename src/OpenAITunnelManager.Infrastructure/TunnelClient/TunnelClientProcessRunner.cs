@@ -78,6 +78,7 @@ public sealed class TunnelClientProcessRunner(TunnelClientOptions options)
         try
         {
             await process.WaitForExitAsync(deadline.Token).ConfigureAwait(false);
+            await Task.WhenAll(stdoutTask, stderrTask).WaitAsync(deadline.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -122,12 +123,17 @@ public sealed class TunnelClientProcessRunner(TunnelClientOptions options)
         {
             if (!process.HasExited)
             {
-                await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
+                using var cleanupDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                await process.WaitForExitAsync(cleanupDeadline.Token).ConfigureAwait(false);
             }
         }
         catch (InvalidOperationException)
         {
             // Process is already gone or was never associated with a handle.
+        }
+        catch (OperationCanceledException)
+        {
+            // Cleanup is bounded even when the OS refuses to terminate the process.
         }
     }
 
