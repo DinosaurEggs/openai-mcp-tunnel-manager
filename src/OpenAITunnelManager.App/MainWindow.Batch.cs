@@ -35,7 +35,7 @@ public sealed partial class MainWindow
         }
         var alias = new TextBox { Header = "Runtime alias" };
         if (await NewDialog("创建并连接 Native Runtime", alias, "创建").ShowAsync() != ContentDialogResult.Primary) return;
-        try { await ViewModel.CreateNativeRuntimeAsync(alias.Text); }
+        try { await ViewModel.CreateNativeRuntimeAsync(item, alias.Text); }
         catch (Exception exception) { await ShowErrorAsync(exception.Message); }
     }
 }

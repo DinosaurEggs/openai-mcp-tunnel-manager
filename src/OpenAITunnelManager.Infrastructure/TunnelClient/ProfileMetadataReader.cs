@@ -9,6 +9,7 @@ internal sealed record ProfileMetadata(
     string TargetValue)
 {
     public bool UsesAwsIdentity { get; init; }
+    public bool HasStdioTarget { get; init; }
     public string Residency { get; init; } = string.Empty;
     public string AdminBasePath { get; init; } = string.Empty;
     public string Authentication => UsesAwsIdentity ? "AWS Workload Identity" : ApiKeyRef.StartsWith("file:", StringComparison.OrdinalIgnoreCase) ? "文件引用" : "API Key / 环境变量";
@@ -67,13 +68,15 @@ internal static class ProfileMetadataReader
                 apiKeyRef = ProfileMetadata.DefaultApiKeyRef;
             }
 
+            var mcp = GetMapping(root, "mcp");
+            var commands = GetSequence(mcp, "commands");
             ProfileMetadata Build(string kind, string value) => new(tunnelId, apiKeyRef, kind, value)
             {
                 UsesAwsIdentity = usesAwsIdentity,
+                HasStdioTarget = commands is { Children.Count: > 0 },
                 Residency = GetScalar(controlPlane, "residency"),
                 AdminBasePath = GetScalar(GetMapping(root, "admin_ui"), "base_path")
             };
-            var mcp = GetMapping(root, "mcp");
             var serverUrl = FindMainTarget(GetSequence(mcp, "server_urls"), "url");
             if (!string.IsNullOrWhiteSpace(serverUrl))
             {

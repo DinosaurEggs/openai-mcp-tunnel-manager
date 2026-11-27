@@ -364,9 +364,9 @@ public partial class ConnectionsViewModel : ObservableObject
         StatusMessage = $"已保存 {item.Name} 的本机偏好";
     }
 
-    public async Task DeleteSelectedAsync()
+    public async Task DeleteSelectedAsync(TunnelConnection original)
     {
-        var original = SelectedConnection ?? throw new InvalidOperationException("请先选择一个配置");
+        ArgumentNullException.ThrowIfNull(original);
         EnsureClientAvailable();
         IsBusy = true;
         try
@@ -375,7 +375,8 @@ public partial class ConnectionsViewModel : ObservableObject
             var current = fresh.FirstOrDefault(item => string.Equals(item.Identity, original.Identity, StringComparison.OrdinalIgnoreCase));
             if (current is null) throw new InvalidOperationException("列表已发生变化，请刷新后重试");
             var target = current;
-            if (original.HasProfile && !PathsEqual(original.ProfilePath, target.ProfilePath))
+            if (!string.Equals(original.StateRoot, target.StateRoot, StringComparison.OrdinalIgnoreCase) ||
+                original.HasProfile && !PathsEqual(original.ProfilePath, target.ProfilePath))
                 throw new InvalidOperationException("Profile 路径已变化，请刷新后重试");
             var sharedProfile = target.HasProfile && fresh.Any(item =>
                 !string.Equals(item.Identity, target.Identity, StringComparison.OrdinalIgnoreCase) &&

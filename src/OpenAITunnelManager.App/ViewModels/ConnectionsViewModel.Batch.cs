@@ -42,10 +42,9 @@ public partial class ConnectionsViewModel
         finally { IsBusy = false; }
     }
 
-    public async Task CreateNativeRuntimeAsync(string alias)
+    public async Task CreateNativeRuntimeAsync(TunnelConnection profile, string alias)
     {
         EnsureClientAvailable();
-        var profile = SelectedConnection ?? throw new InvalidOperationException("请选择 Profile");
         if (profile.HasRuntime || !profile.HasProfile || profile.ProcessRunning)
             throw new InvalidOperationException("请选择已停止且未绑定 Runtime 的 Profile");
         alias = alias.Trim();
@@ -55,7 +54,9 @@ public partial class ConnectionsViewModel
         try
         {
             var inventory = await _inventory.GetConnectionsAsync();
-            if (inventory.Any(item => item.HasRuntime && item.RuntimeAlias == alias))
+            if (!inventory.Any(item => item.Identity == profile.Identity && PathsEqual(item.ProfilePath, profile.ProfilePath) && PathsEqual(item.StateRoot, profile.StateRoot)))
+                throw new InvalidOperationException("Profile 已变化，请刷新后重新选择");
+            if (inventory.Any(item => item.HasRuntime && string.Equals(item.RuntimeAlias, alias, StringComparison.OrdinalIgnoreCase)))
                 throw new InvalidOperationException("该 Runtime alias 已存在");
             CancelReconnect(profile.Identity, resetAttempts: true);
             var runtime = profile with

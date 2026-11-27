@@ -162,7 +162,7 @@ public sealed partial class MainWindow
         if (await confirm.ShowAsync() != ContentDialogResult.Primary) return;
         try
         {
-            await ViewModel.DeleteSelectedAsync();
+            await ViewModel.DeleteSelectedAsync(item);
         }
         catch (Exception exception)
         {

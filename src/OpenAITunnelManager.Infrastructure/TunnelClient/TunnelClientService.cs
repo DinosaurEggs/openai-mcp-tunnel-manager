@@ -58,7 +58,7 @@ public sealed class TunnelClientService(TunnelClientProcessRunner runner) : ITun
                 McpHealthUrl: string.Empty,
                 LogPath: string.Empty,
                 ProcessId: null,
-                Error: string.Empty) { StateRoot = stateRoot, Residency = metadata.Residency, Authentication = metadata.Authentication });
+                Error: string.Empty) { StateRoot = stateRoot, Residency = metadata.Residency, Authentication = metadata.Authentication, RuntimeOwnedPaths = runtime.OwnedPaths, HasStdioTarget = metadata.HasStdioTarget });
         }
 
         foreach (var profile in profiles)
@@ -85,7 +85,7 @@ public sealed class TunnelClientService(TunnelClientProcessRunner runner) : ITun
                 McpHealthUrl: string.Empty,
                 LogPath: string.Empty,
                 ProcessId: null,
-                Error: string.Empty) { StateRoot = stateRoot, Residency = metadata.Residency, Authentication = metadata.Authentication });
+                Error: string.Empty) { StateRoot = stateRoot, Residency = metadata.Residency, Authentication = metadata.Authentication, HasStdioTarget = metadata.HasStdioTarget });
         }
 
         return result.OrderBy(static x => x.Name, StringComparer.OrdinalIgnoreCase)
@@ -101,7 +101,7 @@ public sealed class TunnelClientService(TunnelClientProcessRunner runner) : ITun
         var status = await ReadStatusAsync(connection.RuntimeAlias, auth.ApiKeyRef, secret, cancellationToken).ConfigureAwait(false);
         var profilePath = FirstNonEmpty(connection.ProfilePath, connection.RuntimeProfilePath, status.ProfilePath);
         var metadata = ProfileMetadataReader.Read(profilePath);
-        var target = ResolveTarget(status.Raw, metadata);
+        var target = ResolveTarget(status.Raw);
         var poll = Child(status.Raw, "control_plane_poll_health");
         var remote = Child(status.Raw, "remote");
         var process = Child(status.Raw, "process");
@@ -115,6 +115,8 @@ public sealed class TunnelClientService(TunnelClientProcessRunner runner) : ITun
             TargetValue = FirstNonEmpty(metadata.TargetValue, target.Value),
             RunningTargetKind = status.ProcessRunning ? target.Kind : string.Empty,
             RunningTargetValue = status.ProcessRunning ? target.Value : string.Empty,
+            RuntimeOwnedPaths = connection.RuntimeOwnedPaths.Concat(OwnedPaths(status.Raw)).Concat(OwnedPaths(process)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
+            HasStdioTarget = metadata.HasStdioTarget || target.Kind is "command" or "mcp_command" or "stdio",
             ControlPlaneState = GetString(poll, "state"),
             ControlPlaneReason = GetString(poll, "reason"),
             AdminUiUrl = FirstNonEmpty(GetString(status.Raw, "ui_url"), GetString(Child(Child(status.Raw, "local"), "effective_health"), "ui")),
@@ -227,11 +229,11 @@ public sealed class TunnelClientService(TunnelClientProcessRunner runner) : ITun
                 GetString(item, "alias"),
                 GetString(item, "profile_name"),
                 FirstNonEmpty(GetString(item, "profile_path"), GetString(item, "config_path")),
-                GetString(item, "tunnel_id")))
+                GetString(item, "tunnel_id"), OwnedPaths(item)))
             .Where(static item => !string.IsNullOrWhiteSpace(item.Alias)).ToArray();
     }
 
-    private static (string Kind, string Value) ResolveTarget(JsonElement status, ProfileMetadata metadata)
+    private static (string Kind, string Value) ResolveTarget(JsonElement status)
     {
         if (status.ValueKind == JsonValueKind.Object && TryGetProperty(status, "process", out var process) && process.ValueKind == JsonValueKind.Object)
         {
@@ -241,6 +243,10 @@ public sealed class TunnelClientService(TunnelClientProcessRunner runner) : ITun
         }
         return (string.Empty, string.Empty);
     }
+
+    private static IReadOnlyList<string> OwnedPaths(JsonElement element) =>
+        new[] { "config_path", "profile_path", "health_url_file", "log_path" }
+            .Select(key => GetString(element, key)).Where(path => !string.IsNullOrWhiteSpace(path)).ToArray();
 
     private static JsonElement Child(JsonElement element, string name) => TryGetProperty(element, name, out var value) ? value : default;
 
@@ -349,7 +355,7 @@ public sealed class TunnelClientService(TunnelClientProcessRunner runner) : ITun
     }
 
     private sealed record ProfileEntry(string Name, string Path);
-    private sealed record RuntimeEntry(string Alias, string ProfileName, string ProfilePath, string TunnelId);
+    private sealed record RuntimeEntry(string Alias, string ProfileName, string ProfilePath, string TunnelId, IReadOnlyList<string> OwnedPaths);
     private sealed record RuntimeSnapshot(
         string Alias,
         RuntimeState State,

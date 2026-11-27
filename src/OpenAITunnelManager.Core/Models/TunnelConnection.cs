@@ -60,6 +60,8 @@ public sealed record TunnelConnection(
     }
 
     public string StateRoot { get; init; } = string.Empty;
+    public IReadOnlyList<string> RuntimeOwnedPaths { get; init; } = [];
+    public bool HasStdioTarget { get; init; }
     public string ControlPlaneState { get; init; } = string.Empty;
     public string ControlPlaneReason { get; init; } = string.Empty;
     public string AdminUiUrl { get; init; } = string.Empty;

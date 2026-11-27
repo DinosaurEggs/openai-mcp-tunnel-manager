@@ -132,7 +132,7 @@ public sealed partial class TunnelClientOperations : ITunnelClientOperations
     }
 
     private sealed record CapabilityCache(string ExecutablePath, DateTime LastWriteTimeUtc, TunnelClientCapabilities Capabilities);
-    private sealed record ForegroundProfile(Process Process, string HealthFile, string LogPath, string ProfilePath, RollingForegroundLog LogWriter, string TunnelId, string TargetKind, string TargetValue, DateTimeOffset StartedAt, string ExecutablePath)
+    private sealed record ForegroundProfile(Process Process, string HealthFile, string LogPath, string ProfilePath, RollingForegroundLog LogWriter, string TunnelId, string TargetKind, string TargetValue, bool HasStdioTarget, DateTimeOffset StartedAt, string ExecutablePath)
     {
         public bool Stopping { get; set; }
     }
