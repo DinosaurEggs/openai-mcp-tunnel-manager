@@ -84,6 +84,10 @@ public partial class ConnectionsViewModel
             {
                 return await _operations.GetStatusAsync(connection, cancellationToken);
             }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                return connection with { State = RuntimeState.Unknown, Error = exception.Message };
+            }
             finally
             {
                 concurrency.Release();
@@ -146,8 +150,13 @@ public partial class ConnectionsViewModel
                 {
                     StatusMessage = $"正在自动重连 {displayName}...";
                     await _operations.StartAsync(current, ReadSavedSecret(current), cancellation.Token);
-                    await RefreshAfterOperationAsync(identity, $"{displayName} 已自动重连");
-                    return;
+                    await RefreshAfterOperationAsync(SelectedConnection?.Identity, $"{displayName} 已执行自动重连");
+                    var refreshed = Connections.FirstOrDefault(item => string.Equals(item.Identity, identity, StringComparison.OrdinalIgnoreCase));
+                    if (refreshed?.ProcessRunning == true)
+                    {
+                        _reconnectAttempts.Remove(identity);
+                        return;
+                    }
                 }
                 catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
                 {
@@ -168,8 +177,8 @@ public partial class ConnectionsViewModel
                 ReferenceEquals(currentCancellation, cancellation))
             {
                 _reconnectCancellations.Remove(identity);
+                _reconnectScheduled.Remove(identity);
             }
-            _reconnectScheduled.Remove(identity);
             cancellation.Dispose();
         }
     }
