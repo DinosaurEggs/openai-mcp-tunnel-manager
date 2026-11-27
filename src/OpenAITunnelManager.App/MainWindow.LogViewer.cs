@@ -81,7 +81,9 @@ public sealed partial class MainWindow
     private void ViewModel_LogConsolePropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(ViewModel.LogLevel)
-            or nameof(ViewModel.LogFoldDuplicates))
+            or nameof(ViewModel.LogFoldDuplicates)
+            or nameof(ViewModel.LogRaw)
+            or nameof(ViewModel.LogComponent))
         {
             _ = ReplayCurrentLogAsync(_logAtBottom);
         }
@@ -122,18 +124,22 @@ public sealed partial class MainWindow
         try
         {
             if (!string.Equals(identity, ViewModel.SelectedConnection?.Identity, StringComparison.OrdinalIgnoreCase)) return;
-        if (TryGetCurrentLogState(out var state))
-        {
-            state.Buffer.Clear();
-            state.Tail.SkipToEnd();
-            state.NextSequence = 0;
-        }
+            if (TryGetCurrentLogState(out var state))
+            {
+                state.Tail.SkipToEnd();
+                state.Buffer.Clear();
+                state.NextSequence = 0;
+            }
 
         _logPausedLines = 0;
         _logPendingLines = 0;
         _logAtBottom = true;
         LogConsole.Clear();
         UpdateLogToolbarState();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            await ShowErrorAsync(exception.Message);
         }
         finally { _logReadGate.Release(); }
     }
@@ -160,6 +166,8 @@ public sealed partial class MainWindow
     {
         if (!TryGetCurrentLogState(out var state)) return;
 
+        var snapshot = state.Buffer.SnapshotDisplay(ViewModel.LogLevel, ViewModel.LogFoldDuplicates && !ViewModel.LogRaw, ViewModel.LogComponent);
+        var raw = ViewModel.LogRaw;
         try
         {
             var picker = new FileSavePicker
@@ -167,14 +175,12 @@ public sealed partial class MainWindow
                 SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
                 SuggestedFileName = SafeFileName(ViewModel.SelectedConnection?.Name ?? "tunnel-client") + "-console"
             };
-            picker.FileTypeChoices.Add("日志文件", new List<string> { ".log" });
+            picker.FileTypeChoices.Add(raw ? "原始 JSONL" : "日志文件", new List<string> { raw ? ".jsonl" : ".log" });
             WinRT.Interop.InitializeWithWindow.Initialize(picker, _hwnd);
             var file = await picker.PickSaveFileAsync();
             if (file is null) return;
 
-            var lines = state.Buffer
-                .SnapshotDisplay(ViewModel.LogLevel, ViewModel.LogFoldDuplicates)
-                .Select(static item => item.ToConsoleText());
+            var lines = snapshot.Select(item => item.ToConsoleText(raw));
             await File.WriteAllTextAsync(
                 file.Path,
                 string.Join(Environment.NewLine, lines),
@@ -239,6 +245,7 @@ public sealed partial class MainWindow
 
         if (!File.Exists(fullPath))
         {
+            if (!string.Equals(_activeLogIdentity, item.Identity, StringComparison.OrdinalIgnoreCase)) await ClearLogConsoleSelectionAsync();
             LogConsoleStatus.Text = $"等待日志文件：{fullPath}";
             return;
         }
@@ -270,9 +277,9 @@ public sealed partial class MainWindow
             }
 
             var rawLines = await state.Tail.ReadAsync(forceReload);
-            var added = rawLines
-                .Select(raw => JsonLogParser.ParseLine(raw, state.NextSequence++))
-                .ToArray();
+            var firstSequence = state.NextSequence;
+            var added = await Task.Run(() => rawLines.Select((raw, index) => JsonLogParser.ParseLine(raw, firstSequence + index)).ToArray());
+            state.NextSequence += added.Length;
             var trimmedNow = added.Length > 0 && state.Buffer.Append(added);
             if (!_logConsoleConfigured || !string.Equals(item.Identity, ViewModel.SelectedConnection?.Identity, StringComparison.OrdinalIgnoreCase)) return;
 
@@ -283,7 +290,7 @@ public sealed partial class MainWindow
             else if (added.Length > 0)
             {
                 var visibleCount = added.Count(entry =>
-                    LogConsoleBuffer.MatchesLevel(entry.Severity, ViewModel.LogLevel));
+                    LogConsoleBuffer.MatchesLevel(entry.Severity, ViewModel.LogLevel) && LogConsoleBuffer.MatchesComponent(entry, ViewModel.LogComponent));
 
                 if (_logPaused)
                 {
@@ -296,10 +303,10 @@ public sealed partial class MainWindow
                 else
                 {
                     var display = added
-                        .Where(entry => LogConsoleBuffer.MatchesLevel(entry.Severity, ViewModel.LogLevel))
+                        .Where(entry => LogConsoleBuffer.MatchesLevel(entry.Severity, ViewModel.LogLevel) && LogConsoleBuffer.MatchesComponent(entry, ViewModel.LogComponent))
                         .Select(static entry => new LogDisplayEntry(entry, 1))
                         .ToArray();
-                    LogConsole.Append(display, _logAtBottom);
+                    LogConsole.Append(display, _logAtBottom, ViewModel.LogRaw);
                 }
 
                 if (!_logAtBottom) _logPendingLines += visibleCount;
@@ -356,8 +363,8 @@ public sealed partial class MainWindow
     {
         if (_logPaused) return;
         var lines = state.Buffer
-            .SnapshotDisplay(ViewModel.LogLevel, ViewModel.LogFoldDuplicates);
-        LogConsole.ReplaceAll(lines, followTail);
+            .SnapshotDisplay(ViewModel.LogLevel, ViewModel.LogFoldDuplicates && !ViewModel.LogRaw, ViewModel.LogComponent);
+        LogConsole.ReplaceAll(lines, followTail, ViewModel.LogRaw);
         await Task.CompletedTask;
         if (followTail)
         {

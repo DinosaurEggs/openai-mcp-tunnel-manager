@@ -386,7 +386,7 @@
                                                             <ColumnDefinition Width="Auto" />
                                                             <ColumnDefinition Width="Auto" />
                                                         </Grid.ColumnDefinitions>
-                                                        <TextBox PlaceholderText="搜索日志" Text="{Binding LogSearch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                        <TextBox PlaceholderText="搜索 Message / Request ID / Trace ID" Text="{Binding LogSearch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                                         <Button Grid.Column="1" Content="↑" ToolTipService.ToolTip="上一个匹配" Click="LogFindPrevious_Click" />
                                                         <Button Grid.Column="2" Content="↓" ToolTipService.ToolTip="下一个匹配" Click="LogFindNext_Click" />
                                                         <ToggleButton Grid.Column="3" Content="Aa" ToolTipService.ToolTip="区分大小写" IsChecked="{Binding LogSearchCaseSensitive, Mode=TwoWay}" />
@@ -401,7 +401,11 @@
                                                         <ComboBoxItem Content="ERROR" />
                                                     </ComboBox>
                                                     <CheckBox Grid.Column="2" Content="自动换行" IsChecked="{Binding LogWrap, Mode=TwoWay}" VerticalAlignment="Center" />
-                                                    <CheckBox Grid.Column="3" Content="折叠重复" IsChecked="{Binding LogFoldDuplicates, Mode=TwoWay}" VerticalAlignment="Center" />
+                                                    <StackPanel Grid.Column="3" Spacing="4">
+                                                        <CheckBox Content="折叠重复" IsChecked="{Binding LogFoldDuplicates, Mode=TwoWay}" />
+                                                        <CheckBox Content="原始 JSON" IsChecked="{Binding LogRaw, Mode=TwoWay}" />
+                                                        <TextBox PlaceholderText="组件过滤" Text="{Binding LogComponent, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                    </StackPanel>
                                                 </Grid>
 
                                                 <Border Grid.Row="4" Background="{ThemeResource ControlFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="4">

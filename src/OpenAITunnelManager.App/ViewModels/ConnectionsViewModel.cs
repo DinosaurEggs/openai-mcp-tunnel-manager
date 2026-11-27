@@ -76,6 +76,8 @@ public partial class ConnectionsViewModel : ObservableObject
     [ObservableProperty] public partial string StateDirectoryOverride { get; set; } = string.Empty;
     [ObservableProperty] public partial string LogSearch { get; set; } = string.Empty;
     [ObservableProperty] public partial string LogLevel { get; set; } = "全部";
+    [ObservableProperty] public partial string LogComponent { get; set; } = string.Empty;
+    [ObservableProperty] public partial bool LogRaw { get; set; }
     [ObservableProperty] public partial bool LogSearchCaseSensitive { get; set; }
     [ObservableProperty] public partial bool LogSearchRegex { get; set; }
     [ObservableProperty] public partial bool LogWrap { get; set; } = true;

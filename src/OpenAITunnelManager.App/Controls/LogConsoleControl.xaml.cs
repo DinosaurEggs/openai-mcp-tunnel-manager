@@ -31,7 +31,7 @@ public sealed partial class LogConsoleControl : UserControl, IDisposable
 
     public bool IsReady => _initialized;
 
-    public void Append(IReadOnlyList<LogDisplayEntry> entries, bool followTail)
+    public void Append(IReadOnlyList<LogDisplayEntry> entries, bool followTail, bool raw = false)
     {
         if (!_initialized || entries.Count == 0) return;
 
@@ -42,7 +42,7 @@ public sealed partial class LogConsoleControl : UserControl, IDisposable
 
         foreach (var item in entries)
         {
-            var text = item.ToConsoleText() + Environment.NewLine;
+            var text = item.ToConsoleText(raw) + Environment.NewLine;
             builder.Append(text);
             spans.Add((Encoding.UTF8.GetByteCount(text), StyleFor(item.Entry.Severity)));
         }
@@ -64,7 +64,7 @@ public sealed partial class LogConsoleControl : UserControl, IDisposable
         }
     }
 
-    public void ReplaceAll(IReadOnlyList<LogDisplayEntry> entries, bool followTail)
+    public void ReplaceAll(IReadOnlyList<LogDisplayEntry> entries, bool followTail, bool raw = false)
     {
         if (!_initialized) return;
 
@@ -73,7 +73,7 @@ public sealed partial class LogConsoleControl : UserControl, IDisposable
 
         foreach (var item in entries)
         {
-            var text = item.ToConsoleText() + Environment.NewLine;
+            var text = item.ToConsoleText(raw) + Environment.NewLine;
             builder.Append(text);
             spans.Add((Encoding.UTF8.GetByteCount(text), StyleFor(item.Entry.Severity)));
         }
