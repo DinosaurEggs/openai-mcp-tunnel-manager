@@ -49,7 +49,8 @@ public sealed partial class TunnelClientOperations
     {
         var actual = await VerifyProfileEntryAsync(name, expectedPath, cancellationToken);
 
-        if (_foreground.ContainsKey(name)) await StopProfileAsync(name);
+        foreach (var pair in _foreground.ToArray())
+            if (SamePath(pair.Value.ProfilePath, actual)) await StopProfileAsync(pair.Key);
 
         try { File.Delete(actual); }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)

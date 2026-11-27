@@ -9,13 +9,19 @@ public sealed partial class TunnelClientOperations
 {
     public async Task StartAsync(TunnelConnection connection, string? secret, CancellationToken cancellationToken = default)
     {
-        if (connection.HasRuntime)
+        if (connection.HasRuntime && !connection.UseForeground)
         {
             await ConnectRuntimeAsync(connection, secret, cancellationToken);
             return;
         }
         if (connection.HasProfile)
         {
+            if (connection.HasRuntime)
+            {
+                var native = await _inventory.GetStatusAsync(connection, cancellationToken);
+                if (native.ProcessRunning || native.State == RuntimeState.Unknown)
+                    throw new InvalidOperationException("请先确认 Native Runtime 已停止");
+            }
             await StartProfileAsync(connection, secret, cancellationToken);
             return;
         }
@@ -24,14 +30,14 @@ public sealed partial class TunnelClientOperations
 
     public async Task StopAsync(TunnelConnection connection, CancellationToken cancellationToken = default)
     {
-        if (connection.HasRuntime)
+        if (connection.HasRuntime && !connection.UseForeground)
         {
             await RunAsync(["runtimes", "stop", connection.RuntimeAlias, "--json"], false, cancellationToken, TimeSpan.FromSeconds(30));
             return;
         }
         if (connection.HasProfile)
         {
-            await StopProfileAsync(connection.ProfileName);
+            await StopProfileAsync(connection.Identity);
             return;
         }
         throw new InvalidOperationException("该项目没有可停止的 Runtime 或 Profile");
@@ -39,7 +45,7 @@ public sealed partial class TunnelClientOperations
 
     public async Task RestartAsync(TunnelConnection connection, string? secret, CancellationToken cancellationToken = default)
     {
-        if (connection.HasRuntime) _ = await ValidateNativeRuntimeAsync(connection, cancellationToken);
+        if (connection.HasRuntime && !connection.UseForeground) _ = await ValidateNativeRuntimeAsync(connection, cancellationToken);
         await StopAsync(connection, cancellationToken);
         await StartAsync(connection, secret, cancellationToken);
     }
@@ -109,7 +115,7 @@ public sealed partial class TunnelClientOperations
 
     private async Task StartProfileCoreAsync(TunnelConnection connection, string? secret, CancellationToken cancellationToken)
     {
-        var name = connection.ProfileName;
+        var name = connection.Identity;
         if (_foreground.TryGetValue(name, out var existing))
         {
             lock (existing)
@@ -127,7 +133,7 @@ public sealed partial class TunnelClientOperations
             }
         }
 
-        var safeName = string.Concat(name.Select(ch => Path.GetInvalidFileNameChars().Contains(ch) ? '_' : ch));
+        var safeName = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(name.ToUpperInvariant() + "\n" + Path.GetFullPath(connection.ProfilePath).ToUpperInvariant())));
         var workDirectory = Path.Combine(AppDataPaths.Current.ForegroundStateDirectory, safeName);
         Directory.CreateDirectory(workDirectory);
         var healthFile = Path.Combine(workDirectory, "health.url");
@@ -166,6 +172,7 @@ public sealed partial class TunnelClientOperations
             throw;
         }
 
+        process.StandardInput.Close();
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
         _foreground[name] = new ForegroundProfile(process, healthFile, logPath, connection.ProfilePath, logWriter);

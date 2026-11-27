@@ -13,12 +13,12 @@ public sealed partial class TunnelClientOperations
 
     public async Task<TunnelConnection> GetStatusAsync(TunnelConnection connection, CancellationToken cancellationToken = default)
     {
-        if (connection.HasRuntime) return await _inventory.GetStatusAsync(connection, cancellationToken);
-        if (!connection.HasProfile || !_foreground.TryGetValue(connection.ProfileName, out var record)) return connection with { State = RuntimeState.Configured, ProcessRunning = false };
+        if (connection.HasRuntime && !connection.UseForeground) return await _inventory.GetStatusAsync(connection, cancellationToken);
+        if (!connection.HasProfile || !_foreground.TryGetValue(connection.Identity, out var record)) return connection with { State = RuntimeState.Configured, ProcessRunning = false, Healthy = false, Ready = false, ProcessId = null };
         int processId;
         lock (record)
         {
-            if (!_foreground.TryGetValue(connection.ProfileName, out var current) || !ReferenceEquals(current, record) ||
+            if (!_foreground.TryGetValue(connection.Identity, out var current) || !ReferenceEquals(current, record) ||
                 !SamePath(record.ProfilePath, connection.ProfilePath))
                 return connection with { State = RuntimeState.Configured, ProcessRunning = false, Healthy = false, Ready = false, ProcessId = null };
             if (record.Process.HasExited)
@@ -39,7 +39,7 @@ public sealed partial class TunnelClientOperations
         catch (IOException) { }
         var healthy = !string.IsNullOrWhiteSpace(healthUrl) && await ProbeAsync(healthUrl, "/healthz", cancellationToken);
         var ready = !string.IsNullOrWhiteSpace(healthUrl) && await ProbeAsync(healthUrl, "/readyz", cancellationToken);
-        if (!_foreground.TryGetValue(connection.ProfileName, out var live) || !ReferenceEquals(live, record))
+        if (!_foreground.TryGetValue(connection.Identity, out var live) || !ReferenceEquals(live, record))
             return connection with { State = RuntimeState.Stopped, ProcessRunning = false, Healthy = false, Ready = false, ProcessId = null, LogPath = record.LogPath };
         return connection with
         {

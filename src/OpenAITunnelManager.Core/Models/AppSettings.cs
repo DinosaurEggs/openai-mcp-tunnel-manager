@@ -4,7 +4,7 @@ namespace OpenAITunnelManager.Core.Models;
 
 public sealed class AppSettings
 {
-    public int SchemaVersion { get; set; } = 3;
+    public int SchemaVersion { get; set; } = 4;
     public TunnelClientSource TunnelClientSource { get; set; } = TunnelClientSource.Managed;
     public string TunnelClientPath { get; set; } = string.Empty;
     public bool TunnelClientSetupCompleted { get; set; }
@@ -58,6 +58,7 @@ public enum TunnelClientSource
 
 public sealed class ProfilePreference
 {
+    public bool UseForeground { get; set; }
     public bool AutoConnect { get; set; }
     public bool AutoReconnect { get; set; }
     public bool Enabled { get; set; } = true;

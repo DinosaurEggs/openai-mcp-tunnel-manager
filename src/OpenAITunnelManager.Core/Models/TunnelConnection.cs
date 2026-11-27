@@ -59,6 +59,10 @@ public sealed record TunnelConnection(
     {
     }
 
+    public string StateRoot { get; init; } = string.Empty;
+    public bool UseForeground { get; init; }
+    public bool RunsInForeground => !HasRuntime || UseForeground;
+    public string ExecutionModeText => RunsInForeground ? "Profile 前台" : "Native Runtime";
     public bool HasRuntime => !string.IsNullOrWhiteSpace(RuntimeAlias);
     public bool HasProfile => !string.IsNullOrWhiteSpace(ProfileName) && !string.IsNullOrWhiteSpace(ProfilePath);
     public string Identity => HasRuntime ? $"runtime:{RuntimeAlias}" : HasProfile ? $"profile:{ProfileName}" : $"item:{Name}";

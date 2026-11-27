@@ -11,7 +11,7 @@ public partial class ConnectionsViewModel
     {
         var directoryChanged = !string.Equals(Settings.ProfileDirectoryOverride, ProfileDirectoryOverride.Trim(), StringComparison.OrdinalIgnoreCase) ||
             !string.Equals(Settings.StateDirectoryOverride, StateDirectoryOverride.Trim(), StringComparison.OrdinalIgnoreCase);
-        if (directoryChanged && (IsBusy || IsTunnelClientUpdating || Connections.Any(item => !item.HasRuntime && item.ProcessRunning)))
+        if (directoryChanged && (IsBusy || IsTunnelClientUpdating || Connections.Any(item => item.RunsInForeground && item.ProcessRunning)))
         {
             ProfileDirectoryOverride = Settings.ProfileDirectoryOverride;
             StateDirectoryOverride = Settings.StateDirectoryOverride;

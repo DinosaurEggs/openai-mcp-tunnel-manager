@@ -170,7 +170,7 @@ public sealed class TunnelClientIntegrationTests : IDisposable
 
         var customDirectory = Path.Combine(_root, "doctor-custom");
         Directory.CreateDirectory(customDirectory);
-        var customPath = Path.Combine(customDirectory, "custom.yaml");
+        var customPath = Path.Combine(customDirectory, "not-listed.yaml");
         File.Copy(profile.ProfilePath, customPath);
         var customRuntime = RuntimeSeed(profile, "custom") with
         {
@@ -184,6 +184,29 @@ public sealed class TunnelClientIntegrationTests : IDisposable
         var current = (await service.GetConnectionsAsync(token)).Single(item => item.RuntimeAlias == "custom");
         Assert.False(current.ProfileListed);
         Assert.Contains("Doctor passed", await operations.DoctorAsync(current, "secret", token), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ExistingRuntimeCanRunOriginalProfileInForeground()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var (service, operations) = Services();
+        await operations.CreateProfileAsync(Spec("mode"), token);
+        var profile = Assert.Single(await service.GetConnectionsAsync(token));
+        await operations.StartAsync(RuntimeSeed(profile, "mode"), "secret", token);
+        var runtime = Assert.Single(await service.GetConnectionsAsync(token));
+        await operations.StopAsync(runtime, token);
+        var original = await File.ReadAllTextAsync(profile.ProfilePath, token) + "\ntracing:\n  enabled: true\n";
+        await File.WriteAllTextAsync(profile.ProfilePath, original, token);
+        runtime = runtime with { UseForeground = true };
+        try
+        {
+            await operations.StartAsync(runtime, "secret", token);
+            Assert.True((await operations.GetStatusAsync(runtime, token)).ProcessRunning);
+            Assert.Equal(original, await File.ReadAllTextAsync(profile.ProfilePath, token));
+        }
+        finally { await operations.StopAsync(runtime, token); }
+        Assert.False((await operations.GetStatusAsync(runtime, token)).ProcessRunning);
     }
 
     [Fact]

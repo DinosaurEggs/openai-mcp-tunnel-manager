@@ -103,7 +103,7 @@ public partial class ConnectionsViewModel : ObservableObject
 
     public bool CanStartSelected => IsClientAvailable && !IsBusy && SelectedConnection is { ProcessRunning: false } item && (item.HasRuntime || item.HasProfile);
     public bool CanStopSelected => IsClientAvailable && !IsBusy && SelectedConnection is { } item && (item.ProcessRunning || _reconnectScheduled.Contains(item.Identity));
-    public bool CanRestartSelected => IsClientAvailable && !IsBusy && SelectedConnection is { ProcessRunning: true };
+    public bool CanRestartSelected => IsClientAvailable && !IsBusy && SelectedConnection is { ProcessRunning: true } item && (FindPreference(item)?.Enabled ?? true);
     public bool CanEditSelected => IsClientAvailable && !IsBusy && SelectedConnection is { ProfileListed: true, HasProfile: true };
     public bool CanDeleteSelected => IsClientAvailable && !IsBusy && SelectedConnection is not null;
     public bool CanDiagnoseSelected => IsClientAvailable && !IsBusy && SelectedConnection is not null;
@@ -318,7 +318,7 @@ public partial class ConnectionsViewModel : ObservableObject
     {
         var item = SelectedConnection ?? throw new InvalidOperationException("请先选择一个配置");
         var pref = FindPreference(item) ?? new ProfilePreference();
-        return new ProfilePreference { Enabled = pref.Enabled, AutoConnect = pref.AutoConnect, AutoReconnect = pref.AutoReconnect };
+        return new ProfilePreference { Enabled = pref.Enabled, AutoConnect = pref.AutoConnect, AutoReconnect = pref.AutoReconnect, UseForeground = pref.UseForeground };
     }
 
     public Task SaveSelectedPreferenceAsync(ProfilePreference preference, string? newSecret = null, bool deleteSecret = false)
@@ -329,6 +329,15 @@ public partial class ConnectionsViewModel : ObservableObject
 
     private async Task SavePreferenceForItemAsync(TunnelConnection item, ProfilePreference preference, string? newSecret, bool deleteSecret)
     {
+        if (item.HasRuntime && item.UseForeground != preference.UseForeground)
+        {
+            var actual = await _operations.GetStatusAsync(item);
+            if (actual.ProcessRunning || actual.State == RuntimeState.Unknown)
+                throw new InvalidOperationException("切换运行模式前请先停止当前连接");
+            CancelReconnect(item.Identity, resetAttempts: true);
+            item = item with { UseForeground = preference.UseForeground };
+            ReplaceConnection(item);
+        }
         Settings.ProfilePreferences[item.Identity] = preference;
         if (deleteSecret)
         {
@@ -371,8 +380,10 @@ public partial class ConnectionsViewModel : ObservableObject
 
             if (target.HasRuntime)
             {
-                var status = await _operations.GetStatusAsync(target);
+                var status = await _operations.GetStatusAsync(target with { UseForeground = original.UseForeground });
                 if (status.ProcessRunning) await _operations.StopAsync(status);
+                var native = await _operations.GetStatusAsync(target with { UseForeground = false });
+                if (native.ProcessRunning) await _operations.StopAsync(native);
                 await _operations.RemoveRuntimeAsync(target.RuntimeAlias);
                 profileDeleted = target.HasProfile && !File.Exists(target.ProfilePath);
             }

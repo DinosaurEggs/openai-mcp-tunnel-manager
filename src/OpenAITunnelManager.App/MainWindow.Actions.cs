@@ -171,7 +171,8 @@ public sealed partial class MainWindow
                 {
                     Enabled = editor.Enabled,
                     AutoConnect = editor.AutoConnect,
-                    AutoReconnect = editor.AutoReconnect
+                    AutoReconnect = editor.AutoReconnect,
+                    UseForeground = data.Preference.UseForeground
                 },
                 editor.Secret,
                 editor.DeleteSecret);
@@ -194,10 +195,11 @@ public sealed partial class MainWindow
             var enabled = new CheckBox { Content = "启用此配置", IsChecked = preference.Enabled };
             var autoConnect = new CheckBox { Content = "程序启动后自动连接", IsChecked = preference.AutoConnect };
             var autoReconnect = new CheckBox { Content = "异常停止后自动重连", IsChecked = preference.AutoReconnect };
+            var foreground = new CheckBox { Content = "使用完整 Profile 前台运行", IsChecked = !item.HasRuntime || preference.UseForeground, IsEnabled = item.HasRuntime && item.HasProfile && !item.ProcessRunning };
             var secret = new PasswordBox { Header = "新的 Runtime API Key", PlaceholderText = hasSecret ? "已保存；留空表示不修改" : "未保存；留空使用环境变量", HorizontalAlignment = HorizontalAlignment.Stretch };
             var deleteSecret = new CheckBox { Content = "删除已保存的 Runtime API Key", IsEnabled = hasSecret };
             var panel = new StackPanel { Spacing = 10, HorizontalAlignment = HorizontalAlignment.Stretch };
-            foreach (var control in new UIElement[] { enabled, autoConnect, autoReconnect, secret, deleteSecret }) panel.Children.Add(control);
+            foreach (var control in new UIElement[] { enabled, autoConnect, autoReconnect, foreground, secret, deleteSecret }) panel.Children.Add(control);
             var dialog = NewDialog($"本机偏好 / 密钥 - {item.Name}", panel, "保存");
             if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
 
@@ -206,7 +208,8 @@ public sealed partial class MainWindow
                 {
                     Enabled = enabled.IsChecked == true,
                     AutoConnect = autoConnect.IsChecked == true,
-                    AutoReconnect = autoReconnect.IsChecked == true
+                    AutoReconnect = autoReconnect.IsChecked == true,
+                    UseForeground = item.HasRuntime && foreground.IsChecked == true
                 },
                 secret.Password,
                 deleteSecret.IsChecked == true);

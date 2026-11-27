@@ -43,7 +43,7 @@ public sealed class JsonSettingsStore : ISettingsStore
     public async Task SaveAsync(AppSettings settings, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(settings);
-        settings.SchemaVersion = 3;
+        settings.SchemaVersion = 4;
 
         var snapshot = JsonSerializer.SerializeToUtf8Bytes(settings, JsonOptions);
         await _saveGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -78,7 +78,7 @@ public sealed class JsonSettingsStore : ISettingsStore
             schema,
             path);
 
-        var migrated = schema < 3 || HasProperty(root,
+        var migrated = schema < 4 || HasProperty(root,
             "schema_version",
             "binary_path",
             "close_to_tray",
@@ -90,7 +90,7 @@ public sealed class JsonSettingsStore : ISettingsStore
 
         var settings = new AppSettings
         {
-            SchemaVersion = 3,
+            SchemaVersion = 4,
             TunnelClientSource = source,
             TunnelClientPath = path,
             TunnelClientSetupCompleted = schema >= 3
@@ -143,6 +143,7 @@ public sealed class JsonSettingsStore : ISettingsStore
 
     private static ProfilePreference ParsePreference(JsonElement element) => new()
     {
+        UseForeground = ReadBool(element, false, "useForeground", "use_foreground"),
         AutoConnect = ReadBool(element, false, "autoConnect", "auto_connect"),
         AutoReconnect = ReadBool(element, false, "autoReconnect", "auto_reconnect"),
         Enabled = ReadBool(element, true, "enabled")
@@ -150,7 +151,7 @@ public sealed class JsonSettingsStore : ISettingsStore
 
     private static AppSettings Normalize(AppSettings settings)
     {
-        settings.SchemaVersion = 3;
+        settings.SchemaVersion = 4;
         settings.TunnelClientPath = settings.TunnelClientPath?.Trim() ?? string.Empty;
         settings.ManagedTunnelClientVersion = settings.ManagedTunnelClientVersion?.Trim() ?? string.Empty;
         settings.ThemeMode = string.IsNullOrWhiteSpace(settings.ThemeMode) ? "system" : settings.ThemeMode.Trim().ToLowerInvariant();

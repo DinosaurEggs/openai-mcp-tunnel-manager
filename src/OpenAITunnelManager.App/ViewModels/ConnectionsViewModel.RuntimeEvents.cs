@@ -54,9 +54,9 @@ public partial class ConnectionsViewModel
     private void HandleForegroundProfileExited(string profileName)
     {
         var item = Connections.FirstOrDefault(connection =>
-            !connection.HasRuntime &&
+            connection.RunsInForeground &&
             connection.HasProfile &&
-            string.Equals(connection.ProfileName, profileName, StringComparison.OrdinalIgnoreCase));
+            string.Equals(connection.Identity, profileName, StringComparison.OrdinalIgnoreCase));
         if (item is null || _manualStopped.Contains(item.Identity)) return;
 
         var stopped = item with
@@ -83,7 +83,7 @@ public partial class ConnectionsViewModel
             await concurrency.WaitAsync(cancellationToken);
             try
             {
-                return await _operations.GetStatusAsync(connection, cancellationToken);
+                return await _operations.GetStatusAsync(connection with { UseForeground = FindPreference(connection)?.UseForeground == true }, cancellationToken);
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
