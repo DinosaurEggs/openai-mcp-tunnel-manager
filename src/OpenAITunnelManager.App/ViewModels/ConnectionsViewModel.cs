@@ -140,7 +140,7 @@ public partial class ConnectionsViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanRefresh))]
     public async Task RefreshAsync()
     {
-        if (IsBusy) return;
+        if (IsBusy || _lifetimeCancellation.IsCancellationRequested) return;
         IsBusy = true;
         var selectedIdentity = SelectedConnection?.Identity;
         StatusMessage = "正在从 tunnel-client 读取 Profile 和 Runtime...";
@@ -569,7 +569,7 @@ public partial class ConnectionsViewModel : ObservableObject
     {
         var candidates = Connections
             .Where(item => FindPreference(item) is { Enabled: true, AutoConnect: true })
-            .Where(item => !item.ProcessRunning && !_manualStopped.Contains(item.Identity))
+            .Where(item => !item.ProcessRunning && item.State != RuntimeState.Unknown && !_manualStopped.Contains(item.Identity))
             .ToArray();
         if (candidates.Length == 0) return;
 

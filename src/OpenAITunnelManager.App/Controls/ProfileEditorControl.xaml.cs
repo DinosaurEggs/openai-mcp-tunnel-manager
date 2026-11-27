@@ -78,6 +78,7 @@ public sealed partial class ProfileEditorControl : UserControl
         DeleteSecretCheckBox.IsChecked = false;
         AdvancedHelpText.Text = "高级配置会随“基本”页自动生成；手动修改后将保留你的完整 YAML / JSON。";
         EditorTabs.SelectedIndex = 0;
+        _previousTab = 0;
         ClearValidationError();
 
         _initializing = false;
@@ -200,6 +201,7 @@ public sealed partial class ProfileEditorControl : UserControl
             McpTypeCombo.IsEnabled = _createMode && !_advancedEdited;
             McpTypeCombo.SelectedIndex = metadata.TargetKind == "command" ? 1 : 0;
             TargetBox.Header = metadata.TargetKind == "command" ? "main MCP Command" : "main MCP URL";
+            LoadOfficialFields();
         }
         finally { _initializing = false; }
     }

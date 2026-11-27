@@ -27,7 +27,11 @@ public partial class ConnectionsViewModel
             throw new InvalidOperationException("请先完成当前操作并停止 Manager 持有的前台连接，再切换目录");
         }
         if (directoryChanged && !Settings.LegacyConnectionDataMigrated)
+        {
+            ProfileDirectoryOverride = Settings.ProfileDirectoryOverride;
+            StateDirectoryOverride = Settings.StateDirectoryOverride;
             throw new InvalidOperationException("请先刷新原配置目录，完成历史偏好和凭据迁移");
+        }
         if (directoryChanged)
             foreach (var identity in _reconnectCancellations.Keys.ToArray()) CancelReconnect(identity, resetAttempts: true);
 
