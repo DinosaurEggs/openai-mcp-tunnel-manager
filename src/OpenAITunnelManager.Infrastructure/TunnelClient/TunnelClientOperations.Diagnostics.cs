@@ -98,7 +98,7 @@ public sealed partial class TunnelClientOperations
 
     private static HttpClient CreateHealthClient()
     {
-        var handler = new HttpClientHandler { AllowAutoRedirect = false };
+        var handler = new HttpClientHandler { AllowAutoRedirect = false, UseProxy = false };
         return new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(3) };
     }
 
@@ -121,9 +121,11 @@ public sealed partial class TunnelClientOperations
         if (!TryLoopbackUri(url, out var uri)) return $"拒绝访问非 loopback Health URL：{url}";
         try
         {
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            deadline.CancelAfter(TimeSpan.FromSeconds(3));
             using var request = new HttpRequestMessage(HttpMethod.Get, uri);
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-            using var response = await HealthClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            using var response = await HealthClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
 
             if ((int)response.StatusCode is >= 300 and < 400)
             {
@@ -131,7 +133,7 @@ public sealed partial class TunnelClientOperations
                 return $"拒绝跟随 Health 重定向：HTTP {(int)response.StatusCode} -> {location}";
             }
 
-            var text = await ReadBoundedContentAsync(response.Content, cancellationToken);
+            var text = await ReadBoundedContentAsync(response.Content, deadline.Token);
             try { using var json = JsonDocument.Parse(text); return JsonSerializer.Serialize(json.RootElement, new JsonSerializerOptions { WriteIndented = true }); }
             catch (JsonException) { return $"HTTP {(int)response.StatusCode} {response.ReasonPhrase}{Environment.NewLine}{text}"; }
         }
@@ -139,7 +141,9 @@ public sealed partial class TunnelClientOperations
         {
             return $"拒绝读取 Health 响应：{exception.Message}";
         }
-        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException) { return $"请求失败：{exception.Message}"; }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (OperationCanceledException) { return "Health 请求超时"; }
+        catch (HttpRequestException exception) { return $"请求失败：{exception.Message}"; }
     }
 
     private static async Task<string> ReadBoundedContentAsync(HttpContent content, CancellationToken cancellationToken)
@@ -170,7 +174,7 @@ public sealed partial class TunnelClientOperations
         if (Uri.TryCreate(value, UriKind.Absolute, out var parsed) &&
             (parsed.Scheme == Uri.UriSchemeHttp || parsed.Scheme == Uri.UriSchemeHttps) &&
             (string.Equals(parsed.Host, "localhost", StringComparison.OrdinalIgnoreCase) ||
-             (IPAddress.TryParse(parsed.Host, out var address) && IPAddress.IsLoopback(address))))
+             (IPAddress.TryParse(parsed.DnsSafeHost.Trim('[', ']'), out var address) && IPAddress.IsLoopback(address))))
         {
             uri = parsed; return true;
         }
