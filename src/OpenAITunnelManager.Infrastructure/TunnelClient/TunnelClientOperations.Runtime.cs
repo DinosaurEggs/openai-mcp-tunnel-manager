@@ -39,6 +39,7 @@ public sealed partial class TunnelClientOperations
 
     public async Task RestartAsync(TunnelConnection connection, string? secret, CancellationToken cancellationToken = default)
     {
+        if (connection.HasRuntime) _ = await ValidateNativeRuntimeAsync(connection, cancellationToken);
         await StopAsync(connection, cancellationToken);
         await StartAsync(connection, secret, cancellationToken);
     }
@@ -58,17 +59,24 @@ public sealed partial class TunnelClientOperations
         await RunAsync(["runtimes", "rm", alias, "--json"], false, cancellationToken, TimeSpan.FromSeconds(30));
     }
 
+    private async Task<IReadOnlyList<string>> ValidateNativeRuntimeAsync(TunnelConnection connection, CancellationToken cancellationToken)
+    {
+        var profilePath = FirstNonEmpty(connection.RuntimeProfilePath, connection.ProfilePath);
+        if (string.IsNullOrWhiteSpace(profilePath) || !File.Exists(profilePath)) return [];
+        var profileName = FirstNonEmpty(connection.RuntimeProfileName, connection.ProfileName, connection.RuntimeAlias);
+        var directory = Path.GetDirectoryName(profilePath);
+        if (string.IsNullOrWhiteSpace(directory) || !SamePath(profilePath, Path.Combine(directory, profileName + ".yaml")))
+            throw new InvalidOperationException("Runtime 的 Profile 路径与官方生成路径不同，请使用完整 Profile 运行方式");
+        using var inventory = await RunJsonAsync(["runtimes", "list", "--json"], cancellationToken);
+        var stateRoot = GetString(inventory.RootElement, "state_root");
+        return NativeRuntimeProfileGuard.Validate(await File.ReadAllTextAsync(profilePath, cancellationToken),
+            stateRoot, connection.RuntimeAlias);
+    }
+
     private async Task ConnectRuntimeAsync(TunnelConnection connection, string? secret, CancellationToken cancellationToken)
     {
         var profilePath = FirstNonEmpty(connection.RuntimeProfilePath, connection.ProfilePath);
-        if (!string.IsNullOrWhiteSpace(profilePath) && File.Exists(profilePath))
-        {
-            using var inventory = await RunJsonAsync(["runtimes", "list", "--json"], cancellationToken);
-            var stateRoot = GetString(inventory.RootElement, "state_root");
-            NativeRuntimeProfileGuard.Validate(
-                await File.ReadAllTextAsync(profilePath, cancellationToken),
-                stateRoot, connection.RuntimeAlias);
-        }
+        var controlPlaneFlags = await ValidateNativeRuntimeAsync(connection, cancellationToken);
         var metadata = ProfileMetadataReader.Read(profilePath);
         var tunnelId = FirstNonEmpty(metadata.TunnelId, connection.TunnelId);
         if (string.IsNullOrWhiteSpace(tunnelId)) throw new InvalidOperationException("官方 Runtime 状态/Profile 中缺少 Tunnel ID，无法安全重建 connect 命令");
@@ -82,6 +90,7 @@ public sealed partial class TunnelClientOperations
             "runtimes", "connect", "--alias", connection.RuntimeAlias, "--tunnel-id", tunnelId,
             "--profile", profileName, "--runtime-api-key", metadata.ApiKeyRef
         };
+        args.AddRange(controlPlaneFlags);
         var profileDirectory = Path.GetDirectoryName(profilePath);
         if (!string.IsNullOrWhiteSpace(profileDirectory)) args.AddRange(["--profile-dir", profileDirectory]);
         if (kind is "server_url" or "mcp_server_url" or "url" or "http" or "https") args.AddRange(["--mcp-server-url", target]);
