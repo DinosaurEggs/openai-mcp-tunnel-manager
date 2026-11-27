@@ -53,11 +53,11 @@ public sealed partial class TunnelClientOperations
     {
         var profilePath = FirstNonEmpty(connection.RuntimeProfilePath, connection.ProfilePath);
         var metadata = ProfileMetadataReader.Read(profilePath);
-        var tunnelId = FirstNonEmpty(connection.TunnelId, metadata.TunnelId);
+        var tunnelId = FirstNonEmpty(metadata.TunnelId, connection.TunnelId);
         if (string.IsNullOrWhiteSpace(tunnelId)) throw new InvalidOperationException("官方 Runtime 状态/Profile 中缺少 Tunnel ID，无法安全重建 connect 命令");
         var profileName = FirstNonEmpty(connection.RuntimeProfileName, connection.ProfileName, connection.RuntimeAlias);
-        var kind = FirstNonEmpty(connection.TargetKind, metadata.TargetKind).ToLowerInvariant().Replace('-', '_');
-        var target = FirstNonEmpty(connection.TargetValue, metadata.TargetValue);
+        var kind = FirstNonEmpty(metadata.TargetKind, connection.TargetKind).ToLowerInvariant().Replace('-', '_');
+        var target = FirstNonEmpty(metadata.TargetValue, connection.TargetValue);
         if (string.IsNullOrWhiteSpace(target)) throw new InvalidOperationException("官方 Runtime 状态/Profile 中缺少 main MCP target；请用 tunnel-client 修复该 Runtime 配置");
 
         var args = new List<string>
