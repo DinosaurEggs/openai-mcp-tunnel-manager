@@ -12,6 +12,7 @@ namespace OpenAITunnelManager.App;
 public sealed partial class MainWindow
 {
     private const int MaxCachedLogStates = 8;
+    private readonly SemaphoreSlim _logReadGate = new(1, 1);
     private readonly Dictionary<string, LogViewState> _logStates = new(StringComparer.OrdinalIgnoreCase);
     private bool _logConsoleConfigured;
     private bool _logPaused;
@@ -114,8 +115,13 @@ public sealed partial class MainWindow
         UpdateLogToolbarState();
     }
 
-    private void LogClear_Click(object sender, RoutedEventArgs e)
+    private async void LogClear_Click(object sender, RoutedEventArgs e)
     {
+        var identity = ViewModel.SelectedConnection?.Identity;
+        await _logReadGate.WaitAsync();
+        try
+        {
+            if (!string.Equals(identity, ViewModel.SelectedConnection?.Identity, StringComparison.OrdinalIgnoreCase)) return;
         if (TryGetCurrentLogState(out var state))
         {
             state.Buffer.Clear();
@@ -128,6 +134,8 @@ public sealed partial class MainWindow
         _logAtBottom = true;
         LogConsole.Clear();
         UpdateLogToolbarState();
+        }
+        finally { _logReadGate.Release(); }
     }
 
     private void LogFindPrevious_Click(object sender, RoutedEventArgs e) =>
@@ -191,6 +199,17 @@ public sealed partial class MainWindow
         bool forceReload,
         bool resetConsoleState = false)
     {
+        await _logReadGate.WaitAsync();
+        try
+        {
+            if (!_logConsoleConfigured) return;
+            await RefreshLogConsoleCoreAsync(forceReload, resetConsoleState);
+        }
+        finally { _logReadGate.Release(); }
+    }
+
+    private async Task RefreshLogConsoleCoreAsync(bool forceReload, bool resetConsoleState)
+    {
         var item = ViewModel.SelectedConnection;
         if (item is null)
         {
@@ -231,7 +250,7 @@ public sealed partial class MainWindow
                            !_logStates.TryGetValue(item.Identity, out var existing) ||
                            !PathsEqual(existing.Path, fullPath);
 
-            var state = GetOrCreateLogState(item.Identity, fullPath, forceReload || resetConsoleState);
+            var state = GetOrCreateLogState(item.Identity, fullPath, forceReload);
             _activeLogIdentity = item.Identity;
             state.LastAccess = ++_logAccessCounter;
             EvictOldLogStates();
@@ -255,6 +274,7 @@ public sealed partial class MainWindow
                 .Select(raw => JsonLogParser.ParseLine(raw, state.NextSequence++))
                 .ToArray();
             var trimmedNow = added.Length > 0 && state.Buffer.Append(added);
+            if (!_logConsoleConfigured || !string.Equals(item.Identity, ViewModel.SelectedConnection?.Identity, StringComparison.OrdinalIgnoreCase)) return;
 
             if (switched || forceReload)
             {
@@ -349,6 +369,7 @@ public sealed partial class MainWindow
     private bool TryGetCurrentLogState(out LogViewState state)
     {
         if (!string.IsNullOrWhiteSpace(_activeLogIdentity) &&
+            string.Equals(_activeLogIdentity, ViewModel.SelectedConnection?.Identity, StringComparison.OrdinalIgnoreCase) &&
             _logStates.TryGetValue(_activeLogIdentity, out var found))
         {
             state = found;
