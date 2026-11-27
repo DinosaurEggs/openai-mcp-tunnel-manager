@@ -33,6 +33,19 @@ public sealed partial class MainWindow
 
         var editor = new ProfileEditorControl();
         editor.InitializeForCreate();
+        try
+        {
+            var samples = await ViewModel.GetProfileSamplesAsync();
+            if (samples.Count > 0)
+            {
+                var choices = new ComboBox { ItemsSource = new[] { "空白 Profile" }.Concat(samples).ToArray(), SelectedIndex = 0, HorizontalAlignment = HorizontalAlignment.Stretch };
+                var dialog = NewDialog("Profile 模板", choices, "继续");
+                if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+                if (choices.SelectedIndex > 0 && choices.SelectedItem is string sample)
+                    editor.LoadTemplate(await ViewModel.ReadProfileSampleAsync(sample));
+            }
+        }
+        catch (Exception exception) { await ShowErrorAsync($"读取官方模板失败：{exception.Message}"); }
         await ShowProfileEditorDialogAsync("新建 Profile", editor, "创建", async () =>
         {
             var raw = editor.PrepareDocument();
