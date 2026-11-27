@@ -206,6 +206,35 @@ public sealed class TunnelClientIntegrationTests : IDisposable
     }
 
     [Fact]
+    public async Task CreatingExistingProfileDoesNotOverwriteIt()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var (service, operations) = Services();
+        await operations.CreateProfileAsync(Spec("existing"), token);
+        var item = Assert.Single(await service.GetConnectionsAsync(token));
+        var original = await File.ReadAllTextAsync(item.ProfilePath, token);
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            operations.CreateProfileTextAsync("existing", original.Replace("64343/stream", "9000/mcp"), token));
+        Assert.Equal(original, await File.ReadAllTextAsync(item.ProfilePath, token));
+    }
+
+    [Fact]
+    public async Task NativeRuntimeRejectsAdvancedProfileBeforeConnect()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var (service, operations) = Services();
+        await operations.CreateProfileAsync(Spec("advanced"), token);
+        var item = Assert.Single(await service.GetConnectionsAsync(token));
+        var original = await File.ReadAllTextAsync(item.ProfilePath, token) +
+            "\ntracing:\n  enabled: true\n  file: traces.jsonl\n";
+        await File.WriteAllTextAsync(item.ProfilePath, original, token);
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            operations.StartAsync(RuntimeSeed(item, "advanced"), "secret", token));
+        Assert.Equal(original, await File.ReadAllTextAsync(item.ProfilePath, token));
+        Assert.False(Assert.Single(await service.GetConnectionsAsync(token)).HasRuntime);
+    }
+
+    [Fact]
     public async Task ProfileDeleteRevalidatesOfficialPathBeforeDeleting()
     {
         var token = TestContext.Current.CancellationToken;
