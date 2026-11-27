@@ -24,19 +24,14 @@ public sealed partial class ConnectionsViewModel
                 $"高级配置中的 main MCP 类型为 {metadata.TargetKind}，与基本页选择的 {expectedTargetKind} 不一致。请保持一致后再保存。");
         }
 
-        var updated = ProfileDocumentEditor.ApplyCommonFields(
-            rawText,
-            metadata.TunnelId,
-            metadata.TargetKind,
-            metadata.TargetValue,
-            spec.TunnelId.Trim(),
-            spec.McpTarget.Trim());
+        if (metadata.TunnelId != spec.TunnelId || metadata.TargetValue != spec.McpTarget)
+            throw new InvalidOperationException("Profile 内容与创建参数不一致");
 
         IsBusy = true;
         StatusMessage = $"正在创建 Profile：{spec.Name}";
         try
         {
-            await _operations.CreateProfileTextAsync(spec.Name.Trim(), updated);
+            await _operations.CreateProfileTextAsync(spec.Name.Trim(), rawText);
             await SaveCreatedProfilePreferencesAsync(spec.Name.Trim(), preference, secret);
             await RefreshAfterOperationAsync($"profile:{spec.Name.Trim()}", $"Profile 已创建：{spec.Name.Trim()}");
         }

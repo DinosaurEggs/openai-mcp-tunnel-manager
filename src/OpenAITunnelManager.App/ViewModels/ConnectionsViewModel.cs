@@ -282,8 +282,6 @@ public partial class ConnectionsViewModel : ObservableObject
     public async Task SaveSelectedProfileAsync(
         ProfileEditorData original,
         string rawText,
-        string tunnelId,
-        string targetValue,
         ProfilePreference preference,
         string? newSecret,
         bool deleteSecret)
@@ -296,20 +294,14 @@ public partial class ConnectionsViewModel : ObservableObject
         }
 
         EnsureClientAvailable();
-        var updated = ProfileDocumentEditor.ApplyCommonFields(
-            rawText,
-            original.TunnelId,
-            original.TargetKind,
-            original.TargetValue,
-            tunnelId.Trim(),
-            targetValue.Trim());
+        _ = ProfileDocumentEditor.ReadMetadata(rawText);
         IsBusy = true;
         try
         {
             var currentText = await _operations.ReadProfileTextAsync(item.ProfileName, item.ProfilePath);
             if (!string.Equals(currentText, original.Text, StringComparison.Ordinal))
                 throw new InvalidOperationException("Profile 已被其他程序修改，请重新打开编辑器");
-            await _operations.SaveProfileTextAsync(item.ProfileName, item.ProfilePath, updated);
+            await _operations.SaveProfileTextAsync(item.ProfileName, item.ProfilePath, rawText);
             await SavePreferenceForItemAsync(item, preference, newSecret, deleteSecret);
             await RefreshAfterOperationAsync(item.Identity, $"Profile 已保存：{item.ProfileName}");
         }

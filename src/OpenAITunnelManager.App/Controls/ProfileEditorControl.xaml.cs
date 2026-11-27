@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenAITunnelManager.Core.Models;
+using OpenAITunnelManager.Infrastructure.TunnelClient;
 using WinUIEditor;
 
 namespace OpenAITunnelManager.App.Controls;
@@ -12,6 +13,8 @@ public sealed partial class ProfileEditorControl : UserControl
     private bool _advancedEdited;
     private bool _createMode;
     private string _originalTargetKind = "server_url";
+    private int _previousTab;
+    private bool _switchingTab;
 
     public ProfileEditorControl()
     {
@@ -133,7 +136,7 @@ public sealed partial class ProfileEditorControl : UserControl
         ValidationInfo.Title = "无法保存";
         ValidationInfo.Message = message;
         ValidationInfo.IsOpen = true;
-        EditorTabs.SelectedIndex = advanced ? 1 : 0;
+        if (advanced) EditorTabs.SelectedIndex = 1;
     }
 
     public void ClearValidationError()
@@ -143,12 +146,65 @@ public sealed partial class ProfileEditorControl : UserControl
         ValidationInfo.Message = string.Empty;
     }
 
-    private void EditorTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    public string PrepareDocument()
     {
-        if (_initializing) return;
-        if (_createMode && EditorTabs.SelectedIndex == 1 && !_advancedEdited)
+        ClearValidationError();
+        if (EditorTabs.SelectedIndex == 0) ApplyBasicToDocument();
+        return RawText;
+    }
+
+    private void ApplyBasicToDocument()
+    {
+        if (_createMode && !_advancedEdited)
         {
             SyncCreateRawFromBasic();
+            return;
+        }
+        var metadata = ProfileDocumentEditor.ReadMetadata(RawText);
+        var updated = ProfileDocumentEditor.ApplyCommonFields(
+            RawText, metadata.TunnelId, metadata.TargetKind, metadata.TargetValue,
+            TunnelId, CommonTargetSupported ? TargetValue : metadata.TargetValue);
+        if (updated == RawText) return;
+        _initializing = true;
+        try { SetRawEditorText(updated); }
+        finally { _initializing = false; }
+    }
+
+    private void LoadBasicFromDocument()
+    {
+        var metadata = ProfileDocumentEditor.ReadMetadata(RawText);
+        _initializing = true;
+        try
+        {
+            _originalTargetKind = metadata.TargetKind;
+            TunnelIdBox.Text = metadata.TunnelId;
+            TargetBox.Text = metadata.TargetValue;
+            TargetBox.IsEnabled = CommonTargetSupported;
+            McpTypeCombo.Visibility = CommonTargetSupported ? Visibility.Visible : Visibility.Collapsed;
+            McpTypeCombo.IsEnabled = _createMode && !_advancedEdited;
+            McpTypeCombo.SelectedIndex = metadata.TargetKind == "command" ? 1 : 0;
+            TargetBox.Header = metadata.TargetKind == "command" ? "main MCP Command" : "main MCP URL";
+        }
+        finally { _initializing = false; }
+    }
+
+    private void EditorTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_initializing || _switchingTab) return;
+        var selected = EditorTabs.SelectedIndex;
+        try
+        {
+            if (_previousTab == 0 && selected == 1) ApplyBasicToDocument();
+            else if (_previousTab == 1 && selected == 0) LoadBasicFromDocument();
+            _previousTab = selected;
+            ClearValidationError();
+        }
+        catch (Exception exception)
+        {
+            _switchingTab = true;
+            try { EditorTabs.SelectedIndex = _previousTab; }
+            finally { _switchingTab = false; }
+            ShowValidationError(exception.Message);
         }
     }
 

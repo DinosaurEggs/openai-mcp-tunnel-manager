@@ -33,69 +33,20 @@ public sealed partial class MainWindow
 
         var editor = new ProfileEditorControl();
         editor.InitializeForCreate();
-        ProfileSpec? spec = null;
-
-        bool ValidateCreate()
+        await ShowProfileEditorDialogAsync("新建 Profile", editor, "创建", async () =>
         {
-            editor.ClearValidationError();
-            spec = new ProfileSpec(editor.ProfileName, editor.TunnelId, editor.McpType, editor.TargetValue);
-            var errors = spec.Validate();
-            if (errors.Count > 0)
-            {
-                editor.ShowValidationError(string.Join(Environment.NewLine, errors));
-                return false;
-            }
-
-            if (!editor.AdvancedEdited) return true;
-            if (string.IsNullOrWhiteSpace(editor.RawText))
-            {
-                editor.ShowValidationError("Profile 内容不能为空", advanced: true);
-                return false;
-            }
-
-            try
-            {
-                var metadata = ProfileDocumentEditor.ReadMetadata(editor.RawText);
-                if (!string.Equals(metadata.TargetKind, editor.ExpectedTargetKind, StringComparison.Ordinal))
-                {
-                    editor.ShowValidationError(
-                        $"高级配置中的 main MCP 类型为 {metadata.TargetKind}，与基本页选择的 {editor.ExpectedTargetKind} 不一致。",
-                        advanced: true);
-                    return false;
-                }
-            }
-            catch (Exception exception)
-            {
-                editor.ShowValidationError(exception.Message, advanced: true);
-                return false;
-            }
-
-            return true;
-        }
-
-        if (!await ShowProfileEditorDialogAsync("新建 Profile", editor, "创建", ValidateCreate) || spec is null) return;
-        try
-        {
+            var raw = editor.PrepareDocument();
+            var metadata = ProfileDocumentEditor.ReadMetadata(raw);
+            var spec = new ProfileSpec(editor.ProfileName, metadata.TunnelId,
+                metadata.TargetKind == "command" ? McpType.Stdio : McpType.Http, metadata.TargetValue);
             var preference = new ProfilePreference
             {
                 Enabled = editor.Enabled,
                 AutoConnect = editor.AutoConnect,
                 AutoReconnect = editor.AutoReconnect
             };
-
-            if (editor.AdvancedEdited)
-            {
-                await ViewModel.CreateProfileFromTextAsync(spec, editor.RawText, editor.Secret, preference);
-            }
-            else
-            {
-                await ViewModel.CreateProfileAsync(spec, editor.Secret, preference);
-            }
-        }
-        catch (Exception exception)
-        {
-            await ShowErrorAsync(exception.Message);
-        }
+            await ViewModel.CreateProfileFromTextAsync(spec, raw, editor.Secret, preference);
+        });
     }
 
     private async void EditProfile_Click(object sender, RoutedEventArgs e)
@@ -121,69 +72,20 @@ public sealed partial class MainWindow
                 data.HasSavedSecret,
                 data.Text);
 
-            bool ValidateEdit()
+            await ShowProfileEditorDialogAsync($"编辑 Profile - {data.Name}", editor, "保存", async () =>
             {
-                editor.ClearValidationError();
-                var validationTarget = editor.CommonTargetSupported ? editor.TargetValue : "http://127.0.0.1/";
-                var spec = new ProfileSpec(
-                    data.Name,
-                    editor.TunnelId,
-                    data.TargetKind == "command" ? McpType.Stdio : McpType.Http,
-                    validationTarget);
-                var errors = spec.Validate();
-                if (errors.Count > 0)
-                {
-                    editor.ShowValidationError(string.Join(Environment.NewLine, errors));
-                    return false;
-                }
-
-                if (string.IsNullOrWhiteSpace(editor.RawText))
-                {
-                    editor.ShowValidationError("Profile 内容不能为空", advanced: true);
-                    return false;
-                }
-
-                try
-                {
-                    if (editor.CommonTargetSupported)
+                var raw = editor.PrepareDocument();
+                await ViewModel.SaveSelectedProfileAsync(
+                    data, raw,
+                    new ProfilePreference
                     {
-                        ProfileDocumentEditor.ApplyCommonFields(
-                            editor.RawText,
-                            data.TunnelId,
-                            data.TargetKind,
-                            data.TargetValue,
-                            editor.TunnelId,
-                            editor.TargetValue);
-                    }
-                    else
-                    {
-                        ProfileDocumentEditor.ReadMetadata(editor.RawText);
-                    }
-                }
-                catch (Exception exception)
-                {
-                    editor.ShowValidationError(exception.Message, advanced: true);
-                    return false;
-                }
-
-                return true;
-            }
-
-            if (!await ShowProfileEditorDialogAsync($"编辑 Profile - {data.Name}", editor, "保存", ValidateEdit)) return;
-            await ViewModel.SaveSelectedProfileAsync(
-                data,
-                editor.RawText,
-                editor.TunnelId,
-                editor.CommonTargetSupported ? editor.TargetValue : data.TargetValue,
-                new ProfilePreference
-                {
-                    Enabled = editor.Enabled,
-                    AutoConnect = editor.AutoConnect,
-                    AutoReconnect = editor.AutoReconnect,
-                    UseForeground = data.Preference.UseForeground
-                },
-                editor.Secret,
-                editor.DeleteSecret);
+                        Enabled = editor.Enabled,
+                        AutoConnect = editor.AutoConnect,
+                        AutoReconnect = editor.AutoReconnect,
+                        UseForeground = data.Preference.UseForeground
+                    },
+                    editor.Secret, editor.DeleteSecret);
+            });
         }
         catch (Exception exception)
         {

@@ -150,7 +150,7 @@ public sealed class HealthCompatibilityTests
         public Task<string> GetVersionAsync(CancellationToken cancellationToken = default) => Task.FromResult("fake");
         public Task<IReadOnlyList<TunnelConnection>> GetConnectionsAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<TunnelConnection>>([connection]);
-        public Task<TunnelConnection> GetStatusAsync(TunnelConnection item, CancellationToken cancellationToken = default) =>
+        public Task<TunnelConnection> GetStatusAsync(TunnelConnection item, CancellationToken cancellationToken = default, string? secret = null) =>
             Task.FromResult(connection);
         public Task StopRuntimeAsync(string alias, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
