@@ -5,7 +5,7 @@ public sealed class LogConsoleBuffer
     public const int DefaultMaxEntries = 30_000;
     public const int DefaultMaxCharacters = 8 * 1024 * 1024;
 
-    private readonly List<StructuredLogEntry> _entries = [];
+    private readonly Queue<StructuredLogEntry> _entries = new();
     private readonly int _maxEntries;
     private readonly int _maxCharacters;
     private int _characterCount;
@@ -33,7 +33,7 @@ public sealed class LogConsoleBuffer
         ArgumentNullException.ThrowIfNull(entries);
         foreach (var entry in entries)
         {
-            _entries.Add(entry);
+            _entries.Enqueue(entry);
             _characterCount += entry.RawText.Length;
         }
         return Trim();
@@ -99,8 +99,7 @@ public sealed class LogConsoleBuffer
         while (_entries.Count > 0 &&
                (_entries.Count > _maxEntries || _characterCount > _maxCharacters))
         {
-            _characterCount -= _entries[0].RawText.Length;
-            _entries.RemoveAt(0);
+            _characterCount -= _entries.Dequeue().RawText.Length;
             WasTrimmed = true;
             trimmed = true;
         }
