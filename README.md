@@ -17,6 +17,10 @@ Windows 上的 `tunnel-client` 可视化管理器，使用 C# / WinUI 3 开发�
 
 目标框架为 `net10.0-windows10.0.19041.0`，发布为 unpackaged、self-contained 的 `win-x64` / `win-arm64`。
 
+## 支持的 tunnel-client 版本
+
+本版本以官方 Full Client v0.0.21 为最低支持版本。低于 v0.0.21 的版本不再支持，下载、切换与自定义客户端校验均执行版本检查。以后发布的正式版本可通过更新入口安装；本轮实际验收基线为 v0.0.21。
+
 ## 数据来源与刷新模型
 
 `tunnel-client` 始终是 Profile、Runtime alias、Tunnel ID、MCP target、Runtime 状态、Health URL 和 Runtime 日志路径的唯一事实来源。GUI 不保存第二套 Tunnel 定义。
@@ -70,7 +74,7 @@ OpenAITunnelManager.exe
 
 托管模式只在用户点击“下载”或“更新”时访问 GitHub，不在应用启动时自动检查新版本。Manager 会按当前架构精确选择官方 `windows-amd64` / `windows-arm64` Release 资产，校验 Release digest 与 `SHA256SUMS.txt`，并在新版本通过 `--version` 验证后才切换。更新失败时继续使用当前已安装版本。
 
-托管版本按版本号安装到 `tunnel-client\\versions\\<version>`。开发分支支持手动选择已安装版本、安装指定正式版本与重新下载当前版本；保留已安装版本供回退，并由设置页显式清理其他版本。
+托管版本按版本号安装到 `tunnel-client\\versions\\<version>`。开发分支支持手动选择已安装版本、安装指定正式版本与重新下载当前版本；保留已安装的受支持版本供切换，并由设置页显式清理其他版本。
 
 `config/settings.json` 只保存 Manager 本机偏好：
 
@@ -130,7 +134,7 @@ Manager 保存的 Runtime API Key 进入 Windows Credential Manager，不写入 
 - 手动 Stop、关闭自动重连、删除配置、应用退出都会取消待执行重连；
 - Runtime API Key 使用 Windows Credential Manager，并支持 Runtime → Profile 凭据查找；
 - `doctor --explain`；
-- Health / Ready 与新旧 Runtime 兼容；
+- Health / Ready 采用当前官方 Runtime 状态契约；
 - WinUIEdit / Scintilla 原生日志控制台：JSON `level` 精确解析、UTF-8 增量读取、搜索/正则、等级过滤、Follow Tail、暂停/继续、清空、复制、导出、自动换行与重复折叠；
 - 停止后保留最后已知日志路径用于继续读取和“打开文件位置”；
 - 打开配置 / 日志文件所在位置；

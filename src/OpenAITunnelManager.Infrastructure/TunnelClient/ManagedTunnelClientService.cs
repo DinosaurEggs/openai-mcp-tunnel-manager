@@ -71,7 +71,7 @@ public sealed class ManagedTunnelClientService : IDisposable
 
     public bool IsInstalled(string version)
     {
-        if (string.IsNullOrWhiteSpace(version)) return false;
+        if (!TunnelClientVersionPolicy.IsSupported(version)) return false;
         try
         {
             return File.Exists(GetExecutablePath(version));
@@ -95,6 +95,7 @@ public sealed class ManagedTunnelClientService : IDisposable
     {
         if (tag is not null && !System.Text.RegularExpressions.Regex.IsMatch(tag, @"^v\d+\.\d+\.\d+$"))
             throw new ArgumentException("请输入正式版本标签，例如 v0.0.21");
+        if (tag is not null) TunnelClientVersionPolicy.RequireSupported(tag);
         var releaseApi = tag is null ? LatestReleaseApi : "https://api.github.com/repos/openai/tunnel-client/releases/tags/" + Uri.EscapeDataString(tag);
         using var response = await _httpClient.GetAsync(
             releaseApi,
@@ -117,6 +118,7 @@ public sealed class ManagedTunnelClientService : IDisposable
             throw new InvalidDataException("GitHub latest release 缺少 tag_name");
         }
 
+        TunnelClientVersionPolicy.RequireSupported(version);
         if (tag is not null && !string.Equals(version, tag, StringComparison.Ordinal))
             throw new InvalidDataException("官方返回的版本与请求不一致");
         var architecture = GetWindowsAssetArchitecture(RuntimeInformation.ProcessArchitecture);
@@ -231,6 +233,7 @@ public sealed class ManagedTunnelClientService : IDisposable
 
     public async Task ValidateInstalledVersionAsync(string version, CancellationToken cancellationToken = default)
     {
+        TunnelClientVersionPolicy.RequireSupported(version);
         var text = await ValidateExecutableAsync(GetExecutablePath(version), cancellationToken).ConfigureAwait(false);
         VerifyVersion(text, version);
     }
@@ -553,6 +556,7 @@ public sealed class ManagedTunnelClientService : IDisposable
         if (string.IsNullOrWhiteSpace(versionText))
             throw new InvalidDataException("tunnel-client.exe --version 未返回版本信息");
 
+        TunnelClientVersionPolicy.RequireSupported(versionText);
         return versionText;
     }
 

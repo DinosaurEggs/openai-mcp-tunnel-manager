@@ -25,7 +25,7 @@ public partial class ConnectionsViewModel
             if (string.IsNullOrWhiteSpace(Settings.ManagedTunnelClientVersion) ||
                 !_managedTunnelClient.IsInstalled(Settings.ManagedTunnelClientVersion))
             {
-                SetClientUnavailable("托管 tunnel-client 尚未安装，请下载最新版或选择自定义版本");
+                SetClientUnavailable("托管 tunnel-client 尚未安装或版本低于 v0.0.21，请下载最新版或选择受支持的自定义版本");
                 return;
             }
         }

@@ -35,7 +35,7 @@ public static class Program
 
         if (args.Length == 1 && args[0] == "--version")
         {
-            Console.WriteLine("v0.0.14-fake");
+            Console.WriteLine("v0.0.21 (git sha: fake)");
             return 0;
         }
 

@@ -147,17 +147,15 @@ public partial class ConnectionsViewModel : ObservableObject
         try
         {
             _ = _operations.ResolveExecutablePath();
-            IsClientAvailable = true;
-            var capabilitiesTask = _operations.GetCapabilitiesAsync();
-            var itemsTask = _inventory.GetConnectionsAsync();
-            await Task.WhenAll(capabilitiesTask, itemsTask);
-            var capabilities = capabilitiesTask.Result;
+            var capabilities = await _operations.GetCapabilitiesAsync();
             if (!capabilities.Profiles || !capabilities.Runtimes || !capabilities.Doctor)
                 throw new InvalidOperationException("请选择包含 profiles、runtimes 和 doctor 的完整 tunnel-client");
             ClientVersion = capabilities.Version;
 
-            var migration = await MigrateConnectionDataAsync(itemsTask.Result);
-            var statuses = await ReadStatusesAsync(itemsTask.Result, CancellationToken.None);
+            var items = await _inventory.GetConnectionsAsync();
+            var migration = await MigrateConnectionDataAsync(items);
+            var statuses = await ReadStatusesAsync(items, CancellationToken.None);
+            IsClientAvailable = true;
             MergeConnections(statuses);
 
             SelectedConnection = VisibleConnections.FirstOrDefault(item =>
@@ -700,8 +698,9 @@ public partial class ConnectionsViewModel : ObservableObject
     {
         if (IsBusy || IsTunnelClientUpdating || _lifetimeCancellation.IsCancellationRequested)
             throw new InvalidOperationException("当前正在执行其他操作或应用正在退出");
+        if (!IsClientAvailable)
+            throw new InvalidOperationException("请先在设置中配置受支持的完整 tunnel-client，然后刷新");
         _ = _operations.ResolveExecutablePath();
-        IsClientAvailable = true;
     }
 
     private void NotifyActionState()

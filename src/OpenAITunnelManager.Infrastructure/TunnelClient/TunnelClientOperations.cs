@@ -52,6 +52,7 @@ public sealed partial class TunnelClientOperations : ITunnelClientOperations
             }
 
             var version = (await RunAsync(["--version"], false, cancellationToken, TimeSpan.FromSeconds(10))).StandardOutput.Trim();
+            TunnelClientVersionPolicy.RequireSupported(version);
             async Task<bool> Supports(params string[] args) =>
                 (await RunAsync(args, true, cancellationToken, TimeSpan.FromSeconds(10))).ExitCode == 0;
 

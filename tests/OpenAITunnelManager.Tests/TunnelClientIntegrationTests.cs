@@ -28,7 +28,7 @@ public sealed class TunnelClientIntegrationTests : IDisposable
         var token = TestContext.Current.CancellationToken;
         var (service, operations) = Services();
         var capabilities = await operations.GetCapabilitiesAsync(token);
-        Assert.Contains("v0.0.14-fake", capabilities.Version, StringComparison.Ordinal);
+        Assert.Contains("v0.0.21", capabilities.Version, StringComparison.Ordinal);
         Assert.True(capabilities.Profiles);
         Assert.True(capabilities.Runtimes);
         Assert.True(capabilities.Doctor);
