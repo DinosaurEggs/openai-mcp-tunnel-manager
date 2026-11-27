@@ -59,6 +59,35 @@ public sealed record TunnelConnection(
     {
     }
 
+    public string StateRoot { get; init; } = string.Empty;
+    public IReadOnlyList<string> RuntimeOwnedPaths { get; init; } = [];
+    public bool HasStdioTarget { get; init; }
+    public string ControlPlaneState { get; init; } = string.Empty;
+    public string ControlPlaneReason { get; init; } = string.Empty;
+    public string AdminUiUrl { get; init; } = string.Empty;
+    public string RemoteResidency { get; init; } = string.Empty;
+    public string RemoteLookupStatus { get; init; } = string.Empty;
+    public string RunningTargetKind { get; init; } = string.Empty;
+    public string RunningTargetValue { get; init; } = string.Empty;
+    public string StartedAt { get; init; } = string.Empty;
+    public string Residency { get; init; } = string.Empty;
+    public string Authentication { get; init; } = string.Empty;
+    public DateTimeOffset? RefreshedAt { get; init; }
+    public IReadOnlyList<RuntimeRepairAction> RepairActions { get; init; } = [];
+    public string ControlPlaneText => string.IsNullOrWhiteSpace(ControlPlaneState) ? "未观测" : ControlPlaneState;
+    public string RefreshedText => RefreshedAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") ?? "未刷新";
+    public bool CanOpenAdminUi => Uri.TryCreate(AdminUiUrl, UriKind.Absolute, out var uri) &&
+        (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps) && string.IsNullOrEmpty(uri.UserInfo);
+    public bool ConfigurationPending => ProcessRunning && !string.IsNullOrEmpty(RunningTargetValue) &&
+        (!string.Equals(TargetKind, RunningTargetKind, StringComparison.Ordinal) || !string.Equals(TargetValue, RunningTargetValue, StringComparison.Ordinal));
+    public string ConfigurationStatusText => ConfigurationPending ? "磁盘 MCP Target 与运行实例不同，重启后生效" :
+        ProcessRunning && string.IsNullOrEmpty(RunningTargetValue) ? "尚未获取运行中的 MCP Target" : "未发现 MCP Target 变更";
+    public string RepairText => string.Join(Environment.NewLine + Environment.NewLine,
+        RepairActions.Select(action => $"{action.Id}: {action.Reason}{Environment.NewLine}{action.Command}"));
+
+    public bool UseForeground { get; init; }
+    public bool RunsInForeground => !HasRuntime || UseForeground;
+    public string ExecutionModeText => RunsInForeground ? "Profile 前台" : "Native Runtime";
     public bool HasRuntime => !string.IsNullOrWhiteSpace(RuntimeAlias);
     public bool HasProfile => !string.IsNullOrWhiteSpace(ProfileName) && !string.IsNullOrWhiteSpace(ProfilePath);
     public string Identity => HasRuntime ? $"runtime:{RuntimeAlias}" : HasProfile ? $"profile:{ProfileName}" : $"item:{Name}";
@@ -100,3 +129,5 @@ public sealed record TunnelConnection(
         }
     }
 }
+
+public sealed record RuntimeRepairAction(string Id, string Reason, string Command);

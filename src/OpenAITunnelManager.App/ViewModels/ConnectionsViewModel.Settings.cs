@@ -6,9 +6,34 @@ namespace OpenAITunnelManager.App.ViewModels;
 public partial class ConnectionsViewModel
 {
     private CancellationTokenSource? _tunnelClientOperationCts;
+    private readonly SemaphoreSlim _clientSettingsGate = new(1, 1);
 
     public async Task PersistSettingsAsync()
     {
+        await _clientSettingsGate.WaitAsync();
+        try { await PersistSettingsCoreAsync(); }
+        finally { _clientSettingsGate.Release(); }
+    }
+
+    private async Task PersistSettingsCoreAsync()
+    {
+        var directoryChanged = !string.Equals(Settings.ProfileDirectoryOverride, ProfileDirectoryOverride.Trim(), StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(Settings.StateDirectoryOverride, StateDirectoryOverride.Trim(), StringComparison.OrdinalIgnoreCase);
+        if (directoryChanged && (IsBusy || IsTunnelClientUpdating || Connections.Any(item => item.RunsInForeground && item.ProcessRunning)))
+        {
+            ProfileDirectoryOverride = Settings.ProfileDirectoryOverride;
+            StateDirectoryOverride = Settings.StateDirectoryOverride;
+            throw new InvalidOperationException("请先完成当前操作并停止 Manager 持有的前台连接，再切换目录");
+        }
+        if (directoryChanged && !Settings.LegacyConnectionDataMigrated)
+        {
+            ProfileDirectoryOverride = Settings.ProfileDirectoryOverride;
+            StateDirectoryOverride = Settings.StateDirectoryOverride;
+            throw new InvalidOperationException("请先刷新原配置目录，完成历史偏好和凭据迁移");
+        }
+        if (directoryChanged)
+            foreach (var identity in _reconnectCancellations.Keys.ToArray()) CancelReconnect(identity, resetAttempts: true);
+
         _autostart.SetEnabled(StartWithWindows);
 
         Settings.TunnelClientPath = TunnelClientPath.Trim();
@@ -22,71 +47,102 @@ public partial class ConnectionsViewModel
         StatusMessage = "设置已应用";
         NotifyOverviewState();
         NotifyTunnelClientSettingsChanged();
+        if (directoryChanged)
+        {
+            Connections.Clear();
+            SelectedConnection = null;
+            _manualStopped.Clear();
+            _lastLogPaths.Clear();
+            _initialAutoConnectApplied = true;
+            await RefreshAsync();
+        }
+    }
+
+    private void EnsureClientChangeAllowed()
+    {
+        if (IsTunnelClientUpdating || IsBusy || _lifetimeCancellation.IsCancellationRequested ||
+            Connections.Any(item => item.ProcessRunning && item.RunsInForeground))
+            throw new InvalidOperationException("请先停止 Manager 持有的前台连接并完成其他操作");
+    }
+
+    private async Task CommitClientSelectionAsync(TunnelClientSource source, string path, string version, CancellationToken token)
+    {
+        await _clientSettingsGate.WaitAsync(token);
+        try
+        {
+            var previous = (Settings.TunnelClientSource, Settings.TunnelClientSetupCompleted,
+                Settings.TunnelClientPath, Settings.ManagedTunnelClientVersion);
+            Settings.TunnelClientSource = source;
+            Settings.TunnelClientSetupCompleted = true;
+            Settings.TunnelClientPath = path;
+            Settings.ManagedTunnelClientVersion = version;
+            try { await _settingsStore.SaveAsync(Settings, token); }
+            catch
+            {
+                (Settings.TunnelClientSource, Settings.TunnelClientSetupCompleted,
+                    Settings.TunnelClientPath, Settings.ManagedTunnelClientVersion) = previous;
+                throw;
+            }
+            TunnelClientPath = path;
+            ManagedTunnelClientVersion = version;
+            ApplySettingsToOptions();
+            NotifyTunnelClientSettingsChanged();
+        }
+        finally { _clientSettingsGate.Release(); }
     }
 
     public async Task SwitchToManagedTunnelClientAsync()
     {
-        if (IsTunnelClientUpdating)
-            throw new InvalidOperationException("当前正在执行 tunnel-client 操作");
-
-        LastTunnelClientOperationFailed = false;
-        TunnelClientUpdateStatus = string.Empty;
-        Settings.TunnelClientSource = TunnelClientSource.Managed;
-        Settings.TunnelClientSetupCompleted = true;
-        await _settingsStore.SaveAsync(Settings);
-        ApplySettingsToOptions();
-        NotifyTunnelClientSettingsChanged();
-
-        if (!string.IsNullOrWhiteSpace(Settings.ManagedTunnelClientVersion) &&
-            _managedTunnelClient.IsInstalled(Settings.ManagedTunnelClientVersion))
+        EnsureClientChangeAllowed();
+        var version = Settings.ManagedTunnelClientVersion;
+        if (_managedTunnelClient.IsInstalled(version))
         {
-            _initialAutoConnectApplied = false;
-            StartRuntimeEvents();
-            await RefreshAsync();
+            await UseInstalledTunnelClientVersionAsync(version);
             return;
         }
 
-        SetClientUnavailable("托管 tunnel-client 尚未安装");
+        IsTunnelClientUpdating = true;
+        try
+        {
+            await CommitClientSelectionAsync(TunnelClientSource.Managed, Settings.TunnelClientPath,
+                version, _lifetimeCancellation.Token);
+            LastTunnelClientOperationFailed = false;
+            TunnelClientUpdateStatus = string.Empty;
+            SetClientUnavailable("托管 tunnel-client 尚未安装");
+        }
+        finally { IsTunnelClientUpdating = false; }
     }
 
     public async Task<TunnelClientValidationResult> ApplyTunnelClientPathAsync(
-        string path,
-        CancellationToken cancellationToken = default)
+        string path, CancellationToken cancellationToken = default)
     {
-        if (IsTunnelClientUpdating)
-            throw new InvalidOperationException("当前正在执行 tunnel-client 操作");
-
-        var validation = await _managedTunnelClient.ValidateCustomExecutableAsync(path, cancellationToken);
-
-        LastTunnelClientOperationFailed = false;
-        TunnelClientUpdateStatus = string.Empty;
-        TunnelClientPath = validation.ExecutablePath;
-        CustomTunnelClientVersionText = validation.VersionText;
-        Settings.TunnelClientSource = TunnelClientSource.Custom;
-        Settings.TunnelClientSetupCompleted = true;
-        Settings.TunnelClientPath = validation.ExecutablePath;
-        await _settingsStore.SaveAsync(Settings);
-        ApplySettingsToOptions();
-        NotifyTunnelClientSettingsChanged();
-
-        _initialAutoConnectApplied = false;
-        StartRuntimeEvents();
-        await RefreshAsync();
-        TunnelClientUpdateStatus = "自定义版本已就绪";
-        NotifyTunnelClientSettingsChanged();
-        return validation;
+        EnsureClientChangeAllowed();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetimeCancellation.Token);
+        IsTunnelClientUpdating = true;
+        try
+        {
+            var validation = await _managedTunnelClient.ValidateCustomExecutableAsync(path, linked.Token);
+            await CommitClientSelectionAsync(TunnelClientSource.Custom, validation.ExecutablePath,
+                Settings.ManagedTunnelClientVersion, linked.Token);
+            LastTunnelClientOperationFailed = false;
+            CustomTunnelClientVersionText = validation.VersionText;
+            StartRuntimeEvents();
+            await RefreshAsync();
+            TunnelClientUpdateStatus = IsClientAvailable ? "自定义版本已就绪" : StatusMessage;
+            return validation;
+        }
+        finally { IsTunnelClientUpdating = false; NotifyTunnelClientSettingsChanged(); }
     }
 
     public async Task<ManagedTunnelClientInstallResult> InstallManagedTunnelClientAsync(
         bool forceDownload = false,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, string? requestedVersion = null)
     {
-        if (IsTunnelClientUpdating)
-            throw new InvalidOperationException("当前正在执行其他操作");
+        EnsureClientChangeAllowed();
 
         var wasInstalled = !string.IsNullOrWhiteSpace(Settings.ManagedTunnelClientVersion) &&
                            _managedTunnelClient.IsInstalled(Settings.ManagedTunnelClientVersion);
-        var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetimeCancellation.Token);
         _tunnelClientOperationCts = linkedCts;
 
         IsTunnelClientUpdating = true;
@@ -106,27 +162,22 @@ public partial class ConnectionsViewModel
 
         try
         {
-            var result = await _managedTunnelClient.InstallLatestAsync(
+            var result = await _managedTunnelClient.InstallVersionAsync(
                 Settings.ManagedTunnelClientVersion,
+                requestedVersion,
                 forceDownload,
                 linkedCts.Token,
                 progress);
 
-            Settings.TunnelClientSource = TunnelClientSource.Managed;
-            Settings.TunnelClientSetupCompleted = true;
-            Settings.ManagedTunnelClientVersion = result.Version;
-            ManagedTunnelClientVersion = result.Version;
-            await _settingsStore.SaveAsync(Settings);
-            ApplySettingsToOptions();
+            await CommitClientSelectionAsync(TunnelClientSource.Managed, Settings.TunnelClientPath,
+                result.Version, linkedCts.Token);
 
             TunnelClientUpdateStatus = result.Message;
             StatusMessage = result.Message;
             NotifyTunnelClientSettingsChanged();
 
-            _initialAutoConnectApplied = false;
             StartRuntimeEvents();
             await RefreshAsync();
-            _managedTunnelClient.CleanupOldVersions(result.Version);
             return result;
         }
         catch (OperationCanceledException) when (linkedCts.IsCancellationRequested)
@@ -160,8 +211,30 @@ public partial class ConnectionsViewModel
         _tunnelClientOperationCts?.Cancel();
     }
 
+    public IReadOnlyList<string> GetInstalledTunnelClientVersions() => _managedTunnelClient.ListInstalledVersions();
+
+    public async Task UseInstalledTunnelClientVersionAsync(string version)
+    {
+        EnsureClientChangeAllowed();
+        IsTunnelClientUpdating = true;
+        try
+        {
+            var path = _managedTunnelClient.GetExecutablePath(version);
+            await _managedTunnelClient.ValidateInstalledVersionAsync(version, _lifetimeCancellation.Token);
+            await CommitClientSelectionAsync(TunnelClientSource.Managed, Settings.TunnelClientPath,
+                version, _lifetimeCancellation.Token);
+            LastTunnelClientOperationFailed = false;
+            StartRuntimeEvents();
+            await RefreshAsync();
+        }
+        finally { IsTunnelClientUpdating = false; }
+    }
+
     public int CleanupDownloadedTunnelClientVersions()
     {
+        EnsureClientAvailable();
+        if (Connections.Any(item => item.ProcessRunning || item.State == RuntimeState.Unknown))
+            throw new InvalidOperationException("请先停止连接并刷新状态，再清理旧版本");
         var deleted = _managedTunnelClient.CleanupDownloadedVersions(Settings.ManagedTunnelClientVersion);
         TunnelClientUpdateStatus = deleted == 0
             ? "没有可清理的旧版本"

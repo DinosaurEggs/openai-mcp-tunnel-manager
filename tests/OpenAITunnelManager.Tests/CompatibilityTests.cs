@@ -56,7 +56,7 @@ public sealed class CompatibilityTests
 
         var loaded = await new JsonSettingsStore(path).LoadAsync(token);
 
-        Assert.Equal(3, loaded.SchemaVersion);
+        Assert.Equal(4, loaded.SchemaVersion);
         Assert.Equal(TunnelClientSource.Custom, loaded.TunnelClientSource);
         Assert.True(loaded.TunnelClientSetupCompleted);
         Assert.Equal("C:/Tools/tunnel-client.exe", loaded.TunnelClientPath);
@@ -68,7 +68,7 @@ public sealed class CompatibilityTests
         Assert.False(loaded.ProfilePreferences["idea"].Enabled);
 
         var rewritten = await File.ReadAllTextAsync(path, token);
-        Assert.Contains("\"schemaVersion\": 3", rewritten, StringComparison.Ordinal);
+        Assert.Contains("\"schemaVersion\": 4", rewritten, StringComparison.Ordinal);
         Assert.Contains("\"tunnelClientSource\": \"custom\"", rewritten, StringComparison.Ordinal);
         Assert.Contains("\"tunnelClientSetupCompleted\": true", rewritten, StringComparison.Ordinal);
         Assert.Contains("\"tunnelClientPath\"", rewritten, StringComparison.Ordinal);
@@ -97,7 +97,7 @@ public sealed class CompatibilityTests
 
         var loaded = await new JsonSettingsStore(path).LoadAsync(token);
 
-        Assert.Equal(3, loaded.SchemaVersion);
+        Assert.Equal(4, loaded.SchemaVersion);
         Assert.Equal(TunnelClientSource.Managed, loaded.TunnelClientSource);
         Assert.False(loaded.TunnelClientSetupCompleted);
         Assert.Empty(loaded.ManagedTunnelClientVersion);

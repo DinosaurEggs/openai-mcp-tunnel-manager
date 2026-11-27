@@ -82,11 +82,22 @@ public sealed class ManagedTunnelClientService : IDisposable
         }
     }
 
-    public async Task<TunnelClientReleaseInfo> GetLatestReleaseAsync(
-        CancellationToken cancellationToken = default)
+    public IReadOnlyList<string> ListInstalledVersions() =>
+        !Directory.Exists(_paths.ManagedTunnelClientVersionsDirectory) ? [] :
+        Directory.EnumerateDirectories(_paths.ManagedTunnelClientVersionsDirectory)
+            .Select(Path.GetFileName).OfType<string>().Where(IsInstalled)
+            .OrderByDescending(version => version, StringComparer.OrdinalIgnoreCase).ToArray();
+
+    public Task<TunnelClientReleaseInfo> GetLatestReleaseAsync(CancellationToken cancellationToken = default) =>
+        GetReleaseAsync(null, cancellationToken);
+
+    public async Task<TunnelClientReleaseInfo> GetReleaseAsync(string? tag, CancellationToken cancellationToken = default)
     {
+        if (tag is not null && !System.Text.RegularExpressions.Regex.IsMatch(tag, @"^v\d+\.\d+\.\d+$"))
+            throw new ArgumentException("请输入正式版本标签，例如 v0.0.21");
+        var releaseApi = tag is null ? LatestReleaseApi : "https://api.github.com/repos/openai/tunnel-client/releases/tags/" + Uri.EscapeDataString(tag);
         using var response = await _httpClient.GetAsync(
-            LatestReleaseApi,
+            releaseApi,
             HttpCompletionOption.ResponseHeadersRead,
             cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
@@ -106,6 +117,8 @@ public sealed class ManagedTunnelClientService : IDisposable
             throw new InvalidDataException("GitHub latest release 缺少 tag_name");
         }
 
+        if (tag is not null && !string.Equals(version, tag, StringComparison.Ordinal))
+            throw new InvalidDataException("官方返回的版本与请求不一致");
         var architecture = GetWindowsAssetArchitecture(RuntimeInformation.ProcessArchitecture);
         var assetName = $"tunnel-client-{version}-windows-{architecture}.zip";
         if (!root.TryGetProperty("assets", out var assets) || assets.ValueKind != JsonValueKind.Array)
@@ -173,28 +186,34 @@ public sealed class ManagedTunnelClientService : IDisposable
         string currentVersion,
         bool forceDownload = false,
         CancellationToken cancellationToken = default,
-        IProgress<ManagedTunnelClientProgress>? progress = null)
+        IProgress<ManagedTunnelClientProgress>? progress = null) =>
+        await InstallVersionAsync(currentVersion, null, forceDownload, cancellationToken, progress).ConfigureAwait(false);
+
+    public async Task<ManagedTunnelClientInstallResult> InstallVersionAsync(
+        string currentVersion, string? tag, bool forceDownload = false,
+        CancellationToken cancellationToken = default, IProgress<ManagedTunnelClientProgress>? progress = null)
     {
         progress?.Report(new ManagedTunnelClientProgress(
             ManagedTunnelClientProgressStage.Checking,
             "正在检查官方最新版本…"));
-        var release = await GetLatestReleaseAsync(cancellationToken).ConfigureAwait(false);
+        var release = await GetReleaseAsync(tag, cancellationToken).ConfigureAwait(false);
         var executablePath = GetExecutablePath(release.Version);
 
         if (!forceDownload &&
             string.Equals(currentVersion?.Trim(), release.Version, StringComparison.OrdinalIgnoreCase) &&
             File.Exists(executablePath))
         {
+            await ValidateInstalledVersionAsync(release.Version, cancellationToken).ConfigureAwait(false);
             return new ManagedTunnelClientInstallResult(
                 release.Version,
                 executablePath,
                 false,
-                $"tunnel-client 已是最新版 {release.Version}");
+                $"tunnel-client 已安装 {release.Version}");
         }
 
         if (!forceDownload && File.Exists(executablePath))
         {
-            _ = await ValidateExecutableAsync(executablePath, cancellationToken).ConfigureAwait(false);
+            await ValidateInstalledVersionAsync(release.Version, cancellationToken).ConfigureAwait(false);
             return new ManagedTunnelClientInstallResult(
                 release.Version,
                 executablePath,
@@ -208,6 +227,19 @@ public sealed class ManagedTunnelClientService : IDisposable
             executablePath,
             true,
             $"已安装 tunnel-client {release.Version}");
+    }
+
+    public async Task ValidateInstalledVersionAsync(string version, CancellationToken cancellationToken = default)
+    {
+        var text = await ValidateExecutableAsync(GetExecutablePath(version), cancellationToken).ConfigureAwait(false);
+        VerifyVersion(text, version);
+    }
+
+    private static void VerifyVersion(string reported, string expected)
+    {
+        var pattern = @"(?<![A-Za-z0-9.])v?" + System.Text.RegularExpressions.Regex.Escape(expected.TrimStart('v')) + @"(?![A-Za-z0-9.])";
+        if (!System.Text.RegularExpressions.Regex.IsMatch(reported, pattern))
+            throw new InvalidDataException($"tunnel-client 版本不符：期望 {expected}，实际 {reported}");
     }
 
     public async Task<TunnelClientValidationResult> ValidateCustomExecutableAsync(
@@ -390,23 +422,28 @@ public sealed class ManagedTunnelClientService : IDisposable
             var packageDirectory = Path.GetDirectoryName(extractedExecutable)!;
             CopyDirectory(packageDirectory, installDirectory);
             var stagedExecutable = Path.Combine(installDirectory, "tunnel-client.exe");
-            _ = await ValidateExecutableAsync(stagedExecutable, cancellationToken).ConfigureAwait(false);
-
-            if (Directory.Exists(targetDirectory))
-            {
-                TryDeleteDirectory(targetDirectory);
-                if (Directory.Exists(targetDirectory))
-                {
-                    throw new IOException($"无法替换不完整的 tunnel-client 目录：{targetDirectory}");
-                }
-            }
+            VerifyVersion(await ValidateExecutableAsync(stagedExecutable, cancellationToken).ConfigureAwait(false), release.Version);
+            cancellationToken.ThrowIfCancellationRequested();
 
             Directory.CreateDirectory(Path.GetDirectoryName(targetDirectory)!);
-            Directory.Move(installDirectory, targetDirectory);
+            var previousDirectory = Path.Combine(operationDirectory, "previous");
+            if (Directory.Exists(targetDirectory))
+                Directory.Move(targetDirectory, previousDirectory);
+            try
+            {
+                Directory.Move(installDirectory, targetDirectory);
+            }
+            catch
+            {
+                if (Directory.Exists(previousDirectory) && !Directory.Exists(targetDirectory))
+                    Directory.Move(previousDirectory, targetDirectory);
+                throw;
+            }
         }
         finally
         {
-            TryDeleteDirectory(operationDirectory);
+            if (!Directory.Exists(Path.Combine(operationDirectory, "previous")) || Directory.Exists(targetDirectory))
+                TryDeleteDirectory(operationDirectory);
         }
     }
 
@@ -493,38 +530,22 @@ public sealed class ManagedTunnelClientService : IDisposable
         if (!File.Exists(executablePath))
             throw new FileNotFoundException("下载后的 tunnel-client.exe 不存在", executablePath);
 
-        var startInfo = new ProcessStartInfo(executablePath)
+        var runner = new TunnelClientProcessRunner(new TunnelClientOptions
         {
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true,
-            WorkingDirectory = Path.GetDirectoryName(executablePath)!
-        };
-        startInfo.ArgumentList.Add("--version");
-
-        using var process = Process.Start(startInfo)
-            ?? throw new InvalidOperationException("无法启动下载后的 tunnel-client.exe");
-
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutCts.CancelAfter(ValidationTimeout);
-        try
+            Source = OpenAITunnelManager.Core.Models.TunnelClientSource.Custom,
+            ExecutablePath = executablePath
+        });
+        var result = await runner.RunAsync(["--version"], false, cancellationToken, ValidationTimeout)
+            .ConfigureAwait(false);
+        foreach (var command in new[] { "profiles", "runtimes", "doctor" })
         {
-            await process.WaitForExitAsync(timeoutCts.Token).ConfigureAwait(false);
+            var capability = await runner.RunAsync([command, "--help"], true, cancellationToken, ValidationTimeout)
+                .ConfigureAwait(false);
+            if (capability.ExitCode != 0)
+                throw new InvalidDataException($"tunnel-client.exe 不支持 {command}，请选择完整客户端");
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            TryKillProcessTree(process);
-            throw new TimeoutException("验证 tunnel-client.exe 超时");
-        }
-
-        var standardOutput = await process.StandardOutput.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
-        var standardError = await process.StandardError.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
-        if (process.ExitCode != 0)
-        {
-            throw new InvalidDataException(
-                $"tunnel-client.exe --version 失败（exit {process.ExitCode}）：{FirstNonEmpty(standardError, standardOutput)}");
-        }
+        var standardOutput = result.StandardOutput;
+        var standardError = result.StandardError;
 
         var versionText = FirstNonEmpty(standardOutput, standardError)
             .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)

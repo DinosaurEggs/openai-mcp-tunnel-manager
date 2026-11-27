@@ -34,6 +34,7 @@ public sealed partial class MainWindow : Window
         ViewModel = viewModel;
         InitializeComponent();
         RootGrid.DataContext = ViewModel;
+        ManagerVersionText.Text = $"当前版本：v{ManagerVersion.ToString(3)}";
         ViewModel.PropertyChanged += ViewModel_TunnelClientUiPropertyChanged;
         ConnectionsList.RightTapped += ConnectionsList_RightTapped;
         ConfigureUiPolish();
@@ -95,6 +96,7 @@ public sealed partial class MainWindow : Window
             MissingClientInfo.IsOpen = !ViewModel.IsClientAvailable;
             RequestResponsiveLayout();
             AppLog.Info($"Initial tunnel-client load completed: {ViewModel.StatusMessage}");
+            await ShowManagerUpdateResultAsync();
 
         }
         catch (Exception exception)
@@ -107,7 +109,7 @@ public sealed partial class MainWindow : Window
 
     private async void LogTimer_Tick(DispatcherQueueTimer sender, object args)
     {
-        if (!IsLogTabSelected() || _logRefreshInProgress) return;
+        if (!IsWindowVisible(_hwnd) || ConnectionsPage.Visibility != Visibility.Visible || !IsLogTabSelected() || _logRefreshInProgress) return;
         _logRefreshInProgress = true;
         try
         {
@@ -130,9 +132,11 @@ public sealed partial class MainWindow : Window
         DashboardPage.Visibility = tag == "dashboard" ? Visibility.Visible : Visibility.Collapsed;
         ConnectionsPage.Visibility = tag == "connections" ? Visibility.Visible : Visibility.Collapsed;
         SettingsPage.Visibility = tag == "settings" ? Visibility.Visible : Visibility.Collapsed;
+        RemotePage.Visibility = tag == "remote" ? Visibility.Visible : Visibility.Collapsed;
 
         RequestResponsiveLayout();
         RequestUiPolish();
+        if (_initialized && tag == "remote" && AdminProfileCombo.ItemsSource is null) _ = LoadAdminProfilesAsync();
 
         if (!updateNavigation) return;
 
@@ -217,6 +221,8 @@ public sealed partial class MainWindow : Window
                 Visibility = Visibility.Visible
             };
             _trayIcon.ForceCreate(enablesEfficiencyMode: false);
+            ViewModel.PropertyChanged += UpdateTraySummary;
+            UpdateTraySummary(null, new System.ComponentModel.PropertyChangedEventArgs(nameof(ViewModel.ActiveCount)));
             AppLog.Info("WinUI system tray icon created");
         }
         catch (Exception exception)
@@ -267,18 +273,25 @@ public sealed partial class MainWindow : Window
         ViewModel.StatusMessage = "窗口已恢复";
     }
 
-    private async Task ExitApplicationAsync()
+    private async Task ExitApplicationAsync(Action? beforeClose = null)
     {
         if (_shutdownInProgress) return;
         _shutdownInProgress = true;
+        if (beforeClose is null) _managerUpdateCancellation?.Cancel();
+        RootGrid.IsHitTestVisible = false;
         _logTimer.Stop();
         try
         {
             await ViewModel.ShutdownAsync();
+            await _logReadGate.WaitAsync();
+            _logReadGate.Release();
+            beforeClose?.Invoke();
         }
         catch (Exception exception)
         {
             AppLog.Error("Application shutdown cleanup failed", exception);
+            if (beforeClose is not null)
+                await ShowErrorAsync($"更新未安装：{exception.Message}。请重新启动 Manager 后重试。");
         }
         finally
         {
@@ -289,8 +302,15 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private void UpdateTraySummary(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (_trayIcon is not null && e.PropertyName is nameof(ViewModel.ActiveCount) or nameof(ViewModel.TotalCount) or nameof(ViewModel.ProblemCount))
+            _trayIcon.ToolTipText = $"OpenAI MCP Tunnel Manager\n运行 {ViewModel.ActiveCount}/{ViewModel.TotalCount} · 异常 {ViewModel.ProblemCount}";
+    }
+
     private void DisposeTray()
     {
+        ViewModel.PropertyChanged -= UpdateTraySummary;
         if (_trayIcon is null) return;
         try
         {
@@ -305,6 +325,10 @@ public sealed partial class MainWindow : Window
             _trayIcon = null;
         }
     }
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool IsWindowVisible(nint hWnd);
 
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

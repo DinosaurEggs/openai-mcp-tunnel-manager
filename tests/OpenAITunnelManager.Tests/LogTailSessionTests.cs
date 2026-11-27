@@ -96,6 +96,45 @@ public sealed class LogTailSessionTests
         }
     }
 
+    [Fact]
+    public async Task DetectsReplacementWithSameLength()
+    {
+        var path = CreateTempPath();
+        var replacement = CreateTempPath();
+        var token = TestContext.Current.CancellationToken;
+        try
+        {
+            await File.WriteAllTextAsync(path, "old\n", token);
+            var session = new LogTailSession(path);
+            Assert.Equal(["old"], await session.ReadAsync(cancellationToken: token));
+            await File.WriteAllTextAsync(replacement, "new\n", token);
+            File.Move(replacement, path, overwrite: true);
+            var lines = await session.ReadAsync(cancellationToken: token);
+            Assert.Contains("new", lines);
+            Assert.Contains(lines, line => line.Contains("轮转"));
+            Assert.Empty(await session.ReadAsync(cancellationToken: token));
+        }
+        finally { TryDelete(path); TryDelete(replacement); }
+    }
+
+    [Fact]
+    public async Task IndicatesSkippedBacklog()
+    {
+        var path = CreateTempPath();
+        var token = TestContext.Current.CancellationToken;
+        try
+        {
+            await File.WriteAllTextAsync(path, "start\n", token);
+            var session = new LogTailSession(path);
+            await session.ReadAsync(cancellationToken: token);
+            await File.AppendAllTextAsync(path, new string('a', 5 * 1024 * 1024) + "\nlatest\n", token);
+            var lines = await session.ReadAsync(cancellationToken: token);
+            Assert.Contains("latest", lines);
+            Assert.Contains(lines, line => line.Contains("积压"));
+        }
+        finally { TryDelete(path); }
+    }
+
     private static string CreateTempPath() =>
         Path.Combine(Path.GetTempPath(), $"openai-tunnel-log-{Guid.NewGuid():N}.log");
 

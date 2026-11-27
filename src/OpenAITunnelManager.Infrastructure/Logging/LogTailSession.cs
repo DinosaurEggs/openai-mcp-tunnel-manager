@@ -1,4 +1,7 @@
 using System.Buffers;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
 using System.Text;
 
 namespace OpenAITunnelManager.Infrastructure.Logging;
@@ -16,6 +19,7 @@ public sealed class LogTailSession
     private readonly StringBuilder _pending = new();
     private bool _discardingLongLine;
     private bool _initialized;
+    private FileIdentity? _identity;
 
     public LogTailSession(string path)
     {
@@ -29,57 +33,59 @@ public sealed class LogTailSession
         bool forceReload = false,
         CancellationToken cancellationToken = default)
     {
-        var length = new FileInfo(Path).Length;
-        if (forceReload || Offset > length)
-        {
-            Reset();
-            return await ReadTailAsync(length, cancellationToken).ConfigureAwait(false);
-        }
-
-        if (!_initialized)
-            return await ReadTailAsync(length, cancellationToken).ConfigureAwait(false);
-
-        var backlog = length - Offset;
-        if (backlog <= 0) return [];
-
-        if (backlog > MaxBacklogBytes)
-        {
-            Reset();
-            return await ReadTailAsync(length, cancellationToken).ConfigureAwait(false);
-        }
-
-        var lines = new List<string>();
         await using var stream = OpenLog(Path);
-        stream.Seek(Offset, SeekOrigin.Begin);
-        var remaining = Math.Min(backlog, MaxReadPerRefreshBytes);
-        var buffer = ArrayPool<byte>.Shared.Rent(ReadBufferBytes);
+        var identity = GetIdentity(stream.SafeFileHandle);
+        var length = stream.Length;
+        var replaced = _identity is { } old && old != identity;
+        var reset = forceReload || !_initialized || replaced || Offset > length;
+        var backlog = reset ? length : length - Offset;
+        var skipped = backlog > MaxBacklogBytes || (reset && length > InitialTailBytes);
+        var start = reset || skipped ? Math.Max(0, length - InitialTailBytes) : Offset;
+        var requested = checked((int)Math.Min(length - start, MaxReadPerRefreshBytes));
+        var buffer = ArrayPool<byte>.Shared.Rent(Math.Max(requested, 1));
         try
         {
-            while (remaining > 0)
+            stream.Seek(start, SeekOrigin.Begin);
+            var total = 0;
+            while (total < requested)
             {
-                var requested = (int)Math.Min(buffer.Length, remaining);
-                var read = await stream.ReadAsync(buffer.AsMemory(0, requested), cancellationToken).ConfigureAwait(false);
+                var read = await stream.ReadAsync(buffer.AsMemory(total, requested - total), cancellationToken).ConfigureAwait(false);
                 if (read == 0) break;
-                DecodeBytes(buffer, 0, read, lines);
-                Offset += read;
-                remaining -= read;
+                total += read;
             }
+            cancellationToken.ThrowIfCancellationRequested();
+            // Do not change the decoder/cursor until the entire read succeeded.
+            if (reset || skipped) Reset();
+            var lines = new List<string>();
+            if (replaced && !forceReload) lines.Add("[Manager] 日志文件已轮转或替换");
+            if (skipped) lines.Add("[Manager] 日志积压超出读取上限，已跳到最新内容");
+            var offset = 0;
+            if ((reset || skipped) && start > 0 && total > 0)
+            {
+                var newline = Array.IndexOf(buffer, (byte)'\n', 0, total);
+                if (newline >= 0) offset = newline + 1;
+                else
+                {
+                    offset = total;
+                    _discardingLongLine = true;
+                }
+            }
+            if (total > offset) DecodeBytes(buffer, offset, total - offset, lines);
+            Offset = start + total;
+            _initialized = true;
+            _identity = identity;
+            return lines;
         }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
-
-        return lines;
+        finally { ArrayPool<byte>.Shared.Return(buffer); }
     }
 
     public void SkipToEnd()
     {
-        var length = File.Exists(Path) ? new FileInfo(Path).Length : 0;
-        Offset = length;
-        _decoder.Reset();
-        _pending.Clear();
-        _discardingLongLine = false;
+        Reset();
+        if (!File.Exists(Path)) return;
+        using var stream = OpenLog(Path);
+        _identity = GetIdentity(stream.SafeFileHandle);
+        Offset = stream.Length;
         _initialized = true;
     }
 
@@ -90,54 +96,7 @@ public sealed class LogTailSession
         _pending.Clear();
         _discardingLongLine = false;
         _initialized = false;
-    }
-
-    private async Task<IReadOnlyList<string>> ReadTailAsync(
-        long length,
-        CancellationToken cancellationToken)
-    {
-        _initialized = true;
-        if (length <= 0)
-        {
-            Offset = 0;
-            return [];
-        }
-
-        var start = Math.Max(0, length - InitialTailBytes);
-        var bytesToRead = checked((int)(length - start));
-        var buffer = ArrayPool<byte>.Shared.Rent(Math.Max(1, bytesToRead));
-        var totalRead = 0;
-        try
-        {
-            await using var stream = OpenLog(Path);
-            stream.Seek(start, SeekOrigin.Begin);
-            while (totalRead < bytesToRead)
-            {
-                var read = await stream.ReadAsync(
-                    buffer.AsMemory(totalRead, bytesToRead - totalRead),
-                    cancellationToken).ConfigureAwait(false);
-                if (read == 0) break;
-                totalRead += read;
-            }
-
-            var offset = 0;
-            if (start > 0 && totalRead > 0)
-            {
-                var newline = Array.IndexOf(buffer, (byte)'\n', 0, totalRead);
-                offset = newline >= 0 ? newline + 1 : FindUtf8Boundary(buffer, totalRead);
-            }
-
-            var lines = new List<string>();
-            if (totalRead > offset)
-                DecodeBytes(buffer, offset, totalRead - offset, lines);
-
-            Offset = start + totalRead;
-            return lines;
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
+        _identity = null;
     }
 
     private void DecodeBytes(byte[] buffer, int offset, int count, ICollection<string> lines)
@@ -199,13 +158,32 @@ public sealed class LogTailSession
         ReadBufferBytes,
         FileOptions.Asynchronous | FileOptions.SequentialScan);
 
-    private static int FindUtf8Boundary(byte[] buffer, int count)
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeFileInformation
     {
-        var limit = Math.Min(count, 4);
-        for (var index = 0; index < limit; index++)
-        {
-            if ((buffer[index] & 0xC0) != 0x80) return index;
-        }
-        return limit;
+        public uint Attributes;
+        public System.Runtime.InteropServices.ComTypes.FILETIME CreationTime;
+        public System.Runtime.InteropServices.ComTypes.FILETIME LastAccessTime;
+        public System.Runtime.InteropServices.ComTypes.FILETIME LastWriteTime;
+        public uint VolumeSerialNumber;
+        public uint FileSizeHigh;
+        public uint FileSizeLow;
+        public uint NumberOfLinks;
+        public uint FileIndexHigh;
+        public uint FileIndexLow;
+    }
+
+    private readonly record struct FileIdentity(uint Volume, ulong Index);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetFileInformationByHandle(SafeFileHandle handle, out NativeFileInformation information);
+
+    private static FileIdentity GetIdentity(SafeFileHandle handle)
+    {
+        if (!GetFileInformationByHandle(handle, out var information))
+            throw new IOException("无法读取日志文件标识", new Win32Exception(Marshal.GetLastWin32Error()));
+        return new FileIdentity(information.VolumeSerialNumber,
+            ((ulong)information.FileIndexHigh << 32) | information.FileIndexLow);
     }
 }

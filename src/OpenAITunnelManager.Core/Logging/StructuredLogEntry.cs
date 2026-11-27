@@ -9,7 +9,7 @@ public sealed record StructuredLogEntry(
     string RawText,
     IReadOnlyDictionary<string, string>? Fields)
 {
-    public string DuplicateKey => $"{Severity}\u001f{Message}";
+    public string DuplicateKey => $"{Severity}\u001f{Logger}\u001f{Message}";
 
     public string ToConsoleText()
     {
@@ -25,13 +25,16 @@ public sealed record StructuredLogEntry(
             _ => "     "
         };
         var logger = string.IsNullOrWhiteSpace(Logger) ? string.Empty : $" [{Logger}]";
-        return $"{timestamp} {level}{logger} {Message}".TrimEnd();
+        var identifiers = Fields is null ? string.Empty : string.Join(" ", Fields
+            .Where(pair => pair.Key is "request_id" or "trace_id" or "span_id" or "mcp_request_id" or "server_request_id")
+            .Select(pair => $"{pair.Key}={pair.Value}"));
+        return $"{timestamp} {level}{logger} {Message} {identifiers}".TrimEnd();
     }
 }
 
 public sealed record LogDisplayEntry(StructuredLogEntry Entry, int RepeatCount)
 {
-    public string ToConsoleText() => RepeatCount > 1
+    public string ToConsoleText(bool raw = false) => raw ? Entry.RawText : RepeatCount > 1
         ? $"{Entry.ToConsoleText()}  ×{RepeatCount}"
         : Entry.ToConsoleText();
 }

@@ -64,7 +64,7 @@
                                 <TextBox
                                     x:Name="TunnelIdBox"
                                     Header="Tunnel ID"
-                                    PlaceholderText="tunnel_ + 32 位小写十六进制字符"
+                                    PlaceholderText="tunnel ID（支持官方命名空间格式）"
                                     HorizontalAlignment="Stretch"
                                     TextChanged="BasicField_Changed" />
                                 <ComboBox
@@ -88,6 +88,11 @@
                                     FontSize="12"
                                     Opacity="0.65"
                                     TextWrapping="Wrap" />
+                            </StackPanel>
+
+                            <StackPanel x:Name="OfficialFieldsPanel" Spacing="10" HorizontalAlignment="Stretch">
+                                <TextBlock Text="运行与认证配置" FontSize="16" FontWeight="SemiBold" />
+                                <TextBlock Text="留空使用官方默认值。复杂映射和列表可在高级配置中编辑。" TextWrapping="Wrap" Opacity="0.65" />
                             </StackPanel>
 
                             <StackPanel Spacing="10" HorizontalAlignment="Stretch">

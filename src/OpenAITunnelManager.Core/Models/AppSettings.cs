@@ -4,7 +4,7 @@ namespace OpenAITunnelManager.Core.Models;
 
 public sealed class AppSettings
 {
-    public int SchemaVersion { get; set; } = 3;
+    public int SchemaVersion { get; set; } = 4;
     public TunnelClientSource TunnelClientSource { get; set; } = TunnelClientSource.Managed;
     public string TunnelClientPath { get; set; } = string.Empty;
     public bool TunnelClientSetupCompleted { get; set; }
@@ -14,40 +14,14 @@ public sealed class AppSettings
     public string ThemeMode { get; set; } = "system";
     public string ProfileDirectoryOverride { get; set; } = string.Empty;
     public string StateDirectoryOverride { get; set; } = string.Empty;
+    public bool LegacyConnectionDataMigrated { get; set; } = true;
     public Dictionary<string, ProfilePreference> ProfilePreferences { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
-    public ProfilePreference GetPreference(TunnelConnection connection)
-    {
-        foreach (var key in PreferenceKeys(connection))
-        {
-            if (ProfilePreferences.TryGetValue(key, out var preference))
-            {
-                return preference;
-            }
-        }
+    public ProfilePreference GetPreference(TunnelConnection connection) =>
+        ConnectionScope.Keys(connection).Select(key => ProfilePreferences.GetValueOrDefault(key)).FirstOrDefault(pref => pref is not null)
+        ?? new ProfilePreference();
 
-        var created = new ProfilePreference();
-        ProfilePreferences[connection.HasProfile ? $"profile:{connection.ProfileName}" : connection.Identity] = created;
-        return created;
-    }
-
-    public string GetPreferenceKey(TunnelConnection connection) =>
-        connection.HasProfile ? $"profile:{connection.ProfileName}" : connection.Identity;
-
-    private static IEnumerable<string> PreferenceKeys(TunnelConnection connection)
-    {
-        yield return connection.Identity;
-        if (connection.HasProfile)
-        {
-            yield return $"profile:{connection.ProfileName}";
-            yield return connection.ProfileName;
-        }
-
-        if (connection.HasRuntime)
-        {
-            yield return connection.RuntimeAlias;
-        }
-    }
+    public string GetPreferenceKey(TunnelConnection connection) => ConnectionScope.Primary(connection);
 }
 
 public enum TunnelClientSource
@@ -58,6 +32,7 @@ public enum TunnelClientSource
 
 public sealed class ProfilePreference
 {
+    public bool UseForeground { get; set; }
     public bool AutoConnect { get; set; }
     public bool AutoReconnect { get; set; }
     public bool Enabled { get; set; } = true;
@@ -76,7 +51,7 @@ public sealed record ProfileSpec(string Name, string TunnelId, McpType McpType, 
         RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     private static readonly Regex TunnelIdPattern = new(
-        @"^tunnel_[0-9a-f]{32}$",
+        @"^tunnel_([a-z0-9]{4}_)?[a-z0-9]{32}$",
         RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     public IReadOnlyList<string> Validate()
@@ -93,7 +68,7 @@ public sealed record ProfileSpec(string Name, string TunnelId, McpType McpType, 
 
         if (!TunnelIdPattern.IsMatch(tunnelId))
         {
-            errors.Add("Tunnel ID 必须是 tunnel_ 加 32 个小写十六进制字符");
+            errors.Add("Tunnel ID 必须是 tunnel_ 加 32 个小写字母或数字，可包含四字符命名空间及下划线");
         }
 
         if (string.IsNullOrWhiteSpace(target))

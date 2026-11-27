@@ -13,12 +13,13 @@
 | 一个 Profile 可被多个 Runtime alias 共用 | 不折叠多个 runtime | 集成测试 |
 | custom Runtime Profile 与同名 listed Profile 分离 | Profile path 严格匹配后才合并 | 集成测试 |
 | tunnel-client 来源切换 | 设置页下拉框选择 Managed / Custom | WinUI shell |
+| Manager 自身更新 | 设置手动检查 GitHub 正式 Release，确认后下载对应架构包、退出安装并重启 | service tests + publish + UI 验收 |
 | 托管版本下载 / 更新 | 用户点击后查询 GitHub latest，按架构精确选资产 | service tests + publish |
 | 托管完整性校验 | Release digest / SHA256SUMS + 安全解压 + `--version` | service tests |
 | 托管更新不在启动时自动检查 | 只有“下载 / 更新”主按钮触发网络检查 | WinUI shell |
 | 托管下载进度 / 取消 | 检查、下载、验证、安装阶段 + byte progress | service + WinUI shell |
-| 自定义 tunnel-client | FileOpenPicker 后自动 `--version`，成功才保存 | validation path |
-| 清理已下载版本 | 手动清理保留当前使用版本；常规更新保留一个回退版本 | service test |
+| 自定义 tunnel-client | FileOpenPicker 后校验完整客户端的必要命令，成功才保存 | validation path |
+| 清理已下载版本 | 手动清理保留当前使用版本；已安装版本可供切换 | service test |
 | 显式错误路径不 fallback | `TunnelClientOptions.ResolveExecutablePath` | 行为测试 |
 | Manager 配置不保存 Tunnel ID / target / API Key | schema 3 `config/settings.json` | 设置测试 |
 | 旧版 settings / tunnels[] 单向迁移 | 保留本机偏好、清除旧 Tunnel 定义 | 兼容测试 |

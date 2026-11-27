@@ -16,7 +16,7 @@ public sealed partial class TunnelClientOperations
         try
         {
             await File.WriteAllTextAsync(tempPath, text, new UTF8Encoding(false), cancellationToken);
-            await RunAsync(["profiles", "add", name.Trim(), "--from-file", tempPath, "--force"], false, cancellationToken, TimeSpan.FromSeconds(30));
+            await RunAsync(["profiles", "add", name.Trim(), "--from-file", tempPath], false, cancellationToken, TimeSpan.FromSeconds(30));
         }
         finally
         {

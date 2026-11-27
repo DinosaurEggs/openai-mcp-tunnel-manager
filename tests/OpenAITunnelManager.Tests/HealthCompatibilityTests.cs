@@ -103,6 +103,23 @@ public sealed class HealthCompatibilityTests
         Assert.Contains("超过 1024 KiB 限制", text, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task DetailedHealthTimesOutWhenBodyStalls()
+    {
+        var token = TestContext.Current.CancellationToken;
+        await using var server = await RawLoopbackHttpServer.StartAsync(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 20\r\n\r\n{",
+            token, stallBody: true);
+        var connection = RuntimeConnection() with
+        {
+            HealthDetailsUrl = $"http://127.0.0.1:{server.Port}/slow",
+            McpHealthUrl = string.Empty
+        };
+        var text = await Operations(connection).GetDetailedHealthAsync(connection, token)
+            .WaitAsync(TimeSpan.FromSeconds(10), token);
+        Assert.Contains("超时", text);
+    }
+
     private static TunnelClientOperations Operations(TunnelConnection connection) =>
         new(new TunnelClientOptions(), new StaticInventory(connection));
 
@@ -133,7 +150,7 @@ public sealed class HealthCompatibilityTests
         public Task<string> GetVersionAsync(CancellationToken cancellationToken = default) => Task.FromResult("fake");
         public Task<IReadOnlyList<TunnelConnection>> GetConnectionsAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<TunnelConnection>>([connection]);
-        public Task<TunnelConnection> GetStatusAsync(TunnelConnection item, CancellationToken cancellationToken = default) =>
+        public Task<TunnelConnection> GetStatusAsync(TunnelConnection item, CancellationToken cancellationToken = default, string? secret = null) =>
             Task.FromResult(connection);
         public Task StopRuntimeAsync(string alias, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
@@ -196,23 +213,25 @@ public sealed class HealthCompatibilityTests
         private readonly Task _serveTask;
         private readonly CancellationTokenSource _cts = new();
         private readonly string _response;
+        private readonly bool _stallBody;
 
-        private RawLoopbackHttpServer(TcpListener listener, string response)
+        private RawLoopbackHttpServer(TcpListener listener, string response, bool stallBody)
         {
             _listener = listener;
             _response = response;
+            _stallBody = stallBody;
             Port = ((IPEndPoint)listener.LocalEndpoint).Port;
             _serveTask = ServeAsync(_cts.Token);
         }
 
         public int Port { get; }
 
-        public static Task<RawLoopbackHttpServer> StartAsync(string response, CancellationToken cancellationToken)
+        public static Task<RawLoopbackHttpServer> StartAsync(string response, CancellationToken cancellationToken, bool stallBody = false)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var listener = new TcpListener(IPAddress.Loopback, 0);
             listener.Start();
-            return Task.FromResult(new RawLoopbackHttpServer(listener, response));
+            return Task.FromResult(new RawLoopbackHttpServer(listener, response, stallBody));
         }
 
         private async Task ServeAsync(CancellationToken cancellationToken)
@@ -225,6 +244,7 @@ public sealed class HealthCompatibilityTests
             var responseBytes = Encoding.ASCII.GetBytes(_response);
             await stream.WriteAsync(responseBytes, cancellationToken);
             await stream.FlushAsync(cancellationToken);
+            if (_stallBody) await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
         }
 
         public async ValueTask DisposeAsync()

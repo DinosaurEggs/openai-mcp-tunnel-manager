@@ -12,6 +12,8 @@ public sealed partial class TunnelClientOperations : ITunnelClientOperations
     private readonly ITunnelClientService _inventory;
     private readonly TunnelClientProcessRunner _runner;
     private readonly ConcurrentDictionary<string, ForegroundProfile> _foreground = new(StringComparer.OrdinalIgnoreCase);
+    private readonly SemaphoreSlim _foregroundGate = new(1, 1);
+    private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
     private readonly SemaphoreSlim _capabilitiesGate = new(1, 1);
     private CapabilityCache? _capabilityCache;
 
@@ -98,7 +100,7 @@ public sealed partial class TunnelClientOperations : ITunnelClientOperations
             .ToArray();
         if (matches.Length != 1) throw new InvalidOperationException($"无法确认 tunnel-client Profile {name} 的唯一文件，请刷新列表");
         if (!SamePath(matches[0].Path, expectedPath)) throw new InvalidOperationException("Profile 路径已发生变化，请刷新列表");
-        return matches[0].Path;
+        return Path.GetFullPath(matches[0].Path, AppContext.BaseDirectory);
     }
 
     private static string GetString(JsonElement element, params string[] names)
@@ -115,13 +117,23 @@ public sealed partial class TunnelClientOperations : ITunnelClientOperations
 
     private static bool SamePath(string left, string right)
     {
-        try { return string.Equals(Path.GetFullPath(left), Path.GetFullPath(right), StringComparison.OrdinalIgnoreCase); }
+        try { return string.Equals(Path.GetFullPath(left, AppContext.BaseDirectory), Path.GetFullPath(right, AppContext.BaseDirectory), StringComparison.OrdinalIgnoreCase); }
         catch { return false; }
     }
 
     private static string FirstNonEmpty(params string?[] values) =>
         values.FirstOrDefault(static value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
 
+    private async Task CoordinateLifecycleAsync(Func<Task> operation, CancellationToken cancellationToken)
+    {
+        await _lifecycleGate.WaitAsync(cancellationToken);
+        try { await operation(); }
+        finally { _lifecycleGate.Release(); }
+    }
+
     private sealed record CapabilityCache(string ExecutablePath, DateTime LastWriteTimeUtc, TunnelClientCapabilities Capabilities);
-    private sealed record ForegroundProfile(Process Process, string HealthFile, string LogPath, string ProfilePath, StreamWriter LogWriter);
+    private sealed record ForegroundProfile(Process Process, string HealthFile, string LogPath, string ProfilePath, RollingForegroundLog LogWriter, string TunnelId, string TargetKind, string TargetValue, bool HasStdioTarget, DateTimeOffset StartedAt, string ExecutablePath)
+    {
+        public bool Stopping { get; set; }
+    }
 }

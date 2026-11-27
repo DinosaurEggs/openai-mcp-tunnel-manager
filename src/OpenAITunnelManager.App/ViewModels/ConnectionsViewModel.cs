@@ -48,9 +48,13 @@ public partial class ConnectionsViewModel : ObservableObject
         _autostart = autostart;
         _options = options;
         _managedTunnelClient = managedTunnelClient;
+        Connections.CollectionChanged += (_, _) => UpdateVisibleConnections();
     }
 
     public ObservableCollection<TunnelConnection> Connections { get; } = [];
+    public ObservableCollection<TunnelConnection> VisibleConnections { get; } = [];
+    [ObservableProperty] public partial string ConnectionSearch { get; set; } = string.Empty;
+    [ObservableProperty] public partial string ConnectionFilter { get; set; } = "全部";
     public AppSettings Settings { get; private set; } = new();
 
     [ObservableProperty] public partial TunnelConnection? SelectedConnection { get; set; }
@@ -76,6 +80,8 @@ public partial class ConnectionsViewModel : ObservableObject
     [ObservableProperty] public partial string StateDirectoryOverride { get; set; } = string.Empty;
     [ObservableProperty] public partial string LogSearch { get; set; } = string.Empty;
     [ObservableProperty] public partial string LogLevel { get; set; } = "全部";
+    [ObservableProperty] public partial string LogComponent { get; set; } = string.Empty;
+    [ObservableProperty] public partial bool LogRaw { get; set; }
     [ObservableProperty] public partial bool LogSearchCaseSensitive { get; set; }
     [ObservableProperty] public partial bool LogSearchRegex { get; set; }
     [ObservableProperty] public partial bool LogWrap { get; set; } = true;
@@ -101,28 +107,31 @@ public partial class ConnectionsViewModel : ObservableObject
         }
     }
 
-    public bool CanStartSelected => IsClientAvailable && !IsBusy && SelectedConnection is { ProcessRunning: false } item && (item.HasRuntime || item.HasProfile);
-    public bool CanStopSelected => IsClientAvailable && !IsBusy && SelectedConnection is { ProcessRunning: true };
-    public bool CanRestartSelected => CanStopSelected;
-    public bool CanEditSelected => IsClientAvailable && !IsBusy && SelectedConnection is { ProfileListed: true, HasProfile: true };
-    public bool CanDeleteSelected => IsClientAvailable && !IsBusy && SelectedConnection is not null;
-    public bool CanDiagnoseSelected => IsClientAvailable && !IsBusy && SelectedConnection is not null;
+    public bool CanStartSelected => IsClientAvailable && !IsBusy && !IsTunnelClientUpdating && !_lifetimeCancellation.IsCancellationRequested && SelectedConnection is { ProcessRunning: false } item && (item.HasRuntime || item.HasProfile) && (FindPreference(item)?.Enabled ?? true) && item.State != RuntimeState.Unknown;
+    public bool CanStopSelected => IsClientAvailable && !IsBusy && !IsTunnelClientUpdating && !_lifetimeCancellation.IsCancellationRequested && SelectedConnection is { } item && (item.ProcessRunning || _reconnectScheduled.Contains(item.Identity));
+    public bool CanRestartSelected => IsClientAvailable && !IsBusy && !IsTunnelClientUpdating && !_lifetimeCancellation.IsCancellationRequested && SelectedConnection is { ProcessRunning: true } item && (FindPreference(item)?.Enabled ?? true);
+    public bool CanEditSelected => IsClientAvailable && !IsBusy && !IsTunnelClientUpdating && !_lifetimeCancellation.IsCancellationRequested && SelectedConnection is { ProfileListed: true, HasProfile: true };
+    public bool CanDeleteSelected => IsClientAvailable && !IsBusy && !IsTunnelClientUpdating && !_lifetimeCancellation.IsCancellationRequested && SelectedConnection is not null;
+    public bool CanDiagnoseSelected => IsClientAvailable && !IsBusy && !IsTunnelClientUpdating && !_lifetimeCancellation.IsCancellationRequested && SelectedConnection is not null;
     public bool CanOpenConfigSelected => SelectedConnection is { HasProfile: true };
     public bool CanOpenLogSelected => !string.IsNullOrWhiteSpace(CurrentLogPath);
     public int TotalCount => Connections.Count;
     public int ActiveCount => Connections.Count(static item => item.ProcessRunning);
-    public int HealthyCount => Connections.Count(static item => item.ProcessRunning && item.Healthy && item.Ready);
-    public int ProblemCount => Connections.Count(static item => item.State is RuntimeState.Error or RuntimeState.Stale || (item.ProcessRunning && (!item.Healthy || !item.Ready)));
+    public int HealthyCount => Connections.Count(static item => item.ProcessRunning && item.Healthy && item.Ready && !IsControlPlaneDegraded(item));
+    public int ProblemCount => Connections.Count(static item => item.State is RuntimeState.Error or RuntimeState.Stale || (item.ProcessRunning && (!item.Healthy || !item.Ready || IsControlPlaneDegraded(item))));
+    private static bool IsControlPlaneDegraded(TunnelConnection item) => item.ControlPlaneState is not ("" or "unknown" or "healthy" or "direct");
 
     partial void OnSelectedConnectionChanged(TunnelConnection? value)
     {
         if (value is not null && _lastLogPaths.TryGetValue(value.Identity, out var path)) CurrentLogPath = path;
         else CurrentLogPath = value?.LogPath ?? string.Empty;
         HealthText = string.Empty;
+        DiagnosticText = string.Empty;
         NotifyActionState();
     }
 
     partial void OnIsBusyChanged(bool value) => NotifyActionState();
+    partial void OnIsTunnelClientUpdatingChanged(bool value) => NotifyActionState();
     partial void OnIsClientAvailableChanged(bool value) => NotifyActionState();
     partial void OnCurrentLogPathChanged(string value) => OnPropertyChanged(nameof(CanOpenLogSelected));
 
@@ -131,33 +140,31 @@ public partial class ConnectionsViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanRefresh))]
     public async Task RefreshAsync()
     {
-        if (IsBusy) return;
+        if (IsBusy || _lifetimeCancellation.IsCancellationRequested) return;
         IsBusy = true;
         var selectedIdentity = SelectedConnection?.Identity;
         StatusMessage = "正在从 tunnel-client 读取 Profile 和 Runtime...";
         try
         {
             _ = _operations.ResolveExecutablePath();
+            var capabilities = await _operations.GetCapabilitiesAsync();
+            if (!capabilities.Profiles || !capabilities.Runtimes || !capabilities.Doctor)
+                throw new InvalidOperationException("请选择包含 profiles、runtimes 和 doctor 的完整 tunnel-client");
+            ClientVersion = capabilities.Version;
+
+            var items = await _inventory.GetConnectionsAsync();
+            var migration = await MigrateConnectionDataAsync(items);
+            var statuses = await ReadStatusesAsync(items, CancellationToken.None);
             IsClientAvailable = true;
-            var capabilitiesTask = _operations.GetCapabilitiesAsync();
-            var itemsTask = _inventory.GetConnectionsAsync();
-            await Task.WhenAll(capabilitiesTask, itemsTask);
-            ClientVersion = capabilitiesTask.Result.Version;
+            MergeConnections(statuses);
 
-            var statuses = await ReadStatusesAsync(itemsTask.Result, CancellationToken.None);
-            Connections.Clear();
-            foreach (var item in statuses)
-            {
-                if (!string.IsNullOrWhiteSpace(item.LogPath)) _lastLogPaths[item.Identity] = item.LogPath;
-                Connections.Add(item);
-            }
-
-            SelectedConnection = Connections.FirstOrDefault(item =>
+            SelectedConnection = VisibleConnections.FirstOrDefault(item =>
                                      string.Equals(item.Identity, selectedIdentity, StringComparison.OrdinalIgnoreCase))
-                                 ?? Connections.FirstOrDefault();
+                                 ?? VisibleConnections.FirstOrDefault();
             StatusMessage = Connections.Count == 0
                 ? "未发现 Profile 或 Runtime"
                 : $"已从 tunnel-client 读取 {Connections.Count} 个配置/运行实例";
+            if (migration > 0) StatusMessage += $"；{migration} 项历史凭据归属不明确，请重新配置";
             NotifyOverviewState();
         }
         catch (Exception exception)
@@ -172,27 +179,29 @@ public partial class ConnectionsViewModel : ObservableObject
             IsBusy = false;
         }
 
-        if (!_initialAutoConnectApplied && IsClientAvailable)
+        if (!_initialAutoConnectApplied && IsClientAvailable && !_lifetimeCancellation.IsCancellationRequested)
         {
             _initialAutoConnectApplied = true;
             await ApplyAutoConnectAsync();
         }
+        if (IsClientAvailable && !_lifetimeCancellation.IsCancellationRequested)
+            foreach (var item in Connections.ToArray()) EvaluateRuntimeReconnect(item);
     }
 
-    private bool CanRefresh() => !IsBusy;
+    private bool CanRefresh() => !IsBusy && !IsTunnelClientUpdating && !_lifetimeCancellation.IsCancellationRequested;
 
     public async Task RefreshSelectedStatusAsync()
     {
         var item = SelectedConnection;
-        if (item is null || !IsClientAvailable || IsBusy) return;
+        if (item is null || !IsClientAvailable || IsBusy || IsTunnelClientUpdating || _lifetimeCancellation.IsCancellationRequested) return;
         try
         {
-            var status = await _operations.GetStatusAsync(item);
+            var status = await _operations.GetStatusAsync(item, secret: ReadSavedSecret(item));
             ReplaceConnection(status);
             if (!string.IsNullOrWhiteSpace(status.LogPath))
             {
                 _lastLogPaths[status.Identity] = status.LogPath;
-                CurrentLogPath = status.LogPath;
+                if (string.Equals(SelectedConnection?.Identity, status.Identity, StringComparison.OrdinalIgnoreCase)) CurrentLogPath = status.LogPath;
             }
             EvaluateRuntimeReconnect(status);
             NotifyOverviewState();
@@ -217,7 +226,7 @@ public partial class ConnectionsViewModel : ObservableObject
     private async Task RestartSelectedAsync()
     {
         var item = SelectedConnection;
-        if (item is null) return;
+        if (!CanRestartSelected || item is null) return;
         _manualStopped.Remove(item.Identity);
         CancelReconnect(item.Identity, resetAttempts: true);
         IsBusy = true;
@@ -247,9 +256,7 @@ public partial class ConnectionsViewModel : ObservableObject
         try
         {
             await _operations.CreateProfileAsync(spec);
-            Settings.ProfilePreferences[$"profile:{spec.Name.Trim()}"] = preference;
-            if (!string.IsNullOrWhiteSpace(secret)) _credentials.Set(spec.Name.Trim(), secret);
-            await _settingsStore.SaveAsync(Settings);
+            await SaveCreatedProfilePreferencesAsync(spec.Name.Trim(), preference, secret);
             await RefreshAfterOperationAsync($"profile:{spec.Name.Trim()}", $"Profile 已创建：{spec.Name.Trim()}");
         }
         finally
@@ -272,14 +279,12 @@ public partial class ConnectionsViewModel : ObservableObject
             metadata.TargetKind,
             metadata.TargetValue,
             GetSelectedPreferenceCopy(),
-            HasSavedSecret(item));
+            HasOwnSavedSecret(item));
     }
 
     public async Task SaveSelectedProfileAsync(
         ProfileEditorData original,
         string rawText,
-        string tunnelId,
-        string targetValue,
         ProfilePreference preference,
         string? newSecret,
         bool deleteSecret)
@@ -291,17 +296,14 @@ public partial class ConnectionsViewModel : ObservableObject
             throw new InvalidOperationException("当前选择的 Profile 已变化，请重新打开编辑器");
         }
 
-        var updated = ProfileDocumentEditor.ApplyCommonFields(
-            rawText,
-            original.TunnelId,
-            original.TargetKind,
-            original.TargetValue,
-            tunnelId.Trim(),
-            targetValue.Trim());
+        EnsureClientAvailable();
         IsBusy = true;
         try
         {
-            await _operations.SaveProfileTextAsync(item.ProfileName, item.ProfilePath, updated);
+            var currentText = await _operations.ReadProfileTextAsync(item.ProfileName, item.ProfilePath);
+            if (!string.Equals(currentText, original.Text, StringComparison.Ordinal))
+                throw new InvalidOperationException("Profile 已被其他程序修改，请重新打开编辑器");
+            await _operations.SaveProfileTextAsync(item.ProfileName, item.ProfilePath, rawText);
             await SavePreferenceForItemAsync(item, preference, newSecret, deleteSecret);
             await RefreshAfterOperationAsync(item.Identity, $"Profile 已保存：{item.ProfileName}");
         }
@@ -315,25 +317,37 @@ public partial class ConnectionsViewModel : ObservableObject
     {
         var item = SelectedConnection ?? throw new InvalidOperationException("请先选择一个配置");
         var pref = FindPreference(item) ?? new ProfilePreference();
-        return new ProfilePreference { Enabled = pref.Enabled, AutoConnect = pref.AutoConnect, AutoReconnect = pref.AutoReconnect };
+        return new ProfilePreference { Enabled = pref.Enabled, AutoConnect = pref.AutoConnect, AutoReconnect = pref.AutoReconnect, UseForeground = pref.UseForeground };
     }
 
-    public Task SaveSelectedPreferenceAsync(ProfilePreference preference, string? newSecret = null, bool deleteSecret = false)
+    public async Task SaveSelectedPreferenceAsync(ProfilePreference preference, string? newSecret = null, bool deleteSecret = false)
     {
+        EnsureClientAvailable();
         var item = SelectedConnection ?? throw new InvalidOperationException("请先选择一个配置");
-        return SavePreferenceForItemAsync(item, preference, newSecret, deleteSecret);
+        IsBusy = true;
+        try { await SavePreferenceForItemAsync(item, preference, newSecret, deleteSecret); }
+        finally { IsBusy = false; }
     }
 
     private async Task SavePreferenceForItemAsync(TunnelConnection item, ProfilePreference preference, string? newSecret, bool deleteSecret)
     {
-        Settings.ProfilePreferences[item.Identity] = preference;
+        if (item.HasRuntime && item.UseForeground != preference.UseForeground)
+        {
+            var actual = await _operations.GetStatusAsync(item, secret: ReadSavedSecret(item));
+            if (actual.ProcessRunning || actual.State is RuntimeState.Unknown or RuntimeState.Error)
+                throw new InvalidOperationException("切换运行模式前请先停止当前连接");
+            CancelReconnect(item.Identity, resetAttempts: true);
+            item = item with { UseForeground = preference.UseForeground };
+            ReplaceConnection(item);
+        }
+        Settings.ProfilePreferences[ConnectionScope.Primary(item)] = preference;
         if (deleteSecret)
         {
-            foreach (var id in CredentialIds(item)) _credentials.Delete(id);
+            _credentials.Delete(ConnectionScope.Primary(item));
         }
         else if (!string.IsNullOrWhiteSpace(newSecret))
         {
-            _credentials.Set(CredentialWriteId(item), newSecret);
+            _credentials.Set(ConnectionScope.Primary(item), newSecret);
         }
         await _settingsStore.SaveAsync(Settings);
         if (!preference.Enabled || !preference.AutoReconnect)
@@ -347,51 +361,52 @@ public partial class ConnectionsViewModel : ObservableObject
         StatusMessage = $"已保存 {item.Name} 的本机偏好";
     }
 
-    public async Task DeleteSelectedAsync()
+    public async Task DeleteSelectedAsync(TunnelConnection original)
     {
-        var original = SelectedConnection ?? throw new InvalidOperationException("请先选择一个配置");
+        ArgumentNullException.ThrowIfNull(original);
         EnsureClientAvailable();
         IsBusy = true;
         try
         {
             var fresh = await _inventory.GetConnectionsAsync();
             var current = fresh.FirstOrDefault(item => string.Equals(item.Identity, original.Identity, StringComparison.OrdinalIgnoreCase));
-            if (current is null && original.HasRuntime) throw new InvalidOperationException("列表已发生变化，请刷新后重试");
-            var target = current ?? original;
+            if (current is null) throw new InvalidOperationException("列表已发生变化，请刷新后重试");
+            var target = current;
+            if (!string.Equals(original.StateRoot, target.StateRoot, StringComparison.OrdinalIgnoreCase) ||
+                original.HasProfile && !PathsEqual(original.ProfilePath, target.ProfilePath))
+                throw new InvalidOperationException("Profile 路径已变化，请刷新后重试");
             var sharedProfile = target.HasProfile && fresh.Any(item =>
                 !string.Equals(item.Identity, target.Identity, StringComparison.OrdinalIgnoreCase) &&
                 item.HasProfile &&
                 PathsEqual(item.ProfilePath, target.ProfilePath));
+            if (sharedProfile) throw new InvalidOperationException("该 Profile 被其他连接共享，无法安全删除");
+            CancelReconnect(original.Identity, resetAttempts: true);
             var profileDeleted = false;
 
             if (target.HasRuntime)
             {
-                var status = await _operations.GetStatusAsync(target);
+                var status = await _operations.GetStatusAsync(target with { UseForeground = original.UseForeground });
                 if (status.ProcessRunning) await _operations.StopAsync(status);
+                var native = await _operations.GetStatusAsync(target with { UseForeground = false });
+                if (native.ProcessRunning) await _operations.StopAsync(native);
                 await _operations.RemoveRuntimeAsync(target.RuntimeAlias);
+                profileDeleted = target.HasProfile && !File.Exists(target.ProfilePath);
             }
 
-            if (target.ProfileListed && target.HasProfile && !sharedProfile)
+            if (!target.HasRuntime && target.ProfileListed && target.HasProfile && !profileDeleted)
             {
                 await _operations.DeleteProfileAsync(target.ProfileName, target.ProfilePath);
                 profileDeleted = true;
             }
 
-            if (profileDeleted)
-            {
-                foreach (var id in CredentialIds(original)) _credentials.Delete(id);
-            }
-            else if (original.HasRuntime)
-            {
-                _credentials.Delete(original.RuntimeAlias);
-            }
-
-            Settings.ProfilePreferences.Remove(original.Identity);
-            Settings.ProfilePreferences.Remove(original.Name);
+            var primary = ConnectionScope.Primary(original);
+            _credentials.Delete(primary);
+            Settings.ProfilePreferences.Remove(primary);
             if (profileDeleted && original.HasProfile)
             {
-                Settings.ProfilePreferences.Remove($"profile:{original.ProfileName}");
-                Settings.ProfilePreferences.Remove(original.ProfileName);
+                var profileKey = ConnectionScope.Profile(original.ProfilePath);
+                _credentials.Delete(profileKey);
+                Settings.ProfilePreferences.Remove(profileKey);
             }
             await _settingsStore.SaveAsync(Settings);
             _manualStopped.Remove(original.Identity);
@@ -413,12 +428,13 @@ public partial class ConnectionsViewModel : ObservableObject
         DiagnosticText = "正在运行 tunnel-client doctor --explain ...";
         try
         {
-            DiagnosticText = await _operations.DoctorAsync(item, ReadSavedSecret(item));
+            var result = await _operations.DoctorAsync(item, ReadSavedSecret(item));
+            if (string.Equals(SelectedConnection?.Identity, item.Identity, StringComparison.OrdinalIgnoreCase)) DiagnosticText = result;
             StatusMessage = $"{item.Name} 诊断完成";
         }
         catch (Exception exception)
         {
-            DiagnosticText = $"诊断失败：{Environment.NewLine}{exception.Message}";
+            if (string.Equals(SelectedConnection?.Identity, item.Identity, StringComparison.OrdinalIgnoreCase)) DiagnosticText = $"诊断失败：{Environment.NewLine}{exception.Message}";
             StatusMessage = exception.Message;
         }
         finally
@@ -435,19 +451,23 @@ public partial class ConnectionsViewModel : ObservableObject
         if (item is null) { HealthText = string.Empty; return; }
         try
         {
-            HealthText = await _operations.GetDetailedHealthAsync(item);
+            var result = await _operations.GetDetailedHealthAsync(item, secret: ReadSavedSecret(item));
+            if (string.Equals(SelectedConnection?.Identity, item.Identity, StringComparison.OrdinalIgnoreCase))
+                HealthText = result;
         }
         catch (Exception exception)
         {
-            HealthText = $"读取 Health 失败：{exception.Message}";
+            if (string.Equals(SelectedConnection?.Identity, item.Identity, StringComparison.OrdinalIgnoreCase))
+                HealthText = $"读取 Health 失败：{exception.Message}";
         }
     }
 
     public bool HasSavedSecret(TunnelConnection item) => ReadSavedSecret(item) is not null;
+    public bool HasOwnSavedSecret(TunnelConnection item) => !string.IsNullOrEmpty(_credentials.Get(ConnectionScope.Primary(item)));
 
     public string? ReadSavedSecret(TunnelConnection item)
     {
-        foreach (var id in CredentialIds(item))
+        foreach (var id in ConnectionScope.Keys(item))
         {
             var secret = _credentials.Get(id);
             if (!string.IsNullOrEmpty(secret)) return secret;
@@ -463,7 +483,9 @@ public partial class ConnectionsViewModel : ObservableObject
 
     public async Task ShutdownAsync()
     {
+        _tunnelClientOperationCts?.Cancel();
         await StopRuntimeEventsAsync();
+        while (IsBusy || IsTunnelClientUpdating) await Task.Delay(50);
         await _operations.ShutdownForegroundProfilesAsync();
     }
 
@@ -489,6 +511,9 @@ public partial class ConnectionsViewModel : ObservableObject
         catch (Exception exception)
         {
             StatusMessage = $"启动失败：{exception.Message}";
+            var failed = item with { State = RuntimeState.Error, Error = exception.Message };
+            ReplaceConnection(failed);
+            EvaluateRuntimeReconnect(failed);
         }
         finally
         {
@@ -501,6 +526,11 @@ public partial class ConnectionsViewModel : ObservableObject
         EnsureClientAvailable();
         if (manual) _manualStopped.Add(item.Identity);
         CancelReconnect(item.Identity, resetAttempts: true);
+        if (!item.ProcessRunning)
+        {
+            StatusMessage = $"{item.Name} 已取消自动重连";
+            return;
+        }
         IsBusy = true;
         StatusMessage = $"正在停止 {item.Name}...";
         try
@@ -523,15 +553,10 @@ public partial class ConnectionsViewModel : ObservableObject
     {
         var items = await _inventory.GetConnectionsAsync();
         var refreshed = await ReadStatusesAsync(items, CancellationToken.None);
-        Connections.Clear();
-        foreach (var item in refreshed)
-        {
-            if (!string.IsNullOrWhiteSpace(item.LogPath)) _lastLogPaths[item.Identity] = item.LogPath;
-            Connections.Add(item);
-        }
+        MergeConnections(refreshed);
         SelectedConnection = identity is null
-            ? Connections.FirstOrDefault()
-            : Connections.FirstOrDefault(item => string.Equals(item.Identity, identity, StringComparison.OrdinalIgnoreCase)) ?? Connections.FirstOrDefault();
+            ? VisibleConnections.FirstOrDefault()
+            : VisibleConnections.FirstOrDefault(item => string.Equals(item.Identity, identity, StringComparison.OrdinalIgnoreCase)) ?? VisibleConnections.FirstOrDefault();
         StatusMessage = completedMessage;
         NotifyOverviewState();
         if (SelectedConnection is not null && _lastLogPaths.TryGetValue(SelectedConnection.Identity, out var path)) CurrentLogPath = path;
@@ -541,10 +566,11 @@ public partial class ConnectionsViewModel : ObservableObject
     {
         var candidates = Connections
             .Where(item => FindPreference(item) is { Enabled: true, AutoConnect: true })
-            .Where(item => !item.ProcessRunning && !_manualStopped.Contains(item.Identity))
+            .Where(item => !item.ProcessRunning && item.State != RuntimeState.Unknown && !_manualStopped.Contains(item.Identity))
             .ToArray();
         if (candidates.Length == 0) return;
 
+        var failed = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         IsBusy = true;
         try
         {
@@ -556,13 +582,16 @@ public partial class ConnectionsViewModel : ObservableObject
                 }
                 catch (Exception exception)
                 {
+                    failed[item.Identity] = exception.Message;
                     StatusMessage = $"{item.Name} 自动连接失败：{exception.Message}";
                 }
             }
 
             var statuses = await ReadStatusesAsync(Connections.ToArray(), CancellationToken.None);
-            foreach (var status in statuses)
+            foreach (var rawStatus in statuses)
             {
+                var status = !rawStatus.ProcessRunning && failed.TryGetValue(rawStatus.Identity, out var error)
+                    ? rawStatus with { State = RuntimeState.Error, Error = error } : rawStatus;
                 ReplaceConnection(status);
                 if (!string.IsNullOrWhiteSpace(status.LogPath)) _lastLogPaths[status.Identity] = status.LogPath;
             }
@@ -576,28 +605,84 @@ public partial class ConnectionsViewModel : ObservableObject
 
     private ProfilePreference? FindPreference(TunnelConnection item)
     {
-        foreach (var key in PreferenceKeys(item)) if (Settings.ProfilePreferences.TryGetValue(key, out var pref)) return pref;
+        foreach (var key in ConnectionScope.Keys(item))
+            if (Settings.ProfilePreferences.TryGetValue(key, out var preference)) return preference;
         return null;
     }
 
-    private static IEnumerable<string> PreferenceKeys(TunnelConnection item)
+    private async Task SaveCreatedProfilePreferencesAsync(string name, ProfilePreference preference, string? secret)
     {
-        yield return item.Identity;
-        if (item.HasProfile) { yield return $"profile:{item.ProfileName}"; yield return item.ProfileName; }
-        if (item.HasRuntime) yield return item.RuntimeAlias;
-        if (!string.IsNullOrWhiteSpace(item.RuntimeProfileName)) yield return $"profile:{item.RuntimeProfileName}";
+        var item = (await _inventory.GetConnectionsAsync()).Single(connection =>
+            connection.ProfileListed && string.Equals(connection.ProfileName, name, StringComparison.Ordinal));
+        var key = ConnectionScope.Profile(item.ProfilePath);
+        Settings.ProfilePreferences[key] = preference;
+        if (!string.IsNullOrWhiteSpace(secret)) _credentials.Set(key, secret);
+        await _settingsStore.SaveAsync(Settings);
     }
 
-    private static IEnumerable<string> CredentialIds(TunnelConnection item)
+    private async Task<int> MigrateConnectionDataAsync(IReadOnlyList<TunnelConnection> items)
     {
-        var values = new List<string>();
-        if (item.ProfileListed && !string.IsNullOrWhiteSpace(item.ProfileName)) values.Add(item.ProfileName);
-        foreach (var value in new[] { item.CredentialId, item.RuntimeAlias, item.ProfileName, item.RuntimeProfileName, item.Name })
-            if (!string.IsNullOrWhiteSpace(value) && !values.Contains(value, StringComparer.OrdinalIgnoreCase)) values.Add(value);
-        return values;
+        if (Settings.LegacyConnectionDataMigrated) return 0;
+        var ambiguous = ConnectionScope.MigrateLegacy(items, Settings, _credentials);
+        Settings.LegacyConnectionDataMigrated = true;
+        try { await _settingsStore.SaveAsync(Settings); }
+        catch { Settings.LegacyConnectionDataMigrated = false; throw; }
+        return ambiguous;
     }
 
-    private static string CredentialWriteId(TunnelConnection item) => CredentialIds(item).First();
+    partial void OnConnectionSearchChanged(string value) => UpdateVisibleConnections();
+    partial void OnConnectionFilterChanged(string value) => UpdateVisibleConnections();
+
+    private void UpdateVisibleConnections()
+    {
+        var selected = SelectedConnection?.Identity;
+        var search = ConnectionSearch.Trim();
+        var items = Connections.Where(item =>
+            (search.Length == 0 || new[] { item.Name, item.ProfileName, item.RuntimeAlias, item.TunnelId, item.TargetValue }
+                .Any(value => value.Contains(search, StringComparison.OrdinalIgnoreCase))) &&
+            (ConnectionFilter switch
+            {
+                "运行中" => item.ProcessRunning,
+                "已停止" => !item.ProcessRunning && item.State is RuntimeState.Configured or RuntimeState.Stopped,
+                "异常 / 未知" => item.State is RuntimeState.Error or RuntimeState.Stale or RuntimeState.Unknown || item.ProcessRunning && !item.Ready,
+                _ => true
+            })).ToArray();
+        var identities = items.Select(item => item.Identity).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        for (var i = VisibleConnections.Count - 1; i >= 0; i--)
+            if (!identities.Contains(VisibleConnections[i].Identity)) VisibleConnections.RemoveAt(i);
+        for (var i = 0; i < items.Length; i++)
+        {
+            var current = VisibleConnections.FirstOrDefault(item => item.Identity == items[i].Identity);
+            if (current is null) VisibleConnections.Insert(i, items[i]);
+            else
+            {
+                var index = VisibleConnections.IndexOf(current);
+                if (index != i) VisibleConnections.Move(index, i);
+                if (current != items[i]) VisibleConnections[i] = items[i];
+            }
+        }
+        SelectedConnection = VisibleConnections.FirstOrDefault(item => item.Identity == selected) ?? VisibleConnections.FirstOrDefault();
+    }
+
+    private void MergeConnections(IReadOnlyList<TunnelConnection> updated)
+    {
+        var identities = updated.Select(item => item.Identity).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        for (var i = Connections.Count - 1; i >= 0; i--)
+            if (!identities.Contains(Connections[i].Identity)) Connections.RemoveAt(i);
+        for (var i = 0; i < updated.Count; i++)
+        {
+            var item = updated[i];
+            if (!string.IsNullOrWhiteSpace(item.LogPath)) _lastLogPaths[item.Identity] = item.LogPath;
+            var existing = Connections.FirstOrDefault(value => string.Equals(value.Identity, item.Identity, StringComparison.OrdinalIgnoreCase));
+            if (existing is null) Connections.Insert(i, item);
+            else
+            {
+                var index = Connections.IndexOf(existing);
+                if (index != i) Connections.Move(index, i);
+                if (existing != item) Connections[i] = item;
+            }
+        }
+    }
 
     private void ReplaceConnection(TunnelConnection updated)
     {
@@ -610,8 +695,11 @@ public partial class ConnectionsViewModel : ObservableObject
 
     private void EnsureClientAvailable()
     {
+        if (IsBusy || IsTunnelClientUpdating || _lifetimeCancellation.IsCancellationRequested)
+            throw new InvalidOperationException("当前正在执行其他操作或应用正在退出");
+        if (!IsClientAvailable)
+            throw new InvalidOperationException("请先在设置中配置可用的完整 tunnel-client，然后刷新");
         _ = _operations.ResolveExecutablePath();
-        IsClientAvailable = true;
     }
 
     private void NotifyActionState()

@@ -35,7 +35,7 @@ public static class Program
 
         if (args.Length == 1 && args[0] == "--version")
         {
-            Console.WriteLine("v0.0.14-fake");
+            Console.WriteLine("v0.0.21 (git sha: fake)");
             return 0;
         }
 
@@ -84,7 +84,7 @@ public static class Program
             }
 
             var text = File.ReadAllText(source);
-            if (!Regex.IsMatch(text, @"tunnel_[0-9a-f]{32}", RegexOptions.CultureInvariant) ||
+            if (!Regex.IsMatch(text, @"tunnel_([a-z0-9]{4}_)?[a-z0-9]{32}", RegexOptions.CultureInvariant) ||
                 !(text.Contains("url:", StringComparison.Ordinal) || text.Contains("command:", StringComparison.Ordinal) || text.Contains("\"url\"", StringComparison.Ordinal) || text.Contains("\"command\"", StringComparison.Ordinal)))
             {
                 Console.Error.WriteLine("profile validation failed");
@@ -93,6 +93,11 @@ public static class Program
 
             Directory.CreateDirectory(ProfileDirectory);
             var destination = Path.Combine(ProfileDirectory, name + ".yaml");
+            if (File.Exists(destination) && !args.Contains("--force"))
+            {
+                Console.Error.WriteLine("profile already exists");
+                return 3;
+            }
             File.WriteAllText(destination, text);
             Console.WriteLine(destination);
             return 0;
@@ -137,7 +142,7 @@ public static class Program
             {
                 if (pair.Value is JsonObject runtime) aliases.Add(runtime.DeepClone());
             }
-            Console.WriteLine(new JsonObject { ["aliases"] = aliases }.ToJsonString(CompactJson));
+            Console.WriteLine(new JsonObject { ["aliases"] = aliases, ["state_root"] = RuntimeDirectory }.ToJsonString(CompactJson));
             return 0;
         }
 
@@ -243,9 +248,22 @@ public static class Program
         {
             var alias = args[2];
             var state = LoadState();
-            EnsureRuntimes(state).Remove(alias);
+            var runtimes = EnsureRuntimes(state);
+            var record = runtimes[alias] as JsonObject;
+            var removedPaths = new JsonArray();
+            if (record is not null)
+            {
+                foreach (var key in new[] { "profile_path", "config_path", "log_path" })
+                {
+                    var path = record[key]?.GetValue<string>();
+                    if (string.IsNullOrWhiteSpace(path)) continue;
+                    File.Delete(path);
+                    removedPaths.Add(path);
+                }
+            }
+            runtimes.Remove(alias);
             SaveState(state);
-            Console.WriteLine(new JsonObject { ["removed"] = alias }.ToJsonString(CompactJson));
+            Console.WriteLine(new JsonObject { ["removed"] = true, ["removed_paths"] = removedPaths }.ToJsonString(CompactJson));
             return 0;
         }
 
@@ -266,7 +284,7 @@ public static class Program
 
     private static async Task<int> ExecuteRunAsync(string[] args)
     {
-        var profile = Option(args, "--profile");
+        var profile = Option(args, "--profile", Option(args, "--profile-file"));
         var healthFile = Option(args, "--health.url-file");
         if (string.IsNullOrWhiteSpace(profile) || string.IsNullOrWhiteSpace(healthFile))
         {

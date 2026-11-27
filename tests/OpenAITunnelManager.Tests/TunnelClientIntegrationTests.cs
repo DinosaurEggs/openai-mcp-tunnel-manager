@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using OpenAITunnelManager.Core.Models;
 using OpenAITunnelManager.FakeTunnelClient;
 using OpenAITunnelManager.Infrastructure.TunnelClient;
@@ -27,7 +28,7 @@ public sealed class TunnelClientIntegrationTests : IDisposable
         var token = TestContext.Current.CancellationToken;
         var (service, operations) = Services();
         var capabilities = await operations.GetCapabilitiesAsync(token);
-        Assert.Contains("v0.0.14-fake", capabilities.Version, StringComparison.Ordinal);
+        Assert.Contains("v0.0.21", capabilities.Version, StringComparison.Ordinal);
         Assert.True(capabilities.Profiles);
         Assert.True(capabilities.Runtimes);
         Assert.True(capabilities.Doctor);
@@ -83,12 +84,41 @@ public sealed class TunnelClientIntegrationTests : IDisposable
         var profile = Assert.Single(await service.GetConnectionsAsync(token));
 
         await operations.StartAsync(RuntimeSeed(profile, "r1"), "secret", token);
-        await operations.StartAsync(RuntimeSeed(profile, "r2"), "secret", token);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => operations.StartAsync(RuntimeSeed(profile, "r2"), "secret", token));
+        // An external client can still create shared inventory; simulate that boundary.
+        var runner = new TunnelClientProcessRunner(new TunnelClientOptions { ExecutablePath = FakeExecutable });
+        await runner.RunAsync(["runtimes", "connect", "--alias", "r2", "--profile", "shared", "--profile-dir", Path.GetDirectoryName(profile.ProfilePath)!, "--tunnel-id", TunnelId, "--mcp-server-url", profile.TargetValue, "--json"], false, token);
 
         var items = await service.GetConnectionsAsync(token);
         Assert.Equal(2, items.Count);
         Assert.Equal(new[] { "r1", "r2" }, items.Select(static item => item.RuntimeAlias).Order(StringComparer.Ordinal).ToArray());
         Assert.All(items, static item => Assert.True(item.ProfileListed));
+        await operations.StopAsync(items.Single(item => item.RuntimeAlias == "r1"), token);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => operations.RemoveRuntimeAsync("r1", token));
+        Assert.True(File.Exists(profile.ProfilePath));
+        Assert.Equal(2, (await service.GetConnectionsAsync(token)).Count);
+    }
+
+    [Fact]
+    public async Task RuntimeRemovalRejectsSharedProcessLogEvenWithDistinctProfiles()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var (service, operations) = Services();
+        await operations.CreateProfileAsync(Spec("first"), token);
+        await operations.CreateProfileAsync(Spec("second"), token);
+        var profiles = await service.GetConnectionsAsync(token);
+        await operations.StartAsync(RuntimeSeed(profiles.Single(item => item.ProfileName == "first"), "r1"), "secret", token);
+        await operations.StartAsync(RuntimeSeed(profiles.Single(item => item.ProfileName == "second"), "r2"), "secret", token);
+        var inventory = await service.GetConnectionsAsync(token);
+        await operations.StopAsync(inventory.Single(item => item.RuntimeAlias == "r1"), token);
+        var statePath = Path.Combine(_root, "state.json");
+        var state = JsonNode.Parse(await File.ReadAllTextAsync(statePath, token))!;
+        var sharedLog = state["runtimes"]!["r1"]!["log_path"]!.GetValue<string>();
+        state["runtimes"]!["r2"]!["process"]!["log_path"] = sharedLog;
+        await File.WriteAllTextAsync(statePath, state.ToJsonString(), token);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => operations.RemoveRuntimeAsync("r1", token));
+        Assert.True(File.Exists(sharedLog));
+        Assert.Equal(2, (await service.GetConnectionsAsync(token)).Count);
     }
 
     [Fact]
@@ -166,7 +196,7 @@ public sealed class TunnelClientIntegrationTests : IDisposable
 
         var customDirectory = Path.Combine(_root, "doctor-custom");
         Directory.CreateDirectory(customDirectory);
-        var customPath = Path.Combine(customDirectory, "custom.yaml");
+        var customPath = Path.Combine(customDirectory, "not-listed.yaml");
         File.Copy(profile.ProfilePath, customPath);
         var customRuntime = RuntimeSeed(profile, "custom") with
         {
@@ -180,6 +210,29 @@ public sealed class TunnelClientIntegrationTests : IDisposable
         var current = (await service.GetConnectionsAsync(token)).Single(item => item.RuntimeAlias == "custom");
         Assert.False(current.ProfileListed);
         Assert.Contains("Doctor passed", await operations.DoctorAsync(current, "secret", token), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ExistingRuntimeCanRunOriginalProfileInForeground()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var (service, operations) = Services();
+        await operations.CreateProfileAsync(Spec("mode"), token);
+        var profile = Assert.Single(await service.GetConnectionsAsync(token));
+        await operations.StartAsync(RuntimeSeed(profile, "mode"), "secret", token);
+        var runtime = Assert.Single(await service.GetConnectionsAsync(token));
+        await operations.StopAsync(runtime, token);
+        var original = await File.ReadAllTextAsync(profile.ProfilePath, token) + "\ntracing:\n  enabled: true\n";
+        await File.WriteAllTextAsync(profile.ProfilePath, original, token);
+        runtime = runtime with { UseForeground = true };
+        try
+        {
+            await operations.StartAsync(runtime, "secret", token);
+            Assert.True((await operations.GetStatusAsync(runtime, token)).ProcessRunning);
+            Assert.Equal(original, await File.ReadAllTextAsync(profile.ProfilePath, token));
+        }
+        finally { await operations.StopAsync(runtime, token); }
+        Assert.False((await operations.GetStatusAsync(runtime, token)).ProcessRunning);
     }
 
     [Fact]
@@ -203,6 +256,35 @@ public sealed class TunnelClientIntegrationTests : IDisposable
         Assert.Contains("profile validation failed", error.Message, StringComparison.OrdinalIgnoreCase);
         var afterFailure = await operations.ReadProfileTextAsync(item.ProfileName, item.ProfilePath, token);
         Assert.Equal(saved, afterFailure);
+    }
+
+    [Fact]
+    public async Task CreatingExistingProfileDoesNotOverwriteIt()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var (service, operations) = Services();
+        await operations.CreateProfileAsync(Spec("existing"), token);
+        var item = Assert.Single(await service.GetConnectionsAsync(token));
+        var original = await File.ReadAllTextAsync(item.ProfilePath, token);
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            operations.CreateProfileTextAsync("existing", original.Replace("64343/stream", "9000/mcp"), token));
+        Assert.Equal(original, await File.ReadAllTextAsync(item.ProfilePath, token));
+    }
+
+    [Fact]
+    public async Task NativeRuntimeRejectsAdvancedProfileBeforeConnect()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var (service, operations) = Services();
+        await operations.CreateProfileAsync(Spec("advanced"), token);
+        var item = Assert.Single(await service.GetConnectionsAsync(token));
+        var original = await File.ReadAllTextAsync(item.ProfilePath, token) +
+            "\ntracing:\n  enabled: true\n  file: traces.jsonl\n";
+        await File.WriteAllTextAsync(item.ProfilePath, original, token);
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            operations.StartAsync(RuntimeSeed(item, "advanced"), "secret", token));
+        Assert.Equal(original, await File.ReadAllTextAsync(item.ProfilePath, token));
+        Assert.False(Assert.Single(await service.GetConnectionsAsync(token)).HasRuntime);
     }
 
     [Fact]

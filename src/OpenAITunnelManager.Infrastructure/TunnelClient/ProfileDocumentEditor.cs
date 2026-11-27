@@ -1,5 +1,4 @@
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using YamlDotNet.RepresentationModel;
 
 namespace OpenAITunnelManager.Infrastructure.TunnelClient;
@@ -8,6 +7,7 @@ public static class ProfileDocumentEditor
 {
     public static ProfileMetadataView ReadMetadata(string text)
     {
+        _ = ReadYamlRoot(text);
         var metadata = ProfileMetadataReader.Parse(text);
         return new ProfileMetadataView(metadata.TunnelId, metadata.TargetKind, metadata.TargetValue, metadata.ApiKeyRef);
     }
@@ -27,6 +27,81 @@ public static class ProfileDocumentEditor
             result = ReplaceYamlMainTarget(result, originalTargetKind, targetValue);
         }
         return result;
+    }
+
+    public static string? ReadSectionScalar(string text, string section, string key)
+    {
+        var node = Child(Child(ReadYamlRoot(text), section) as YamlMappingNode, key);
+        return node is YamlScalarNode scalar ? scalar.Value : null;
+    }
+
+    public static string SetSectionScalar(string text, string section, string key, string? value, bool boolean = false)
+    {
+        var root = ReadYamlRoot(text);
+        if (boolean && value is not null && value is not ("true" or "false"))
+            throw new ArgumentException($"{section}.{key} 必须为 true 或 false");
+        if (text.TrimStart().StartsWith('{'))
+        {
+            var json = System.Text.Json.Nodes.JsonNode.Parse(text) as System.Text.Json.Nodes.JsonObject
+                ?? throw new InvalidOperationException("Profile 必须是对象");
+            if (json[section] is null)
+            {
+                if (value is null) return text;
+                json[section] = new System.Text.Json.Nodes.JsonObject();
+            }
+            if (json[section] is not System.Text.Json.Nodes.JsonObject map)
+                throw new InvalidOperationException($"{section} 不是对象");
+            if (value is null) map.Remove(key);
+            else if (boolean) map[key] = value == "true";
+            else map[key] = value;
+            return json.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + Environment.NewLine;
+        }
+
+        var sectionNode = Child(root, section);
+        var literal = boolean ? value : JsonSerializer.Serialize(value);
+        if (sectionNode is null)
+        {
+            if (value is null) return text;
+            // Insert before the first root entry rather than after a possible document end marker.
+            var first = root.Children.Keys.FirstOrDefault()
+                ?? throw new InvalidOperationException("请在高级配置中添加字段");
+            return InsertBeforeLine(text, first, $"{section}:{Environment.NewLine}  {key}: {literal}");
+        }
+        if (sectionNode is not YamlMappingNode sectionMap)
+            throw new InvalidOperationException($"{section} 不是对象");
+        var entry = sectionMap.Children.FirstOrDefault(pair => pair.Key is YamlScalarNode k && k.Value == key);
+        if (entry.Key is null)
+        {
+            if (value is null) return text;
+            var first = sectionMap.Children.Keys.FirstOrDefault()
+                ?? throw new InvalidOperationException("空映射请在高级配置中修改");
+            return InsertBeforeLine(text, first, new string(' ', checked((int)first.Start.Column - 1)) + $"{key}: {literal}");
+        }
+        if (entry.Value is not YamlScalarNode scalarValue || !scalarValue.Anchor.IsEmpty)
+            throw new InvalidOperationException($"请在高级配置中修改 {section}.{key}");
+        var start = checked((int)scalarValue.Start.Index);
+        var end = checked((int)scalarValue.End.Index);
+        if (start < 0 || end <= start || end > text.Length || text.AsSpan(start, end - start).IndexOfAny('\r', '\n') >= 0)
+            throw new InvalidOperationException("多行字段请在高级配置中修改");
+        if (value is not null) return text[..start] + literal + text[end..];
+        var keyStart = checked((int)entry.Key.Start.Index);
+        var lineStart = text.LastIndexOf('\n', Math.Max(0, keyStart - 1)) + 1;
+        var lineEnd = text.IndexOf('\n', end);
+        if (lineEnd < 0) lineEnd = text.Length;
+        var suffix = text[end..lineEnd].Trim();
+        if (!string.IsNullOrWhiteSpace(text[lineStart..keyStart]) || (suffix.Length != 0 && !suffix.StartsWith('#')))
+            throw new InvalidOperationException("请在高级配置中删除该字段");
+        var replacement = suffix.Length == 0 ? string.Empty : text[lineStart..keyStart] + suffix + Environment.NewLine;
+        return text[..lineStart] + replacement + text[(lineEnd < text.Length ? lineEnd + 1 : lineEnd)..];
+    }
+
+    private static string InsertBeforeLine(string text, YamlNode node, string line)
+    {
+        var index = checked((int)node.Start.Index);
+        var start = text.LastIndexOf('\n', Math.Max(0, index - 1)) + 1;
+        if (!string.IsNullOrWhiteSpace(text[start..index]))
+            throw new InvalidOperationException("行内 YAML 映射请在高级配置中修改");
+        return text.Insert(start, line + Environment.NewLine);
     }
 
     private static bool TryApplyJson(string text, bool changedTunnel, bool changedTarget, string targetKind, string tunnelId, string targetValue, out string result)
@@ -57,79 +132,60 @@ public static class ProfileDocumentEditor
         return true;
     }
 
+    private static YamlMappingNode ReadYamlRoot(string text)
+    {
+        var yaml = new YamlStream();
+        using var reader = new StringReader(text);
+        yaml.Load(reader);
+        if (yaml.Documents.Count != 1 || yaml.Documents[0].RootNode is not YamlMappingNode root)
+            throw new InvalidOperationException("Profile 必须包含一个 YAML 对象");
+        return root;
+    }
+
+    private static YamlNode? Child(YamlMappingNode? map, string key)
+    {
+        if (map is null) return null;
+        return map.Children.TryGetValue(new YamlScalarNode(key), out var node) ? node : null;
+    }
+
     private static string ReplaceYamlSectionScalar(string text, string section, string key, string value)
     {
-        var lines = SplitKeepEndings(text); var sectionIndex = -1;
-        for (var i = 0; i < lines.Count; i++)
-        {
-            var stripped = lines[i].Trim();
-            if (string.IsNullOrWhiteSpace(stripped) || lines[i].TrimStart().StartsWith('#')) continue;
-            if (LeadingSpaces(lines[i]) == 0 && stripped == section + ":") { sectionIndex = i; break; }
-        }
-        if (sectionIndex < 0) throw new InvalidOperationException($"高级配置中缺少 {section}: 段，无法安全应用常用设置");
-        var end = lines.Count;
-        for (var i = sectionIndex + 1; i < lines.Count; i++)
-        {
-            var stripped = lines[i].Trim();
-            if (string.IsNullOrWhiteSpace(stripped) || lines[i].TrimStart().StartsWith('#')) continue;
-            if (LeadingSpaces(lines[i]) == 0) { end = i; break; }
-        }
-        var pattern = new Regex($@"^(\s*){Regex.Escape(key)}\s*:", RegexOptions.CultureInvariant);
-        for (var i = sectionIndex + 1; i < end; i++)
-        {
-            var match = pattern.Match(lines[i]); if (!match.Success) continue;
-            lines[i] = $"{match.Groups[1].Value}{key}: {JsonSerializer.Serialize(value)}{GetNewLine(lines[i])}";
-            return string.Concat(lines);
-        }
-        var nl = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
-        lines.Insert(sectionIndex + 1, $"  {key}: {JsonSerializer.Serialize(value)}{nl}");
-        return string.Concat(lines);
+        var root = ReadYamlRoot(text);
+        var node = Child(Child(root, section) as YamlMappingNode, key) as YamlScalarNode;
+        return ReplaceScalar(text, node, value);
     }
 
     private static string ReplaceYamlMainTarget(string text, string targetKind, string value)
     {
-        var lines = SplitKeepEndings(text); var section = string.Empty; var mode = string.Empty; var channel = "main";
-        var wantedMode = targetKind == "server_url" ? "server_url" : "command"; var wantedKey = wantedMode == "server_url" ? "url" : "command";
-        for (var i = 0; i < lines.Count; i++)
-        {
-            var line = lines[i]; var stripped = line.Trim();
-            if (string.IsNullOrWhiteSpace(stripped) || line.TrimStart().StartsWith('#')) continue;
-            var indent = LeadingSpaces(line);
-            if (indent == 0 && stripped.EndsWith(':')) { section = stripped[..^1]; mode = string.Empty; channel = "main"; continue; }
-            if (section != "mcp") continue;
-            if (stripped == "server_urls:") { mode = "server_url"; channel = "main"; continue; }
-            if (stripped == "commands:") { mode = "command"; channel = "main"; continue; }
-            var cm = Regex.Match(stripped, @"^-?\s*channel\s*:\s*(.+)$");
-            if (cm.Success && !string.IsNullOrEmpty(mode)) { channel = ParseYamlScalar(cm.Groups[1].Value); continue; }
-            if (mode != wantedMode || !string.Equals(channel, "main", StringComparison.OrdinalIgnoreCase)) continue;
-            if (!Regex.IsMatch(stripped, $@"^{Regex.Escape(wantedKey)}\s*:")) continue;
-            lines[i] = $"{new string(' ', indent)}{wantedKey}: {JsonSerializer.Serialize(value)}{GetNewLine(line)}";
-            return string.Concat(lines);
-        }
-        throw new InvalidOperationException("没有找到可安全修改的 main MCP 绑定；请直接在高级配置中修改完整 YAML");
+        var root = ReadYamlRoot(text);
+        var mcp = Child(root, "mcp") as YamlMappingNode;
+        var arrayName = targetKind == "server_url" ? "server_urls" : "commands";
+        var key = targetKind == "server_url" ? "url" : "command";
+        var entries = Child(mcp, arrayName) as YamlSequenceNode;
+        var candidates = entries?.Children.OfType<YamlMappingNode>()
+            .Where(entry =>
+            {
+                var channel = (Child(entry, "channel") as YamlScalarNode)?.Value;
+                return string.IsNullOrWhiteSpace(channel) || string.Equals(channel, "main", StringComparison.OrdinalIgnoreCase);
+            })
+            .Select(entry => Child(entry, key) as YamlScalarNode)
+            .Where(node => node is not null).ToArray() ?? [];
+        if (candidates.Length != 1)
+            throw new InvalidOperationException("无法确认唯一 main MCP 绑定，请直接修改高级配置");
+        return ReplaceScalar(text, candidates[0], value);
     }
 
-    private static string ParseYamlScalar(string value)
+    private static string ReplaceScalar(string text, YamlScalarNode? node, string value)
     {
-        try
-        {
-            using var reader = new StringReader($"value: {value}"); var yaml = new YamlStream(); yaml.Load(reader);
-            if (yaml.Documents[0].RootNode is YamlMappingNode map)
-                foreach (var pair in map.Children)
-                    if (pair.Key is YamlScalarNode key && key.Value == "value" && pair.Value is YamlScalarNode scalar) return scalar.Value?.Trim() ?? string.Empty;
-        }
-        catch { }
-        return value.Trim().Trim('"', '\'');
+        if (node is null || !node.Anchor.IsEmpty)
+            throw new InvalidOperationException("无法安全修改 YAML 字段，请直接修改高级配置");
+        var start = checked((int)node.Start.Index);
+        var end = checked((int)node.End.Index);
+        if (start < 0 || end <= start || end > text.Length ||
+            text.AsSpan(start, end - start).IndexOfAny('\r', '\n') >= 0)
+            throw new InvalidOperationException("请在高级配置中修改多行 YAML 字段");
+        return text[..start] + JsonSerializer.Serialize(value) + text[end..];
     }
-
-    private static List<string> SplitKeepEndings(string text)
-    {
-        var result = new List<string>(); var start = 0;
-        for (var i = 0; i < text.Length; i++) if (text[i] == '\n') { result.Add(text[start..(i + 1)]); start = i + 1; }
-        if (start < text.Length) result.Add(text[start..]); if (result.Count == 0) result.Add(text); return result;
-    }
-    private static int LeadingSpaces(string line) { var count = 0; while (count < line.Length && line[count] == ' ') count++; return count; }
-    private static string GetNewLine(string line) => line.EndsWith("\r\n", StringComparison.Ordinal) ? "\r\n" : line.EndsWith('\n') ? "\n" : string.Empty;
 }
 
 public sealed record ProfileMetadataView(string TunnelId, string TargetKind, string TargetValue, string ApiKeyRef);

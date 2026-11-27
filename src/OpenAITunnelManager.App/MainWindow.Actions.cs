@@ -14,6 +14,14 @@ namespace OpenAITunnelManager.App;
 
 public sealed partial class MainWindow
 {
+    private async void OpenAdminUi_Click(object sender, RoutedEventArgs e)
+    {
+        var item = ViewModel.SelectedConnection;
+        if (item?.CanOpenAdminUi != true) return;
+        try { Process.Start(new ProcessStartInfo(item.AdminUiUrl) { UseShellExecute = true }); }
+        catch (Exception exception) { await ShowErrorAsync(exception.Message); }
+    }
+
     private async void AddProfile_Click(object sender, RoutedEventArgs e)
     {
         if (!ViewModel.IsClientAvailable)
@@ -25,69 +33,30 @@ public sealed partial class MainWindow
 
         var editor = new ProfileEditorControl();
         editor.InitializeForCreate();
-        ProfileSpec? spec = null;
-
-        bool ValidateCreate()
-        {
-            editor.ClearValidationError();
-            spec = new ProfileSpec(editor.ProfileName, editor.TunnelId, editor.McpType, editor.TargetValue);
-            var errors = spec.Validate();
-            if (errors.Count > 0)
-            {
-                editor.ShowValidationError(string.Join(Environment.NewLine, errors));
-                return false;
-            }
-
-            if (!editor.AdvancedEdited) return true;
-            if (string.IsNullOrWhiteSpace(editor.RawText))
-            {
-                editor.ShowValidationError("Profile 内容不能为空", advanced: true);
-                return false;
-            }
-
-            try
-            {
-                var metadata = ProfileDocumentEditor.ReadMetadata(editor.RawText);
-                if (!string.Equals(metadata.TargetKind, editor.ExpectedTargetKind, StringComparison.Ordinal))
-                {
-                    editor.ShowValidationError(
-                        $"高级配置中的 main MCP 类型为 {metadata.TargetKind}，与基本页选择的 {editor.ExpectedTargetKind} 不一致。",
-                        advanced: true);
-                    return false;
-                }
-            }
-            catch (Exception exception)
-            {
-                editor.ShowValidationError(exception.Message, advanced: true);
-                return false;
-            }
-
-            return true;
-        }
-
-        if (!await ShowProfileEditorDialogAsync("新建 Profile", editor, "创建", ValidateCreate) || spec is null) return;
         try
         {
+            var samples = await ViewModel.GetProfileSamplesAsync();
+            if (samples.Count > 0)
+            {
+                var choices = new ComboBox { ItemsSource = new[] { "空白 Profile" }.Concat(samples).ToArray(), SelectedIndex = 0, HorizontalAlignment = HorizontalAlignment.Stretch };
+                var dialog = NewDialog("Profile 模板", choices, "继续");
+                if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+                if (choices.SelectedIndex > 0 && choices.SelectedItem is string sample)
+                    editor.LoadTemplate(await ViewModel.ReadProfileSampleAsync(sample));
+            }
+        }
+        catch (Exception exception) { await ShowErrorAsync($"读取官方模板失败：{exception.Message}"); }
+        await ShowProfileEditorDialogAsync("新建 Profile", editor, "创建", async () =>
+        {
+            var raw = editor.PrepareDocument();
             var preference = new ProfilePreference
             {
                 Enabled = editor.Enabled,
                 AutoConnect = editor.AutoConnect,
                 AutoReconnect = editor.AutoReconnect
             };
-
-            if (editor.AdvancedEdited)
-            {
-                await ViewModel.CreateProfileFromTextAsync(spec, editor.RawText, editor.Secret, preference);
-            }
-            else
-            {
-                await ViewModel.CreateProfileAsync(spec, editor.Secret, preference);
-            }
-        }
-        catch (Exception exception)
-        {
-            await ShowErrorAsync(exception.Message);
-        }
+            await ViewModel.CreateProfileFromTextAsync(editor.ProfileName, raw, editor.Secret, preference);
+        });
     }
 
     private async void EditProfile_Click(object sender, RoutedEventArgs e)
@@ -113,68 +82,20 @@ public sealed partial class MainWindow
                 data.HasSavedSecret,
                 data.Text);
 
-            bool ValidateEdit()
+            await ShowProfileEditorDialogAsync($"编辑 Profile - {data.Name}", editor, "保存", async () =>
             {
-                editor.ClearValidationError();
-                var validationTarget = editor.CommonTargetSupported ? editor.TargetValue : "http://127.0.0.1/";
-                var spec = new ProfileSpec(
-                    data.Name,
-                    editor.TunnelId,
-                    data.TargetKind == "command" ? McpType.Stdio : McpType.Http,
-                    validationTarget);
-                var errors = spec.Validate();
-                if (errors.Count > 0)
-                {
-                    editor.ShowValidationError(string.Join(Environment.NewLine, errors));
-                    return false;
-                }
-
-                if (string.IsNullOrWhiteSpace(editor.RawText))
-                {
-                    editor.ShowValidationError("Profile 内容不能为空", advanced: true);
-                    return false;
-                }
-
-                try
-                {
-                    if (editor.CommonTargetSupported)
+                var raw = editor.PrepareDocument();
+                await ViewModel.SaveSelectedProfileAsync(
+                    data, raw,
+                    new ProfilePreference
                     {
-                        ProfileDocumentEditor.ApplyCommonFields(
-                            editor.RawText,
-                            data.TunnelId,
-                            data.TargetKind,
-                            data.TargetValue,
-                            editor.TunnelId,
-                            editor.TargetValue);
-                    }
-                    else
-                    {
-                        ProfileDocumentEditor.ReadMetadata(editor.RawText);
-                    }
-                }
-                catch (Exception exception)
-                {
-                    editor.ShowValidationError(exception.Message, advanced: true);
-                    return false;
-                }
-
-                return true;
-            }
-
-            if (!await ShowProfileEditorDialogAsync($"编辑 Profile - {data.Name}", editor, "保存", ValidateEdit)) return;
-            await ViewModel.SaveSelectedProfileAsync(
-                data,
-                editor.RawText,
-                editor.TunnelId,
-                editor.CommonTargetSupported ? editor.TargetValue : data.TargetValue,
-                new ProfilePreference
-                {
-                    Enabled = editor.Enabled,
-                    AutoConnect = editor.AutoConnect,
-                    AutoReconnect = editor.AutoReconnect
-                },
-                editor.Secret,
-                editor.DeleteSecret);
+                        Enabled = editor.Enabled,
+                        AutoConnect = editor.AutoConnect,
+                        AutoReconnect = editor.AutoReconnect,
+                        UseForeground = data.Preference.UseForeground
+                    },
+                    editor.Secret, editor.DeleteSecret);
+            });
         }
         catch (Exception exception)
         {
@@ -190,14 +111,15 @@ public sealed partial class MainWindow
         try
         {
             var preference = ViewModel.GetSelectedPreferenceCopy();
-            var hasSecret = ViewModel.HasSavedSecret(item);
+            var hasSecret = ViewModel.HasOwnSavedSecret(item);
             var enabled = new CheckBox { Content = "启用此配置", IsChecked = preference.Enabled };
             var autoConnect = new CheckBox { Content = "程序启动后自动连接", IsChecked = preference.AutoConnect };
             var autoReconnect = new CheckBox { Content = "异常停止后自动重连", IsChecked = preference.AutoReconnect };
+            var foreground = new CheckBox { Content = "使用完整 Profile 前台运行", IsChecked = !item.HasRuntime || preference.UseForeground, IsEnabled = item.HasRuntime && item.HasProfile && !item.ProcessRunning };
             var secret = new PasswordBox { Header = "新的 Runtime API Key", PlaceholderText = hasSecret ? "已保存；留空表示不修改" : "未保存；留空使用环境变量", HorizontalAlignment = HorizontalAlignment.Stretch };
-            var deleteSecret = new CheckBox { Content = "删除已保存的 Runtime API Key", IsEnabled = hasSecret };
+            var deleteSecret = new CheckBox { Content = "删除此连接独立保存的 API Key", IsEnabled = hasSecret };
             var panel = new StackPanel { Spacing = 10, HorizontalAlignment = HorizontalAlignment.Stretch };
-            foreach (var control in new UIElement[] { enabled, autoConnect, autoReconnect, secret, deleteSecret }) panel.Children.Add(control);
+            foreach (var control in new UIElement[] { enabled, autoConnect, autoReconnect, foreground, secret, deleteSecret }) panel.Children.Add(control);
             var dialog = NewDialog($"本机偏好 / 密钥 - {item.Name}", panel, "保存");
             if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
 
@@ -206,7 +128,8 @@ public sealed partial class MainWindow
                 {
                     Enabled = enabled.IsChecked == true,
                     AutoConnect = autoConnect.IsChecked == true,
-                    AutoReconnect = autoReconnect.IsChecked == true
+                    AutoReconnect = autoReconnect.IsChecked == true,
+                    UseForeground = item.HasRuntime && foreground.IsChecked == true
                 },
                 secret.Password,
                 deleteSecret.IsChecked == true);
@@ -222,7 +145,7 @@ public sealed partial class MainWindow
         var item = ViewModel.SelectedConnection;
         if (item is null) return;
 
-        var profileLine = item.ProfileListed ? "\n• 如果没有其他 Runtime 共用该 Profile，则删除官方 Profile 文件" : string.Empty;
+        var profileLine = item.HasRuntime ? "\n• 官方 Runtime 删除会移除关联 Profile、配置及日志文件；共享 Profile 不允许直接删除" : "\n• 删除对应 Profile 文件";
         var confirm = NewDialog(
             "删除 tunnel-client 配置",
             new TextBlock
@@ -236,7 +159,7 @@ public sealed partial class MainWindow
         if (await confirm.ShowAsync() != ContentDialogResult.Primary) return;
         try
         {
-            await ViewModel.DeleteSelectedAsync();
+            await ViewModel.DeleteSelectedAsync(item);
         }
         catch (Exception exception)
         {
@@ -359,6 +282,41 @@ public sealed partial class MainWindow
         }
     }
 
+    private async void SwitchInstalledVersion_Click(object sender, RoutedEventArgs e)
+    {
+        var versions = ViewModel.GetInstalledTunnelClientVersions();
+        if (versions.Count == 0) { await ShowErrorAsync("尚无已安装的托管版本"); return; }
+        var box = new ComboBox { ItemsSource = versions, SelectedIndex = 0, HorizontalAlignment = HorizontalAlignment.Stretch };
+        if (await NewDialog("切换 / 回退 tunnel-client", box, "验证并切换").ShowAsync() != ContentDialogResult.Primary || box.SelectedItem is not string version) return;
+        try { await ViewModel.UseInstalledTunnelClientVersionAsync(version); }
+        catch (Exception exception) { await ShowErrorAsync(exception.Message); }
+        RefreshTunnelClientSettingsUi();
+    }
+
+    private async void RepairInstalledVersion_Click(object sender, RoutedEventArgs e)
+    {
+        var version = ViewModel.ManagedTunnelClientVersion;
+        if (string.IsNullOrWhiteSpace(version))
+        {
+            await ShowErrorAsync("尚无托管版本可重新下载");
+            return;
+        }
+        try { await ViewModel.InstallManagedTunnelClientAsync(forceDownload: true, requestedVersion: version); }
+        catch (OperationCanceledException) { }
+        catch (Exception exception) { await ShowErrorAsync(exception.Message); }
+        RefreshTunnelClientSettingsUi();
+    }
+
+    private async void DownloadSpecificVersion_Click(object sender, RoutedEventArgs e)
+    {
+        var box = new TextBox { Header = "正式版本标签", PlaceholderText = "v0.0.21" };
+        if (await NewDialog("安装指定 tunnel-client 版本", box, "下载并验证").ShowAsync() != ContentDialogResult.Primary) return;
+        try { await ViewModel.InstallManagedTunnelClientAsync(requestedVersion: box.Text.Trim()); }
+        catch (OperationCanceledException) { }
+        catch (Exception exception) { await ShowErrorAsync(exception.Message); }
+        RefreshTunnelClientSettingsUi();
+    }
+
     private async void CleanupManagedVersions_Click(object sender, RoutedEventArgs e)
     {
         if (!ViewModel.UsesManagedTunnelClient ||
@@ -378,7 +336,8 @@ public sealed partial class MainWindow
             "清理");
 
         if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
-        ViewModel.CleanupDownloadedTunnelClientVersions();
+        try { ViewModel.CleanupDownloadedTunnelClientVersions(); }
+        catch (Exception exception) { await ShowErrorAsync(exception.Message); }
         RefreshTunnelClientSettingsUi();
     }
 

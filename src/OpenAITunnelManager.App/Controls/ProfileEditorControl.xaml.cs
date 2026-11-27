@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenAITunnelManager.Core.Models;
+using OpenAITunnelManager.Infrastructure.TunnelClient;
 using WinUIEditor;
 
 namespace OpenAITunnelManager.App.Controls;
@@ -12,6 +13,10 @@ public sealed partial class ProfileEditorControl : UserControl
     private bool _advancedEdited;
     private bool _createMode;
     private string _originalTargetKind = "server_url";
+    private int _previousTab;
+    private bool _switchingTab;
+    private readonly List<(string Section, string Key, bool Boolean, TextBox Box)> _officialFields = [];
+    private readonly Dictionary<(string, string), string> _fieldBaseline = new();
 
     public ProfileEditorControl()
     {
@@ -29,6 +34,7 @@ public sealed partial class ProfileEditorControl : UserControl
         }
 
         RawEditor.Editor.Modified += RawEditor_Modified;
+        BuildOfficialFields();
     }
 
     public string ProfileName => ProfileNameBox.Text.Trim();
@@ -72,10 +78,12 @@ public sealed partial class ProfileEditorControl : UserControl
         DeleteSecretCheckBox.IsChecked = false;
         AdvancedHelpText.Text = "高级配置会随“基本”页自动生成；手动修改后将保留你的完整 YAML / JSON。";
         EditorTabs.SelectedIndex = 0;
+        _previousTab = 0;
         ClearValidationError();
 
         _initializing = false;
         SyncCreateRawFromBasic();
+        LoadOfficialFields();
     }
 
     public void InitializeForEdit(
@@ -122,6 +130,7 @@ public sealed partial class ProfileEditorControl : UserControl
             ? "保存时会将“基本”页中的 Tunnel ID 和 main MCP target 同步到此配置。"
             : "当前 Profile 使用非常用 MCP 结构；main MCP target 请直接在这里修改。";
         SetRawEditorText(rawText);
+        LoadOfficialFields();
         EditorTabs.SelectedIndex = 0;
         ClearValidationError();
 
@@ -133,7 +142,7 @@ public sealed partial class ProfileEditorControl : UserControl
         ValidationInfo.Title = "无法保存";
         ValidationInfo.Message = message;
         ValidationInfo.IsOpen = true;
-        EditorTabs.SelectedIndex = advanced ? 1 : 0;
+        if (advanced) EditorTabs.SelectedIndex = 1;
     }
 
     public void ClearValidationError()
@@ -143,12 +152,77 @@ public sealed partial class ProfileEditorControl : UserControl
         ValidationInfo.Message = string.Empty;
     }
 
+    public string PrepareDocument()
+    {
+        ClearValidationError();
+        if (EditorTabs.SelectedIndex == 0) ApplyBasicToDocument();
+        return RawText;
+    }
+
+    private void ApplyBasicToDocument()
+    {
+        if (_createMode && !_advancedEdited) SyncCreateRawFromBasic();
+        var metadata = ProfileDocumentEditor.ReadMetadata(RawText);
+        var updated = ProfileDocumentEditor.ApplyCommonFields(
+            RawText, metadata.TunnelId, metadata.TargetKind, metadata.TargetValue,
+            TunnelId, CommonTargetSupported ? TargetValue : metadata.TargetValue);
+        foreach (var field in _officialFields)
+        {
+            var value = field.Box.Text.Trim();
+            if (value == _fieldBaseline.GetValueOrDefault((field.Section, field.Key), string.Empty)) continue;
+            if (field.Key == "api_key" && value.Length > 0 &&
+                !value.StartsWith("env:", StringComparison.Ordinal) && !value.StartsWith("file:", StringComparison.Ordinal) && !value.StartsWith('$'))
+                throw new InvalidOperationException("API Key 只能填写环境变量或文件引用，密钥请使用凭据栏");
+            updated = ProfileDocumentEditor.SetSectionScalar(updated, field.Section, field.Key, value.Length == 0 ? null : value, field.Boolean);
+        }
+        if (updated == RawText) return;
+        _initializing = true;
+        try
+        {
+            SetRawEditorText(updated);
+            _advancedEdited = true;
+            McpTypeCombo.IsEnabled = false;
+            LoadOfficialFields();
+        }
+        finally { _initializing = false; }
+    }
+
+    private void LoadBasicFromDocument()
+    {
+        var metadata = ProfileDocumentEditor.ReadMetadata(RawText);
+        _initializing = true;
+        try
+        {
+            _originalTargetKind = metadata.TargetKind;
+            TunnelIdBox.Text = metadata.TunnelId;
+            TargetBox.Text = metadata.TargetValue;
+            TargetBox.IsEnabled = CommonTargetSupported;
+            McpTypeCombo.Visibility = CommonTargetSupported ? Visibility.Visible : Visibility.Collapsed;
+            McpTypeCombo.IsEnabled = _createMode && !_advancedEdited;
+            McpTypeCombo.SelectedIndex = metadata.TargetKind == "command" ? 1 : 0;
+            TargetBox.Header = metadata.TargetKind == "command" ? "main MCP Command" : "main MCP URL";
+            LoadOfficialFields();
+        }
+        finally { _initializing = false; }
+    }
+
     private void EditorTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_initializing) return;
-        if (_createMode && EditorTabs.SelectedIndex == 1 && !_advancedEdited)
+        if (_initializing || _switchingTab) return;
+        var selected = EditorTabs.SelectedIndex;
+        try
         {
-            SyncCreateRawFromBasic();
+            if (_previousTab == 0 && selected == 1) ApplyBasicToDocument();
+            else if (_previousTab == 1 && selected == 0) LoadBasicFromDocument();
+            _previousTab = selected;
+            ClearValidationError();
+        }
+        catch (Exception exception)
+        {
+            _switchingTab = true;
+            try { EditorTabs.SelectedIndex = _previousTab; }
+            finally { _switchingTab = false; }
+            ShowValidationError(exception.Message);
         }
     }
 
@@ -219,6 +293,50 @@ public sealed partial class ProfileEditorControl : UserControl
         finally
         {
             _initializing = false;
+        }
+    }
+    public void LoadTemplate(string text)
+    {
+        _initializing = true;
+        try { SetRawEditorText(text); _advancedEdited = true; }
+        finally { _initializing = false; }
+        LoadBasicFromDocument();
+    }
+
+    private void BuildOfficialFields()
+    {
+        void Add(string section, string key, string label, bool boolean = false)
+        {
+            var box = new TextBox { Header = label, HorizontalAlignment = HorizontalAlignment.Stretch };
+            _officialFields.Add((section, key, boolean, box));
+            OfficialFieldsPanel.Children.Add(box);
+        }
+        Add("control_plane", "residency", "Residency（global / us / eu 等）");
+        Add("control_plane", "base_url", "Control plane Base URL");
+        Add("control_plane", "url_path", "Control plane URL Path");
+        Add("control_plane", "api_key", "Runtime API Key 引用（env: / file:）");
+        Add("control_plane", "aws_identity_provider_id", "AWS Identity Provider ID");
+        Add("control_plane", "aws_service_account_id", "AWS Service Account ID");
+        Add("control_plane", "client_cert", "mTLS 证书引用");
+        Add("control_plane", "client_key", "mTLS 私钥引用");
+        Add("mcp", "oauth_discovery", "OAuth discovery（auto / disabled）");
+        Add("mcp", "stdio_failure_policy", "STDIO failure policy（restart / exit）");
+        Add("mcp", "forward_trace_context", "转发 Trace Context（true / false）", true);
+        Add("tracing", "enabled", "本地 Trace（true / false）", true);
+        Add("tracing", "file", "Trace JSONL 文件");
+        Add("admin_ui", "base_path", "Admin UI Base Path");
+        Add("admin_ui", "public_origin", "Admin UI Public Origin");
+    }
+
+    private void LoadOfficialFields()
+    {
+        foreach (var field in _officialFields)
+        {
+            var value = ProfileDocumentEditor.ReadSectionScalar(RawText, field.Section, field.Key) ?? string.Empty;
+            if (field.Key == "api_key" && !value.StartsWith("env:", StringComparison.Ordinal) &&
+                !value.StartsWith("file:", StringComparison.Ordinal) && !value.StartsWith('$')) value = string.Empty;
+            field.Box.Text = value;
+            _fieldBaseline[(field.Section, field.Key)] = value;
         }
     }
 }

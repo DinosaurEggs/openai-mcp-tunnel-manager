@@ -8,6 +8,11 @@ internal sealed record ProfileMetadata(
     string TargetKind,
     string TargetValue)
 {
+    public bool UsesAwsIdentity { get; init; }
+    public bool HasStdioTarget { get; init; }
+    public string Residency { get; init; } = string.Empty;
+    public string AdminBasePath { get; init; } = string.Empty;
+    public string Authentication => UsesAwsIdentity ? "AWS Workload Identity" : ApiKeyRef.StartsWith("file:", StringComparison.OrdinalIgnoreCase) ? "文件引用" : "API Key / 环境变量";
     public const string DefaultApiKeyRef = "env:CONTROL_PLANE_API_KEY";
     public static ProfileMetadata Empty { get; } =
         new(string.Empty, DefaultApiKeyRef, string.Empty, string.Empty);
@@ -55,23 +60,33 @@ internal static class ProfileMetadataReader
 
             var controlPlane = GetMapping(root, "control_plane");
             var tunnelId = GetScalar(controlPlane, "tunnel_id");
-            var apiKeyRef = GetScalar(controlPlane, "api_key");
-            if (string.IsNullOrWhiteSpace(apiKeyRef))
+            var usesAwsIdentity = !string.IsNullOrWhiteSpace(GetScalar(controlPlane, "aws_identity_provider_id")) ||
+                !string.IsNullOrWhiteSpace(GetScalar(controlPlane, "aws_service_account_id"));
+            var apiKeyRef = usesAwsIdentity ? string.Empty : GetScalar(controlPlane, "api_key");
+            if (!usesAwsIdentity && string.IsNullOrWhiteSpace(apiKeyRef))
             {
                 apiKeyRef = ProfileMetadata.DefaultApiKeyRef;
             }
 
             var mcp = GetMapping(root, "mcp");
+            var commands = GetSequence(mcp, "commands");
+            ProfileMetadata Build(string kind, string value) => new(tunnelId, apiKeyRef, kind, value)
+            {
+                UsesAwsIdentity = usesAwsIdentity,
+                HasStdioTarget = commands is { Children.Count: > 0 },
+                Residency = GetScalar(controlPlane, "residency"),
+                AdminBasePath = GetScalar(GetMapping(root, "admin_ui"), "base_path")
+            };
             var serverUrl = FindMainTarget(GetSequence(mcp, "server_urls"), "url");
             if (!string.IsNullOrWhiteSpace(serverUrl))
             {
-                return new ProfileMetadata(tunnelId, apiKeyRef, "server_url", serverUrl);
+                return Build("server_url", serverUrl);
             }
 
             var command = FindMainTarget(GetSequence(mcp, "commands"), "command");
             return string.IsNullOrWhiteSpace(command)
-                ? new ProfileMetadata(tunnelId, apiKeyRef, string.Empty, string.Empty)
-                : new ProfileMetadata(tunnelId, apiKeyRef, "command", command);
+                ? Build(string.Empty, string.Empty)
+                : Build("command", command);
         }
         catch (YamlDotNet.Core.YamlException)
         {

@@ -17,14 +17,15 @@ public sealed partial class MainWindow
     private Button? _profileModalPrimaryButton;
     private Button? _profileModalCancelButton;
     private ProfileEditorControl? _activeProfileEditor;
-    private Func<bool>? _profileModalValidate;
+    private Func<Task>? _profileModalSave;
+    private bool _profileModalSaving;
     private TaskCompletionSource<bool>? _profileModalCompletion;
 
     private Task<bool> ShowProfileEditorDialogAsync(
         string title,
         ProfileEditorControl editor,
         string primaryText,
-        Func<bool> validate)
+        Func<Task> save)
     {
         if (_profileModalCompletion is not null)
         {
@@ -34,7 +35,7 @@ public sealed partial class MainWindow
         EnsureProfileModalHost();
 
         _activeProfileEditor = editor;
-        _profileModalValidate = validate;
+        _profileModalSave = save;
         _profileModalCompletion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         editor.Width = double.NaN;
@@ -187,19 +188,39 @@ public sealed partial class MainWindow
 
     private void RootGrid_ProfileModalSizeChanged(object sender, SizeChangedEventArgs e) => ApplyProfileModalLayout();
 
-    private void ProfileModalPrimaryButton_Click(object sender, RoutedEventArgs e)
+    private async void ProfileModalPrimaryButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_profileModalValidate is null || !_profileModalValidate()) return;
-        CloseProfileModal(true);
+        if (_profileModalSaving || _profileModalSave is null) return;
+        _profileModalSaving = true;
+        _profileModalPrimaryButton!.IsEnabled = false;
+        _profileModalCancelButton!.IsEnabled = false;
+        try
+        {
+            await _profileModalSave();
+            CloseProfileModal(true);
+        }
+        catch (Exception exception)
+        {
+            _activeProfileEditor?.ShowValidationError(exception.Message);
+        }
+        finally
+        {
+            _profileModalSaving = false;
+            _profileModalPrimaryButton.IsEnabled = true;
+            _profileModalCancelButton.IsEnabled = true;
+        }
     }
 
-    private void ProfileModalCancelButton_Click(object sender, RoutedEventArgs e) => CloseProfileModal(false);
+    private void ProfileModalCancelButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_profileModalSaving) CloseProfileModal(false);
+    }
 
     private void ProfileModalOverlay_KeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (e.Key != VirtualKey.Escape) return;
         e.Handled = true;
-        CloseProfileModal(false);
+        if (!_profileModalSaving) CloseProfileModal(false);
     }
 
     private void CloseProfileModal(bool accepted)
@@ -211,7 +232,7 @@ public sealed partial class MainWindow
         _profileModalContent!.Content = null;
 
         _activeProfileEditor = null;
-        _profileModalValidate = null;
+        _profileModalSave = null;
         var completion = _profileModalCompletion;
         _profileModalCompletion = null;
         completion.TrySetResult(accepted);

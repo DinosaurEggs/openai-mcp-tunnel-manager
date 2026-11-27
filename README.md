@@ -2,7 +2,7 @@
 
 Windows 上的 `tunnel-client` 可视化管理器，使用 C# / WinUI 3 开发，不包含 Python、WinForms 或 WPF UI 组件。
 
-当前版本：**1.2.0**
+当前版本：**1.3.0**
 
 ## 技术基线
 
@@ -16,6 +16,16 @@ Windows 上的 `tunnel-client` 可视化管理器，使用 C# / WinUI 3 开发�
 - xUnit v3 / Microsoft Testing Platform
 
 目标框架为 `net10.0-windows10.0.19041.0`，发布为 unpackaged、self-contained 的 `win-x64` / `win-arm64`。
+
+## Manager 自身更新
+
+设置页中的“Manager 更新”显示当前应用版本，点击“检查更新”查询本仓库 GitHub 最新正式 Release。发现新版本时展示版本及 Release 更新说明，由用户确认或取消。确认后按进程架构下载对应 ZIP，校验发布 digest（若提供），正常退出 Manager、覆盖发布文件并重新启动。没有新版本时提示当前已是最新版本。更新保留 config、logs、state 和 tunnel-client；应用退出会停止 Manager 持有的前台连接，Native Runtime 保持原有生命周期。不在后台自动检查更新。
+
+首次从 1.2.0 升级至 1.3.0 需手动下载完整发布包，退出旧版 Manager 后解压到程序目录，保留本机数据目录。1.3.0 起可使用内置更新入口升级后续正式版本。
+
+## 支持的 tunnel-client 版本
+
+本版本以官方 Full Client v0.0.21 为开发与测试基线。客户端选择不设最低版本号，检查所需 CLI 命令是否可用。旧版本不在本轮兼容性测试范围内。
 
 ## 数据来源与刷新模型
 
@@ -70,7 +80,7 @@ OpenAITunnelManager.exe
 
 托管模式只在用户点击“下载”或“更新”时访问 GitHub，不在应用启动时自动检查新版本。Manager 会按当前架构精确选择官方 `windows-amd64` / `windows-arm64` Release 资产，校验 Release digest 与 `SHA256SUMS.txt`，并在新版本通过 `--version` 验证后才切换。更新失败时继续使用当前已安装版本。
 
-托管版本按版本号安装到 `tunnel-client\\versions\\<version>`。正常更新保留当前版本和一个旧版本；设置页“清理已下载版本”会删除当前未使用的其他托管版本。
+托管版本按版本号安装到 `tunnel-client\\versions\\<version>`。支持手动选择已安装版本、安装指定正式版本与重新下载当前版本；保留已安装版本供切换，并由设置页显式清理其他版本。
 
 `config/settings.json` 只保存 Manager 本机偏好：
 
@@ -84,17 +94,18 @@ OpenAITunnelManager.exe
 
 历史 settings 中的 `refreshIntervalMs` / `refresh_interval_ms` 只用于兼容迁移；读取旧配置后会自动重写并移除此字段。
 
-Runtime API Key 明文只进入 Windows Credential Manager，不写入 `settings.json`、Profile 或应用日志。
+Manager 保存的 Runtime API Key 进入 Windows Credential Manager，不写入 `settings.json` 或 Profile。v1.3.0 使用 Profile 完整路径和 Runtime State Root + alias 分离作用域；旧的同名凭据只有归属明确时才迁移。
 
 默认不会覆盖 `TUNNEL_CLIENT_PROFILE_DIR` / `TUNNEL_CLIENT_STATE_DIR`。只有用户在高级设置中主动选择目录时，才向 `tunnel-client` 子进程传递覆盖值。
 
 ## 界面结构
 
-左侧主导航只有：
+左侧主导航：
 
 ```text
 概览
 连接
+远端 Tunnel
 设置
 ```
 
@@ -129,7 +140,7 @@ Runtime API Key 明文只进入 Windows Credential Manager，不写入 `settings
 - 手动 Stop、关闭自动重连、删除配置、应用退出都会取消待执行重连；
 - Runtime API Key 使用 Windows Credential Manager，并支持 Runtime → Profile 凭据查找；
 - `doctor --explain`；
-- Health / Ready 与新旧 Runtime 兼容；
+- Health / Ready 采用当前官方 Runtime 状态契约；
 - WinUIEdit / Scintilla 原生日志控制台：JSON `level` 精确解析、UTF-8 增量读取、搜索/正则、等级过滤、Follow Tail、暂停/继续、清空、复制、导出、自动换行与重复折叠；
 - 停止后保留最后已知日志路径用于继续读取和“打开文件位置”；
 - 打开配置 / 日志文件所在位置；
@@ -258,7 +269,10 @@ dotnet publish .\src\OpenAITunnelManager.App\OpenAITunnelManager.App.csproj `
   -c Release `
   -p:Platform=x64 `
   -r win-x64 `
-  --self-contained true
+  --self-contained true `
+  -o artifacts/win-x64
+# 在同一发布目录中包含独立更新进程
+dotnet publish .\src\OpenAITunnelManager.Updater\OpenAITunnelManager.Updater.csproj -c Release -r win-x64 --self-contained true -o artifacts/win-x64/updater
 ```
 
 GitHub Actions 门禁：

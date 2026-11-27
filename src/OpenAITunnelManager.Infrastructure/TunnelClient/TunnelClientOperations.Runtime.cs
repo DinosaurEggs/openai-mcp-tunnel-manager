@@ -7,64 +7,133 @@ namespace OpenAITunnelManager.Infrastructure.TunnelClient;
 
 public sealed partial class TunnelClientOperations
 {
-    public async Task StartAsync(TunnelConnection connection, string? secret, CancellationToken cancellationToken = default)
+    public Task StartAsync(TunnelConnection connection, string? secret, CancellationToken cancellationToken = default) =>
+        CoordinateLifecycleAsync(() => StartCoreAsync(connection, secret, cancellationToken), cancellationToken);
+
+    private async Task StartCoreAsync(TunnelConnection connection, string? secret, CancellationToken cancellationToken)
     {
-        if (connection.HasRuntime)
+        cancellationToken.ThrowIfCancellationRequested();
+        if (connection.HasRuntime && !connection.UseForeground && _foreground.ContainsKey(connection.Identity))
+            throw new InvalidOperationException("请先停止 Manager 持有的前台进程");
+        var metadata = ProfileMetadataReader.Read(FirstNonEmpty(connection.RuntimeProfilePath, connection.ProfilePath));
+        await EnsureStdioExclusiveAsync(connection, metadata.HasStdioTarget || connection.HasStdioTarget || IsStdio(FirstNonEmpty(metadata.TargetKind, connection.TargetKind)),
+            FirstNonEmpty(metadata.TunnelId, connection.TunnelId), cancellationToken);
+        if (connection.HasRuntime && !connection.UseForeground)
         {
             await ConnectRuntimeAsync(connection, secret, cancellationToken);
             return;
         }
         if (connection.HasProfile)
         {
+            if (connection.HasRuntime)
+            {
+                var native = await _inventory.GetStatusAsync(connection, cancellationToken, secret);
+                if (native.ProcessRunning || native.State is RuntimeState.Unknown or RuntimeState.Error)
+                    throw new InvalidOperationException("请先确认 Native Runtime 已停止");
+            }
             await StartProfileAsync(connection, secret, cancellationToken);
             return;
         }
         throw new InvalidOperationException("该项目没有可启动的 Runtime 或 Profile");
     }
 
-    public async Task StopAsync(TunnelConnection connection, CancellationToken cancellationToken = default)
+    public Task StopAsync(TunnelConnection connection, CancellationToken cancellationToken = default) =>
+        CoordinateLifecycleAsync(() => StopCoreAsync(connection, cancellationToken), cancellationToken);
+
+    private async Task StopCoreAsync(TunnelConnection connection, CancellationToken cancellationToken)
     {
-        if (connection.HasRuntime)
+        if (connection.HasRuntime && !_foreground.ContainsKey(connection.Identity))
         {
             await RunAsync(["runtimes", "stop", connection.RuntimeAlias, "--json"], false, cancellationToken, TimeSpan.FromSeconds(30));
             return;
         }
         if (connection.HasProfile)
         {
-            await StopProfileAsync(connection.ProfileName);
+            await StopProfileAsync(connection.Identity);
             return;
         }
         throw new InvalidOperationException("该项目没有可停止的 Runtime 或 Profile");
     }
 
-    public async Task RestartAsync(TunnelConnection connection, string? secret, CancellationToken cancellationToken = default)
-    {
-        await StopAsync(connection, cancellationToken);
-        await StartAsync(connection, secret, cancellationToken);
-    }
+    public Task RestartAsync(TunnelConnection connection, string? secret, CancellationToken cancellationToken = default) =>
+        CoordinateLifecycleAsync(async () =>
+        {
+            if (connection.HasRuntime && !connection.UseForeground) _ = await ValidateNativeRuntimeAsync(connection, cancellationToken);
+            await StopCoreAsync(connection, cancellationToken);
+            await StartCoreAsync(connection, secret, cancellationToken);
+        }, cancellationToken);
 
-    public async Task RemoveRuntimeAsync(string alias, CancellationToken cancellationToken = default)
+    public Task RemoveRuntimeAsync(string alias, CancellationToken cancellationToken = default) =>
+        CoordinateLifecycleAsync(() => RemoveRuntimeCoreAsync(alias, cancellationToken), cancellationToken);
+
+    private async Task RemoveRuntimeCoreAsync(string alias, CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(alias);
+        var inventory = await _inventory.GetConnectionsAsync(cancellationToken);
+        var current = inventory.SingleOrDefault(item => item.HasRuntime &&
+            string.Equals(item.RuntimeAlias, alias, StringComparison.OrdinalIgnoreCase));
+        if (current is null) throw new InvalidOperationException("Runtime 已变化，请刷新列表");
+        // The official rm command may remove both alias and process paths. Read every
+        // relevant local status before invoking it; alias list alone is insufficient.
+        var statuses = new List<TunnelConnection>();
+        foreach (var item in inventory)
+        {
+            var status = item.HasRuntime ? await _inventory.GetStatusAsync(item, cancellationToken) : item;
+            if (item.HasRuntime && status.State == RuntimeState.Unknown)
+                throw new InvalidOperationException($"无法确认 Runtime {item.Name} 的关联文件，请刷新后重试");
+            statuses.Add(status);
+        }
+        current = statuses.Single(item => item.Identity == current.Identity);
+        if (current.ProcessRunning)
+            throw new InvalidOperationException("请先停止 Native Runtime");
+        var owned = AllRuntimePaths(current);
+        if (statuses.Any(item => item.Identity != current.Identity &&
+                AllRuntimePaths(item).Any(other => owned.Any(path => SamePath(path, other)))))
+            throw new InvalidOperationException("该 Runtime 的 Profile 或状态文件被其他连接共享，无法安全删除");
+        if (_foreground.ContainsKey(current.Identity)) await StopProfileAsync(current.Identity);
         await RunAsync(["runtimes", "rm", alias, "--json"], false, cancellationToken, TimeSpan.FromSeconds(30));
+    }
+
+    private static IEnumerable<string> AllRuntimePaths(TunnelConnection item) =>
+        item.RuntimeOwnedPaths.Concat(new[] { item.ProfilePath, item.RuntimeProfilePath })
+            .Where(path => !string.IsNullOrWhiteSpace(path));
+
+    private async Task<IReadOnlyList<string>> ValidateNativeRuntimeAsync(TunnelConnection connection, CancellationToken cancellationToken)
+    {
+        var profilePath = FirstNonEmpty(connection.RuntimeProfilePath, connection.ProfilePath);
+        if (string.IsNullOrWhiteSpace(profilePath) || !File.Exists(profilePath))
+            throw new InvalidOperationException("Runtime Profile 缺失，无法确认原始配置。请查看官方 Repair Actions 后修复");
+        var profileName = FirstNonEmpty(connection.RuntimeProfileName, connection.ProfileName, connection.RuntimeAlias);
+        var directory = Path.GetDirectoryName(profilePath);
+        if (string.IsNullOrWhiteSpace(directory) || !SamePath(profilePath, Path.Combine(directory, profileName + ".yaml")))
+            throw new InvalidOperationException("Runtime 的 Profile 路径与官方生成路径不同，请使用完整 Profile 运行方式");
+        var items = await _inventory.GetConnectionsAsync(cancellationToken);
+        if (items.Any(item => item.HasRuntime && !string.Equals(item.Identity, connection.Identity, StringComparison.OrdinalIgnoreCase) &&
+                AllRuntimePaths(item).Any(path => SamePath(profilePath, path))))
+            throw new InvalidOperationException("共享 Profile 不能由 Native Runtime 重新生成，请使用前台运行");
+        return NativeRuntimeProfileGuard.Validate(await File.ReadAllTextAsync(profilePath, cancellationToken),
+            connection.StateRoot, connection.RuntimeAlias);
     }
 
     private async Task ConnectRuntimeAsync(TunnelConnection connection, string? secret, CancellationToken cancellationToken)
     {
         var profilePath = FirstNonEmpty(connection.RuntimeProfilePath, connection.ProfilePath);
+        var controlPlaneFlags = await ValidateNativeRuntimeAsync(connection, cancellationToken);
         var metadata = ProfileMetadataReader.Read(profilePath);
-        var tunnelId = FirstNonEmpty(connection.TunnelId, metadata.TunnelId);
+        var tunnelId = FirstNonEmpty(metadata.TunnelId, connection.TunnelId);
         if (string.IsNullOrWhiteSpace(tunnelId)) throw new InvalidOperationException("官方 Runtime 状态/Profile 中缺少 Tunnel ID，无法安全重建 connect 命令");
         var profileName = FirstNonEmpty(connection.RuntimeProfileName, connection.ProfileName, connection.RuntimeAlias);
-        var kind = FirstNonEmpty(connection.TargetKind, metadata.TargetKind).ToLowerInvariant().Replace('-', '_');
-        var target = FirstNonEmpty(connection.TargetValue, metadata.TargetValue);
+        var kind = FirstNonEmpty(metadata.TargetKind, connection.TargetKind).ToLowerInvariant().Replace('-', '_');
+        var target = FirstNonEmpty(metadata.TargetValue, connection.TargetValue);
         if (string.IsNullOrWhiteSpace(target)) throw new InvalidOperationException("官方 Runtime 状态/Profile 中缺少 main MCP target；请用 tunnel-client 修复该 Runtime 配置");
 
+        var reference = TunnelClientProcessRunner.SecretEnvironmentName(metadata.ApiKeyRef) is { } variable ? "env:" + variable : metadata.ApiKeyRef;
         var args = new List<string>
         {
             "runtimes", "connect", "--alias", connection.RuntimeAlias, "--tunnel-id", tunnelId,
-            "--profile", profileName, "--runtime-api-key", metadata.ApiKeyRef
+            "--profile", profileName, "--runtime-api-key", reference
         };
+        args.AddRange(controlPlaneFlags);
         var profileDirectory = Path.GetDirectoryName(profilePath);
         if (!string.IsNullOrWhiteSpace(profileDirectory)) args.AddRange(["--profile-dir", profileDirectory]);
         if (kind is "server_url" or "mcp_server_url" or "url" or "http" or "https") args.AddRange(["--mcp-server-url", target]);
@@ -74,18 +143,63 @@ public sealed partial class TunnelClientOperations
         await RunAsync(args, false, cancellationToken, TimeSpan.FromSeconds(90), metadata.ApiKeyRef, secret);
     }
 
+    private static bool IsStdio(string kind) => kind is "command" or "mcp_command" or "stdio";
+
+    private async Task EnsureStdioExclusiveAsync(TunnelConnection connection, bool hasStdio, string tunnelId, CancellationToken token)
+    {
+        if (string.IsNullOrWhiteSpace(tunnelId)) return;
+        foreach (var pair in _foreground.ToArray())
+        {
+            if (string.Equals(pair.Key, connection.Identity, StringComparison.OrdinalIgnoreCase)) continue;
+            var record = pair.Value;
+            lock (record)
+            {
+                if (_foreground.TryGetValue(pair.Key, out var current) && ReferenceEquals(current, record) &&
+                    string.Equals(record.TunnelId, tunnelId, StringComparison.Ordinal) &&
+                    (hasStdio || record.HasStdioTarget || IsStdio(record.TargetKind)) && !record.Process.HasExited)
+                    throw new InvalidOperationException("同一 STDIO Tunnel 已存在运行实例");
+            }
+        }
+        var inventory = await _inventory.GetConnectionsAsync(token);
+        foreach (var other in inventory.Where(item => item.HasRuntime &&
+                     !string.Equals(item.Identity, connection.Identity, StringComparison.OrdinalIgnoreCase) &&
+                     string.Equals(item.TunnelId, tunnelId, StringComparison.Ordinal) &&
+                     (hasStdio || item.HasStdioTarget || IsStdio(item.TargetKind))))
+        {
+            var status = await _inventory.GetStatusAsync(other, token);
+            if (status.ProcessRunning || status.State is RuntimeState.Unknown or RuntimeState.Error)
+                throw new InvalidOperationException($"同一 STDIO Tunnel 已存在运行实例或状态不明：{other.Name}");
+        }
+    }
+
     private async Task StartProfileAsync(TunnelConnection connection, string? secret, CancellationToken cancellationToken)
     {
-        var name = connection.ProfileName;
-        if (_foreground.TryGetValue(name, out var existing) && !existing.Process.HasExited) return;
-        if (existing is not null)
+        await _foregroundGate.WaitAsync(cancellationToken);
+        try { await StartProfileCoreAsync(connection, secret, cancellationToken); }
+        finally { _foregroundGate.Release(); }
+    }
+
+    private async Task StartProfileCoreAsync(TunnelConnection connection, string? secret, CancellationToken cancellationToken)
+    {
+        var name = connection.Identity;
+        if (_foreground.TryGetValue(name, out var existing))
         {
-            _foreground.TryRemove(name, out _);
-            existing.LogWriter.Dispose();
-            existing.Process.Dispose();
+            lock (existing)
+            {
+                if (_foreground.TryGetValue(name, out var current) && ReferenceEquals(current, existing))
+                {
+                    if (!existing.Process.HasExited)
+                    {
+                        if (!SamePath(existing.ProfilePath, connection.ProfilePath))
+                            throw new InvalidOperationException("同名 Profile 正在使用其他目录中的配置");
+                        return;
+                    }
+                    RemoveForegroundRecord(name, existing);
+                }
+            }
         }
 
-        var safeName = string.Concat(name.Select(ch => Path.GetInvalidFileNameChars().Contains(ch) ? '_' : ch));
+        var safeName = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(name.ToUpperInvariant() + "\n" + connection.StateRoot.ToUpperInvariant() + "\n" + Path.GetFullPath(connection.ProfilePath).ToUpperInvariant())));
         var workDirectory = Path.Combine(AppDataPaths.Current.ForegroundStateDirectory, safeName);
         Directory.CreateDirectory(workDirectory);
         var healthFile = Path.Combine(workDirectory, "health.url");
@@ -94,21 +208,14 @@ public sealed partial class TunnelClientOperations
 
         var metadata = ProfileMetadataReader.Read(connection.ProfilePath);
         var info = CreateStartInfo(
-            ["run", "--profile", name, "--health.listen-addr", "127.0.0.1:0", "--health.url-file", healthFile],
+            ["run", "--profile-file", connection.ProfilePath, "--health.listen-addr", "127.0.0.1:0", "--health.url-file", healthFile],
             metadata.ApiKeyRef,
             secret);
         var process = new Process { StartInfo = info, EnableRaisingEvents = true };
-        var logStream = new FileStream(logPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete, 64 * 1024, FileOptions.SequentialScan);
-        var logWriter = new StreamWriter(logStream, new UTF8Encoding(false)) { AutoFlush = true };
-        var gate = new object();
+        var logWriter = new RollingForegroundLog(logPath);
         void Append(string? line)
         {
-            if (line is null) return;
-            lock (gate)
-            {
-                try { logWriter.WriteLine(line); }
-                catch (ObjectDisposedException) { }
-            }
+            if (line is not null) logWriter.WriteLine(string.IsNullOrEmpty(secret) ? line : line.Replace(secret, "[REDACTED]", StringComparison.Ordinal));
         }
         process.OutputDataReceived += (_, e) => Append(e.Data);
         process.ErrorDataReceived += (_, e) => Append(e.Data);
@@ -124,12 +231,15 @@ public sealed partial class TunnelClientOperations
             throw;
         }
 
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
-        _foreground[name] = new ForegroundProfile(process, healthFile, logPath, connection.ProfilePath, logWriter);
+        _foreground[name] = new ForegroundProfile(process, healthFile, logPath, connection.ProfilePath, logWriter,
+            FirstNonEmpty(metadata.TunnelId, connection.TunnelId), metadata.TargetKind, metadata.TargetValue,
+            metadata.HasStdioTarget, DateTimeOffset.UtcNow, info.FileName);
 
         try
         {
+            process.StandardInput.Close();
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
             var deadline = DateTimeOffset.UtcNow.AddSeconds(12);
             while (DateTimeOffset.UtcNow < deadline)
             {
@@ -152,7 +262,7 @@ public sealed partial class TunnelClientOperations
         }
         catch
         {
-            await StopProfileAsync(name);
+            await StopProfileCoreAsync(name);
             throw;
         }
 
@@ -168,43 +278,69 @@ public sealed partial class TunnelClientOperations
 
     private void HandleForegroundProfileExited(string name, Process process)
     {
-        if (!_foreground.TryGetValue(name, out var current) || !ReferenceEquals(current.Process, process)) return;
-        if (!_foreground.TryRemove(name, out var record) || !ReferenceEquals(record.Process, process)) return;
-
-        try { process.CancelOutputRead(); } catch { }
-        try { process.CancelErrorRead(); } catch { }
-        try { record.LogWriter.Dispose(); } catch { }
-        try { process.Dispose(); } catch { }
-
+        if (!_foreground.TryGetValue(name, out var record) || !ReferenceEquals(record.Process, process)) return;
+        lock (record)
+        {
+            if (record.Stopping || !RemoveForegroundRecord(name, record)) return;
+        }
         try { ForegroundProfileExited?.Invoke(name); } catch { }
     }
 
-    private Task StopProfileAsync(string name)
+    // Callers hold the record lock. Only remove the exact process instance.
+    private bool RemoveForegroundRecord(string name, ForegroundProfile record)
     {
-        if (!_foreground.TryRemove(name, out var record)) return Task.CompletedTask;
+        if (!_foreground.TryRemove(new KeyValuePair<string, ForegroundProfile>(name, record))) return false;
+        try { record.Process.CancelOutputRead(); } catch { }
+        try { record.Process.CancelErrorRead(); } catch { }
+        try { record.LogWriter.Dispose(); } catch { }
+        record.Process.Dispose();
+        return true;
+    }
+
+    private async Task StopProfileAsync(string name)
+    {
+        await _foregroundGate.WaitAsync();
+        try { await StopProfileCoreAsync(name); }
+        finally { _foregroundGate.Release(); }
+    }
+
+    private async Task StopProfileCoreAsync(string name)
+    {
+        if (!_foreground.TryGetValue(name, out var record)) return;
+        lock (record)
+        {
+            if (!_foreground.TryGetValue(name, out var current) || !ReferenceEquals(current, record)) return;
+            record.Stopping = true;
+        }
         try
         {
             if (!record.Process.HasExited)
             {
                 record.Process.Kill(entireProcessTree: true);
-                record.Process.WaitForExit(5000);
+                using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                await record.Process.WaitForExitAsync(deadline.Token);
             }
-            try { record.Process.CancelOutputRead(); } catch { }
-            try { record.Process.CancelErrorRead(); } catch { }
+            lock (record) { RemoveForegroundRecord(name, record); }
         }
-        finally
+        catch
         {
-            try { record.LogWriter.Dispose(); } catch { }
-            record.Process.Dispose();
+            lock (record)
+            {
+                record.Stopping = false;
+                if (record.Process.HasExited) RemoveForegroundRecord(name, record);
+            }
+            throw;
         }
-        return Task.CompletedTask;
     }
 
-    public async Task ShutdownForegroundProfilesAsync()
+    public Task ShutdownForegroundProfilesAsync() => CoordinateLifecycleAsync(async () =>
     {
+        var failures = new List<Exception>();
         foreach (var name in _foreground.Keys.ToArray())
         {
-            try { await StopProfileAsync(name); } catch { }
+            try { await StopProfileAsync(name); }
+            catch (Exception exception) { failures.Add(exception); }
         }
-    }
+        if (failures.Count > 0) throw new AggregateException("部分前台进程未能停止", failures);
+    }, CancellationToken.None);
 }

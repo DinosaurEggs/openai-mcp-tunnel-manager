@@ -116,6 +116,10 @@ jobs:
       - name: Run behavior tests
         run: dotnet test tests/OpenAITunnelManager.Tests/OpenAITunnelManager.Tests.csproj -c Release --no-restore
 
+      - name: Official tunnel-client local contract
+        shell: pwsh
+        run: ./scripts/Test-OfficialTunnelClient.ps1 -Version v0.0.21
+
   build:
     needs: test
     runs-on: windows-latest
@@ -152,6 +156,14 @@ jobs:
           --no-restore
           -o artifacts/${{ matrix.rid }}
 
+      - name: Publish Manager updater
+        run: >-
+          dotnet publish src/OpenAITunnelManager.Updater/OpenAITunnelManager.Updater.csproj
+          -c Release
+          -r ${{ matrix.rid }}
+          --self-contained true
+          -o artifacts/${{ matrix.rid }}/updater
+
       - name: Trim unsupported WinUI language resources
         shell: pwsh
         run: |
@@ -174,6 +186,7 @@ jobs:
           $output = "artifacts/${{ matrix.rid }}"
           $required = @(
             "OpenAITunnelManager.exe",
+            "updater\OpenAITunnelManager.Updater.exe",
             "OpenAITunnelManager.pri",
             "Microsoft.UI.Xaml.dll",
             "Assets\AppIcon.png",

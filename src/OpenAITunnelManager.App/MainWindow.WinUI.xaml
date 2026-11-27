@@ -38,6 +38,9 @@
                 <NavigationViewItem Content="连接" Tag="connections" IsSelected="True">
                     <NavigationViewItem.Icon><FontIcon Glyph="&#xE71B;" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
+                <NavigationViewItem Content="远端 Tunnel" Tag="remote">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE753;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
             </NavigationView.MenuItems>
 
             <NavigationView.Content>
@@ -206,8 +209,19 @@
                                         <RowDefinition Height="10" />
                                         <RowDefinition Height="*" />
                                     </Grid.RowDefinitions>
-                                    <TextBlock Text="配置列表" FontSize="16" FontWeight="SemiBold" />
-                                    <ListView x:Name="ConnectionsList" Grid.Row="2" ItemsSource="{Binding Connections}" SelectedItem="{Binding SelectedConnection, Mode=TwoWay}" SelectionMode="Single" SelectionChanged="ConnectionsList_SelectionChanged">
+                                    <StackPanel Spacing="8">
+                                        <TextBlock Text="配置列表" FontSize="16" FontWeight="SemiBold" />
+                                        <TextBox PlaceholderText="搜索名称 / Tunnel ID / Target" Text="{Binding ConnectionSearch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        <ComboBox HorizontalAlignment="Stretch" SelectedValuePath="Content" SelectedValue="{Binding ConnectionFilter, Mode=TwoWay}">
+                                            <ComboBoxItem Content="全部" IsSelected="True" />
+                                            <ComboBoxItem Content="运行中" />
+                                            <ComboBoxItem Content="已停止" />
+                                            <ComboBoxItem Content="异常 / 未知" />
+                                        </ComboBox>
+                                        <Button Content="批量操作" Click="BatchConnections_Click" HorizontalAlignment="Stretch" />
+                                        <Button Content="检查过期 Runtime" Click="CleanupStaleRuntime_Click" HorizontalAlignment="Stretch" />
+                                    </StackPanel>
+                                    <ListView x:Name="ConnectionsList" Grid.Row="2" ItemsSource="{Binding VisibleConnections}" SelectedItem="{Binding SelectedConnection, Mode=TwoWay}" SelectionMode="Single" SelectionChanged="ConnectionsList_SelectionChanged">
                                         <ListView.ItemTemplate>
                                             <DataTemplate>
                                                 <Grid Padding="8,10">
@@ -261,7 +275,9 @@
                                         <Button Content="更多" IsEnabled="{Binding CanDeleteSelected}">
                                             <Button.Flyout>
                                                 <MenuFlyout>
+                                                    <MenuFlyoutItem Text="创建 Native Runtime" Click="CreateNativeRuntime_Click" />
                                                     <MenuFlyoutItem Text="本机偏好 / 密钥" Click="EditPreference_Click" />
+                                                    <MenuFlyoutItem Text="打开 Admin UI" IsEnabled="{Binding SelectedConnection.CanOpenAdminUi}" Click="OpenAdminUi_Click" />
                                                     <MenuFlyoutItem Text="打开配置位置" IsEnabled="{Binding CanOpenConfigSelected}" Click="OpenConfigLocation_Click" />
                                                     <MenuFlyoutSeparator />
                                                     <MenuFlyoutItem Text="删除" Click="DeleteSelected_Click" />
@@ -290,7 +306,7 @@
                                                             <RowDefinition Height="Auto" />
                                                         </Grid.RowDefinitions>
                                                         <TextBlock Text="来源" Opacity="0.65" />
-                                                        <TextBlock Grid.Column="1" Text="{Binding SelectedConnection.SourceText}" TextWrapping="Wrap" />
+                                                        <TextBlock Grid.Column="1" Text="{Binding SelectedConnection.ExecutionModeText}" TextWrapping="Wrap" />
                                                         <TextBlock Grid.Row="1" Text="Profile" Opacity="0.65" />
                                                         <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SelectedConnection.ProfileName}" TextWrapping="Wrap" />
                                                         <TextBlock Grid.Row="2" Text="Profile 路径" Opacity="0.65" />
@@ -326,6 +342,16 @@
                                                         <TextBlock Grid.Row="3" Text="Health URL" Opacity="0.65" />
                                                         <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SelectedConnection.HealthUrl}" TextWrapping="Wrap" />
                                                     </Grid>
+                                                    <TextBlock Text="控制平面" FontWeight="SemiBold" />
+                                                    <TextBlock Text="{Binding SelectedConnection.ControlPlaneText}" TextWrapping="Wrap" />
+                                                    <TextBlock Text="{Binding SelectedConnection.ControlPlaneReason}" TextWrapping="Wrap" />
+                                                    <TextBlock Text="认证 / Residency" FontWeight="SemiBold" />
+                                                    <TextBlock Text="{Binding SelectedConnection.Authentication}" />
+                                                    <TextBlock Text="{Binding SelectedConnection.Residency}" />
+                                                    <TextBlock Text="{Binding SelectedConnection.RemoteResidency}" />
+                                                    <TextBlock Text="{Binding SelectedConnection.RemoteLookupStatus}" TextWrapping="Wrap" />
+                                                    <TextBlock Text="{Binding SelectedConnection.ConfigurationStatusText}" TextWrapping="Wrap" />
+                                                    <TextBlock Text="{Binding SelectedConnection.RefreshedText}" Opacity="0.65" />
                                                 </StackPanel>
                                             </ScrollViewer>
                                         </TabViewItem>
@@ -375,7 +401,7 @@
                                                             <ColumnDefinition Width="Auto" />
                                                             <ColumnDefinition Width="Auto" />
                                                         </Grid.ColumnDefinitions>
-                                                        <TextBox PlaceholderText="搜索日志" Text="{Binding LogSearch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                        <TextBox PlaceholderText="搜索 Message / Request ID / Trace ID" Text="{Binding LogSearch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                                         <Button Grid.Column="1" Content="↑" ToolTipService.ToolTip="上一个匹配" Click="LogFindPrevious_Click" />
                                                         <Button Grid.Column="2" Content="↓" ToolTipService.ToolTip="下一个匹配" Click="LogFindNext_Click" />
                                                         <ToggleButton Grid.Column="3" Content="Aa" ToolTipService.ToolTip="区分大小写" IsChecked="{Binding LogSearchCaseSensitive, Mode=TwoWay}" />
@@ -390,7 +416,11 @@
                                                         <ComboBoxItem Content="ERROR" />
                                                     </ComboBox>
                                                     <CheckBox Grid.Column="2" Content="自动换行" IsChecked="{Binding LogWrap, Mode=TwoWay}" VerticalAlignment="Center" />
-                                                    <CheckBox Grid.Column="3" Content="折叠重复" IsChecked="{Binding LogFoldDuplicates, Mode=TwoWay}" VerticalAlignment="Center" />
+                                                    <StackPanel Grid.Column="3" Spacing="4">
+                                                        <CheckBox Content="折叠重复" IsChecked="{Binding LogFoldDuplicates, Mode=TwoWay}" />
+                                                        <CheckBox Content="原始 JSON" IsChecked="{Binding LogRaw, Mode=TwoWay}" />
+                                                        <TextBox PlaceholderText="组件过滤" Text="{Binding LogComponent, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                                    </StackPanel>
                                                 </Grid>
 
                                                 <Border Grid.Row="4" Background="{ThemeResource ControlFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="4">
@@ -460,6 +490,39 @@
                         </Grid>
                     </Grid>
 
+                    <Grid x:Name="RemotePage" Visibility="Collapsed">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                            <StackPanel Spacing="12">
+                                <TextBlock Text="远端 Tunnel 管理" Style="{StaticResource TitleTextBlockStyle}" />
+                                <TextBlock Text="通过官方 Admin CLI 管理远端资源。Admin Key 与 Runtime Key 独立，保存的 Admin Profile 仅包含引用。" TextWrapping="Wrap" Opacity="0.7" />
+                                <ComboBox x:Name="AdminProfileCombo" Header="Admin Profile" DisplayMemberPath="Name" HorizontalAlignment="Stretch" SelectionChanged="AdminProfile_SelectionChanged" />
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button Content="刷新配置" Click="RefreshAdminProfiles_Click" />
+                                    <Button Content="新增 / 修改" Click="SaveAdminProfile_Click" />
+                                    <Button Content="设为活动" Click="ActivateAdminProfile_Click" />
+                                    <Button Content="删除配置" Click="DeleteAdminProfile_Click" />
+                                </StackPanel>
+                                <ComboBox x:Name="RemoteScopeType" Header="查询范围" HorizontalAlignment="Stretch" SelectedIndex="0">
+                                    <ComboBoxItem Content="Organization" />
+                                    <ComboBoxItem Content="Workspace" />
+                                    <ComboBoxItem Content="Tenant" />
+                                </ComboBox>
+                                <TextBox x:Name="RemoteScopeId" Header="Scope ID" />
+                                <PasswordBox x:Name="RemoteAdminSecret" Header="本次 Admin Key（可选）" PlaceholderText="留空使用所选 Admin Profile 的环境变量 / 文件引用" />
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button Content="查询 Tunnel" Click="ListRemoteTunnels_Click" />
+                                    <Button Content="创建 Tunnel" Click="CreateRemoteTunnel_Click" />
+                                    <Button Content="刷新详情" Click="GetRemoteTunnel_Click" />
+                                    <Button Content="编辑" Click="UpdateRemoteTunnel_Click" />
+                                    <Button Content="删除 Tunnel" Click="DeleteRemoteTunnel_Click" />
+                                </StackPanel>
+                                <ListView x:Name="RemoteTunnelList" DisplayMemberPath="DisplayName" SelectionMode="Single" MinHeight="100" MaxHeight="280" />
+                                <TextBlock x:Name="RemoteStatusText" TextWrapping="Wrap" />
+                                <TextBox x:Name="RemoteResultText" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="140" />
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+
                     <Grid x:Name="SettingsPage" Visibility="Collapsed">
                         <ScrollViewer x:Name="SettingsScrollViewer" VerticalScrollBarVisibility="Auto" HorizontalContentAlignment="Stretch">
                             <StackPanel x:Name="SettingsContentPanel" Spacing="18" HorizontalAlignment="Stretch">
@@ -513,6 +576,9 @@
                                                                     <FontIcon Glyph="&#xE838;" />
                                                                 </MenuFlyoutItem.Icon>
                                                             </MenuFlyoutItem>
+                                                            <MenuFlyoutItem Text="切换已安装版本" Click="SwitchInstalledVersion_Click" />
+                                                            <MenuFlyoutItem Text="下载指定正式版本" Click="DownloadSpecificVersion_Click" />
+                                                            <MenuFlyoutItem Text="重新下载当前版本" Click="RepairInstalledVersion_Click" />
                                                             <MenuFlyoutItem x:Name="CleanupManagedVersionsMenuItem" Text="清理已下载版本" Click="CleanupManagedVersions_Click">
                                                                 <MenuFlyoutItem.Icon>
                                                                     <FontIcon Glyph="&#xE74D;" />
@@ -547,6 +613,19 @@
                                                     <TextBlock x:Name="TunnelClientTransferText" Grid.Column="1" FontSize="12" Opacity="0.65" Margin="12,0,0,0" />
                                                 </Grid>
                                             </Grid>
+                                        </Grid>
+                                        <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}" />
+                                        <Grid Padding="18" ColumnSpacing="12">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Spacing="3" VerticalAlignment="Center">
+                                                <TextBlock Text="Manager 更新" FontWeight="SemiBold" />
+                                                <TextBlock x:Name="ManagerVersionText" FontSize="12" Opacity="0.65" />
+                                                <TextBlock x:Name="ManagerUpdateStatusText" FontSize="12" Opacity="0.65" TextWrapping="Wrap" />
+                                            </StackPanel>
+                                            <Button x:Name="CheckManagerUpdateButton" Grid.Column="1" Content="检查更新" Click="CheckManagerUpdate_Click" VerticalAlignment="Center" />
                                         </Grid>
                                         <Border Height="1" Background="{ThemeResource CardStrokeColorDefaultBrush}" />
                                         <Grid Padding="18">
