@@ -9,6 +9,17 @@ public partial class ConnectionsViewModel
 
     public async Task PersistSettingsAsync()
     {
+        var directoryChanged = !string.Equals(Settings.ProfileDirectoryOverride, ProfileDirectoryOverride.Trim(), StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(Settings.StateDirectoryOverride, StateDirectoryOverride.Trim(), StringComparison.OrdinalIgnoreCase);
+        if (directoryChanged && (IsBusy || IsTunnelClientUpdating || Connections.Any(item => !item.HasRuntime && item.ProcessRunning)))
+        {
+            ProfileDirectoryOverride = Settings.ProfileDirectoryOverride;
+            StateDirectoryOverride = Settings.StateDirectoryOverride;
+            throw new InvalidOperationException("请先完成当前操作并停止 Manager 持有的前台连接，再切换目录");
+        }
+        if (directoryChanged)
+            foreach (var identity in _reconnectCancellations.Keys.ToArray()) CancelReconnect(identity, resetAttempts: true);
+
         _autostart.SetEnabled(StartWithWindows);
 
         Settings.TunnelClientPath = TunnelClientPath.Trim();
@@ -22,6 +33,15 @@ public partial class ConnectionsViewModel
         StatusMessage = "设置已应用";
         NotifyOverviewState();
         NotifyTunnelClientSettingsChanged();
+        if (directoryChanged)
+        {
+            Connections.Clear();
+            SelectedConnection = null;
+            _manualStopped.Clear();
+            _lastLogPaths.Clear();
+            _initialAutoConnectApplied = true;
+            await RefreshAsync();
+        }
     }
 
     public async Task SwitchToManagedTunnelClientAsync()
