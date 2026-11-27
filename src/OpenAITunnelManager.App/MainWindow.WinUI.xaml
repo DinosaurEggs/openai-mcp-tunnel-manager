@@ -198,54 +198,55 @@
 
                         <Grid x:Name="ConnectionsSplitGrid" Grid.Row="2" ColumnSpacing="12">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="30*" />
+                                <ColumnDefinition Width="30*" MaxWidth="280" />
                                 <ColumnDefinition Width="70*" />
                             </Grid.ColumnDefinitions>
 
-                            <Border x:Name="ConnectionsListPanel" Padding="12" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="10">
+                            <Border x:Name="ConnectionsListPanel" Padding="10" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="10">
                                 <Grid>
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="10" />
+                                        <RowDefinition Height="6" />
                                         <RowDefinition Height="*" />
                                     </Grid.RowDefinitions>
                                     <StackPanel Spacing="6">
-                                        <Grid ColumnSpacing="8">
+                                        <Grid ColumnSpacing="6">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="配置列表" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" TextWrapping="Wrap" />
+                                            <Button Grid.Column="1" Content="批量" FontSize="13" MinWidth="0" MinHeight="28" Padding="8,3" ToolTipService.ToolTip="批量操作" Click="BatchConnections_Click" />
+                                            <Button Grid.Column="2" Content="过期检查" FontSize="13" MinWidth="0" MinHeight="28" Padding="8,3" ToolTipService.ToolTip="检查过期 Runtime" Click="CleanupStaleRuntime_Click" />
+                                        </Grid>
+                                        <Grid ColumnSpacing="6">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
-                                            <TextBlock Text="配置列表" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" TextWrapping="Wrap" />
-                                            <ComboBox Grid.Column="1" HorizontalAlignment="Right" SelectedValuePath="Content" SelectedValue="{Binding ConnectionFilter, Mode=TwoWay}">
+                                            <TextBox PlaceholderText="搜索配置" ToolTipService.ToolTip="搜索名称 / Tunnel ID / Target" FontSize="13" MinWidth="0" MinHeight="28" Padding="8,3" Text="{Binding ConnectionSearch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                            <ComboBox Grid.Column="1" FontSize="13" MinWidth="0" Width="112" MinHeight="28" Padding="8,3" VerticalAlignment="Center" SelectedValuePath="Content" SelectedValue="{Binding ConnectionFilter, Mode=TwoWay}">
                                                 <ComboBoxItem Content="全部" IsSelected="True" />
                                                 <ComboBoxItem Content="运行中" />
                                                 <ComboBoxItem Content="已停止" />
                                                 <ComboBoxItem Content="异常 / 未知" />
                                             </ComboBox>
                                         </Grid>
-                                        <TextBox PlaceholderText="搜索名称 / Tunnel ID / Target" MinWidth="0" Text="{Binding ConnectionSearch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                        <Grid ColumnSpacing="6">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="*" />
-                                            </Grid.ColumnDefinitions>
-                                            <Button Content="批量操作" Click="BatchConnections_Click" HorizontalAlignment="Stretch" />
-                                            <Button Grid.Column="1" Content="检查过期" ToolTipService.ToolTip="检查过期 Runtime" Click="CleanupStaleRuntime_Click" HorizontalAlignment="Stretch" />
-                                        </Grid>
                                     </StackPanel>
                                     <ListView x:Name="ConnectionsList" Grid.Row="2" ItemsSource="{Binding VisibleConnections}" SelectedItem="{Binding SelectedConnection, Mode=TwoWay}" SelectionMode="Single" SelectionChanged="ConnectionsList_SelectionChanged">
                                         <ListView.ItemTemplate>
                                             <DataTemplate>
-                                                <Grid Padding="8,10">
+                                                <Grid Padding="6,5" ColumnSpacing="4">
                                                     <Grid.ColumnDefinitions>
                                                         <ColumnDefinition Width="*" />
                                                         <ColumnDefinition Width="Auto" />
                                                     </Grid.ColumnDefinitions>
-                                                    <StackPanel Spacing="3">
+                                                    <StackPanel Spacing="2">
                                                         <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                                                         <TextBlock Text="{Binding Subtitle}" FontSize="12" Opacity="0.65" TextTrimming="CharacterEllipsis" />
                                                     </StackPanel>
-                                                    <Border Grid.Column="1" Padding="8,3" CornerRadius="8" VerticalAlignment="Center" Background="{ThemeResource ControlFillColorSecondaryBrush}">
+                                                    <Border Grid.Column="1" Padding="6,2" CornerRadius="6" VerticalAlignment="Center" Background="{ThemeResource ControlFillColorSecondaryBrush}">
                                                         <TextBlock Text="{Binding StatusLabel}" FontSize="12" />
                                                     </Border>
                                                 </Grid>

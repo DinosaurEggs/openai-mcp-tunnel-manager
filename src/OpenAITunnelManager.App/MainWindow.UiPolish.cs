@@ -31,7 +31,8 @@ public sealed partial class MainWindow
             button.VerticalAlignment = VerticalAlignment.Center;
             button.VerticalContentAlignment = VerticalAlignment.Center;
             button.HorizontalContentAlignment = HorizontalAlignment.Center;
-            button.Padding = new Thickness(12, 6, 12, 6);
+            if (button.ReadLocalValue(Control.PaddingProperty) == DependencyProperty.UnsetValue)
+                button.Padding = new Thickness(12, 6, 12, 6);
 
             if (button.Content is StackPanel contentPanel)
             {
