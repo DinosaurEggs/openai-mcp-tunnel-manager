@@ -185,6 +185,7 @@ public sealed class ManagedTunnelClientService : IDisposable
             string.Equals(currentVersion?.Trim(), release.Version, StringComparison.OrdinalIgnoreCase) &&
             File.Exists(executablePath))
         {
+            _ = await ValidateExecutableAsync(executablePath, cancellationToken).ConfigureAwait(false);
             return new ManagedTunnelClientInstallResult(
                 release.Version,
                 executablePath,
@@ -392,21 +393,25 @@ public sealed class ManagedTunnelClientService : IDisposable
             var stagedExecutable = Path.Combine(installDirectory, "tunnel-client.exe");
             _ = await ValidateExecutableAsync(stagedExecutable, cancellationToken).ConfigureAwait(false);
 
-            if (Directory.Exists(targetDirectory))
-            {
-                TryDeleteDirectory(targetDirectory);
-                if (Directory.Exists(targetDirectory))
-                {
-                    throw new IOException($"无法替换不完整的 tunnel-client 目录：{targetDirectory}");
-                }
-            }
-
             Directory.CreateDirectory(Path.GetDirectoryName(targetDirectory)!);
-            Directory.Move(installDirectory, targetDirectory);
+            var previousDirectory = Path.Combine(operationDirectory, "previous");
+            if (Directory.Exists(targetDirectory))
+                Directory.Move(targetDirectory, previousDirectory);
+            try
+            {
+                Directory.Move(installDirectory, targetDirectory);
+            }
+            catch
+            {
+                if (Directory.Exists(previousDirectory) && !Directory.Exists(targetDirectory))
+                    Directory.Move(previousDirectory, targetDirectory);
+                throw;
+            }
         }
         finally
         {
-            TryDeleteDirectory(operationDirectory);
+            if (!Directory.Exists(Path.Combine(operationDirectory, "previous")) || Directory.Exists(targetDirectory))
+                TryDeleteDirectory(operationDirectory);
         }
     }
 
@@ -493,38 +498,22 @@ public sealed class ManagedTunnelClientService : IDisposable
         if (!File.Exists(executablePath))
             throw new FileNotFoundException("下载后的 tunnel-client.exe 不存在", executablePath);
 
-        var startInfo = new ProcessStartInfo(executablePath)
+        var runner = new TunnelClientProcessRunner(new TunnelClientOptions
         {
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true,
-            WorkingDirectory = Path.GetDirectoryName(executablePath)!
-        };
-        startInfo.ArgumentList.Add("--version");
-
-        using var process = Process.Start(startInfo)
-            ?? throw new InvalidOperationException("无法启动下载后的 tunnel-client.exe");
-
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutCts.CancelAfter(ValidationTimeout);
-        try
+            Source = OpenAITunnelManager.Core.Models.TunnelClientSource.Custom,
+            ExecutablePath = executablePath
+        });
+        var result = await runner.RunAsync(["--version"], false, cancellationToken, ValidationTimeout)
+            .ConfigureAwait(false);
+        foreach (var command in new[] { "profiles", "runtimes", "doctor" })
         {
-            await process.WaitForExitAsync(timeoutCts.Token).ConfigureAwait(false);
+            var capability = await runner.RunAsync([command, "--help"], true, cancellationToken, ValidationTimeout)
+                .ConfigureAwait(false);
+            if (capability.ExitCode != 0)
+                throw new InvalidDataException($"tunnel-client.exe 不支持 {command}，请选择完整客户端");
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            TryKillProcessTree(process);
-            throw new TimeoutException("验证 tunnel-client.exe 超时");
-        }
-
-        var standardOutput = await process.StandardOutput.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
-        var standardError = await process.StandardError.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
-        if (process.ExitCode != 0)
-        {
-            throw new InvalidDataException(
-                $"tunnel-client.exe --version 失败（exit {process.ExitCode}）：{FirstNonEmpty(standardError, standardOutput)}");
-        }
+        var standardOutput = result.StandardOutput;
+        var standardError = result.StandardError;
 
         var versionText = FirstNonEmpty(standardOutput, standardError)
             .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
