@@ -334,6 +334,8 @@ jobs:
       - name: Validate release version
         id: version
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $xml = [xml](Get-Content Directory.Build.props -Raw)
           $version = [string]$xml.Project.PropertyGroup.Version
