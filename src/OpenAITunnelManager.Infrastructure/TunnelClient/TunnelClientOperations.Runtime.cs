@@ -52,6 +52,14 @@ public sealed partial class TunnelClientOperations
     private async Task ConnectRuntimeAsync(TunnelConnection connection, string? secret, CancellationToken cancellationToken)
     {
         var profilePath = FirstNonEmpty(connection.RuntimeProfilePath, connection.ProfilePath);
+        if (!string.IsNullOrWhiteSpace(profilePath) && File.Exists(profilePath))
+        {
+            using var inventory = await RunJsonAsync(["runtimes", "list", "--json"], cancellationToken);
+            var stateRoot = GetString(inventory.RootElement, "state_root");
+            NativeRuntimeProfileGuard.Validate(
+                await File.ReadAllTextAsync(profilePath, cancellationToken),
+                stateRoot, connection.RuntimeAlias);
+        }
         var metadata = ProfileMetadataReader.Read(profilePath);
         var tunnelId = FirstNonEmpty(metadata.TunnelId, connection.TunnelId);
         if (string.IsNullOrWhiteSpace(tunnelId)) throw new InvalidOperationException("官方 Runtime 状态/Profile 中缺少 Tunnel ID，无法安全重建 connect 命令");
