@@ -102,8 +102,8 @@ public partial class ConnectionsViewModel : ObservableObject
     }
 
     public bool CanStartSelected => IsClientAvailable && !IsBusy && SelectedConnection is { ProcessRunning: false } item && (item.HasRuntime || item.HasProfile);
-    public bool CanStopSelected => IsClientAvailable && !IsBusy && SelectedConnection is { ProcessRunning: true };
-    public bool CanRestartSelected => CanStopSelected;
+    public bool CanStopSelected => IsClientAvailable && !IsBusy && SelectedConnection is { } item && (item.ProcessRunning || _reconnectScheduled.Contains(item.Identity));
+    public bool CanRestartSelected => IsClientAvailable && !IsBusy && SelectedConnection is { ProcessRunning: true };
     public bool CanEditSelected => IsClientAvailable && !IsBusy && SelectedConnection is { ProfileListed: true, HasProfile: true };
     public bool CanDeleteSelected => IsClientAvailable && !IsBusy && SelectedConnection is not null;
     public bool CanDiagnoseSelected => IsClientAvailable && !IsBusy && SelectedConnection is not null;
@@ -180,6 +180,8 @@ public partial class ConnectionsViewModel : ObservableObject
             _initialAutoConnectApplied = true;
             await ApplyAutoConnectAsync();
         }
+        if (IsClientAvailable)
+            foreach (var item in Connections.ToArray()) EvaluateRuntimeReconnect(item);
     }
 
     private bool CanRefresh() => !IsBusy;
@@ -475,8 +477,8 @@ public partial class ConnectionsViewModel : ObservableObject
 
     public async Task ShutdownAsync()
     {
-        await StopRuntimeEventsAsync();
-        await _operations.ShutdownForegroundProfilesAsync();
+        try { await StopRuntimeEventsAsync(); }
+        finally { await _operations.ShutdownForegroundProfilesAsync(); }
     }
 
     private async Task StartItemAsync(TunnelConnection item, bool manual)
@@ -513,6 +515,11 @@ public partial class ConnectionsViewModel : ObservableObject
         EnsureClientAvailable();
         if (manual) _manualStopped.Add(item.Identity);
         CancelReconnect(item.Identity, resetAttempts: true);
+        if (!item.ProcessRunning)
+        {
+            StatusMessage = $"{item.Name} 已取消自动重连";
+            return;
+        }
         IsBusy = true;
         StatusMessage = $"正在停止 {item.Name}...";
         try
