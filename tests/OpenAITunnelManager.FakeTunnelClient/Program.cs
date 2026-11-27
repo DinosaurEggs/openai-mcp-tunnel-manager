@@ -84,7 +84,7 @@ public static class Program
             }
 
             var text = File.ReadAllText(source);
-            if (!Regex.IsMatch(text, @"tunnel_[0-9a-f]{32}", RegexOptions.CultureInvariant) ||
+            if (!Regex.IsMatch(text, @"tunnel_([a-z0-9]{4}_)?[a-z0-9]{32}", RegexOptions.CultureInvariant) ||
                 !(text.Contains("url:", StringComparison.Ordinal) || text.Contains("command:", StringComparison.Ordinal) || text.Contains("\"url\"", StringComparison.Ordinal) || text.Contains("\"command\"", StringComparison.Ordinal)))
             {
                 Console.Error.WriteLine("profile validation failed");
@@ -93,6 +93,11 @@ public static class Program
 
             Directory.CreateDirectory(ProfileDirectory);
             var destination = Path.Combine(ProfileDirectory, name + ".yaml");
+            if (File.Exists(destination) && !args.Contains("--force"))
+            {
+                Console.Error.WriteLine("profile already exists");
+                return 3;
+            }
             File.WriteAllText(destination, text);
             Console.WriteLine(destination);
             return 0;
