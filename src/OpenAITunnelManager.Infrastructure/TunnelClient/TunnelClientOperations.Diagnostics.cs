@@ -15,15 +15,23 @@ public sealed partial class TunnelClientOperations
     {
         if (connection.HasRuntime) return await _inventory.GetStatusAsync(connection, cancellationToken);
         if (!connection.HasProfile || !_foreground.TryGetValue(connection.ProfileName, out var record)) return connection with { State = RuntimeState.Configured, ProcessRunning = false };
-        if (record.Process.HasExited)
+        int processId;
+        lock (record)
         {
+            if (!_foreground.TryGetValue(connection.ProfileName, out var current) || !ReferenceEquals(current, record) ||
+                !SamePath(record.ProfilePath, connection.ProfilePath))
+                return connection with { State = RuntimeState.Configured, ProcessRunning = false, Healthy = false, Ready = false, ProcessId = null };
+            if (record.Process.HasExited)
+            {
             return connection with
             {
                 State = RuntimeState.Error,
                 ProcessRunning = false,
                 LogPath = record.LogPath,
                 Error = $"Profile 前台进程已退出，退出码 {record.Process.ExitCode}"
-            };
+                };
+            }
+            processId = record.Process.Id;
         }
 
         var healthUrl = string.Empty;
@@ -31,6 +39,8 @@ public sealed partial class TunnelClientOperations
         catch (IOException) { }
         var healthy = !string.IsNullOrWhiteSpace(healthUrl) && await ProbeAsync(healthUrl, "/healthz", cancellationToken);
         var ready = !string.IsNullOrWhiteSpace(healthUrl) && await ProbeAsync(healthUrl, "/readyz", cancellationToken);
+        if (!_foreground.TryGetValue(connection.ProfileName, out var live) || !ReferenceEquals(live, record))
+            return connection with { State = RuntimeState.Stopped, ProcessRunning = false, Healthy = false, Ready = false, ProcessId = null, LogPath = record.LogPath };
         return connection with
         {
             State = ready ? RuntimeState.Ready : healthy ? RuntimeState.Running : RuntimeState.Starting,
@@ -39,7 +49,7 @@ public sealed partial class TunnelClientOperations
             Ready = ready,
             HealthUrl = healthUrl,
             LogPath = record.LogPath,
-            ProcessId = record.Process.Id,
+            ProcessId = processId,
             Error = string.Empty
         };
     }
