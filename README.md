@@ -70,7 +70,7 @@ OpenAITunnelManager.exe
 
 托管模式只在用户点击“下载”或“更新”时访问 GitHub，不在应用启动时自动检查新版本。Manager 会按当前架构精确选择官方 `windows-amd64` / `windows-arm64` Release 资产，校验 Release digest 与 `SHA256SUMS.txt`，并在新版本通过 `--version` 验证后才切换。更新失败时继续使用当前已安装版本。
 
-托管版本按版本号安装到 `tunnel-client\\versions\\<version>`。正常更新保留当前版本和一个旧版本；设置页“清理已下载版本”会删除当前未使用的其他托管版本。
+托管版本按版本号安装到 `tunnel-client\\versions\\<version>`。开发分支支持手动选择已安装版本、安装指定正式版本与重新下载当前版本；保留已安装版本供回退，并由设置页显式清理其他版本。
 
 `config/settings.json` 只保存 Manager 本机偏好：
 
@@ -84,17 +84,18 @@ OpenAITunnelManager.exe
 
 历史 settings 中的 `refreshIntervalMs` / `refresh_interval_ms` 只用于兼容迁移；读取旧配置后会自动重写并移除此字段。
 
-Runtime API Key 明文只进入 Windows Credential Manager，不写入 `settings.json`、Profile 或应用日志。
+Manager 保存的 Runtime API Key 进入 Windows Credential Manager，不写入 `settings.json` 或 Profile。v1.3.0 开发分支使用 Profile 完整路径和 Runtime State Root + alias 分离作用域；旧的同名凭据只有归属明确时才迁移。
 
 默认不会覆盖 `TUNNEL_CLIENT_PROFILE_DIR` / `TUNNEL_CLIENT_STATE_DIR`。只有用户在高级设置中主动选择目录时，才向 `tunnel-client` 子进程传递覆盖值。
 
 ## 界面结构
 
-左侧主导航只有：
+左侧主导航：
 
 ```text
 概览
 连接
+远端 Tunnel
 设置
 ```
 

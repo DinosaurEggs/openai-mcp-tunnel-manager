@@ -220,6 +220,81 @@ public sealed class BehaviorTests
             ProcessId: null,
             Error: string.Empty);
 
+    [Fact]
+    public void ScopedCredentialsAndPreferencesFollowOfficialPaths()
+    {
+        using var temp = new TempDirectory();
+        var profile = Connection("shared", "shared", Path.Combine(temp.Path, "profiles", "shared.yaml"), "", true);
+        var runtime = Connection("r1", "shared", profile.ProfilePath, "r1", true) with
+        {
+            StateRoot = Path.Combine(temp.Path, "state")
+        };
+        var other = runtime with { StateRoot = Path.Combine(temp.Path, "other-state") };
+        Assert.NotEqual(ConnectionScope.Primary(runtime), ConnectionScope.Primary(other));
+        Assert.Equal(ConnectionScope.Profile(profile.ProfilePath), ConnectionScope.Keys(runtime).Last());
+        var settings = new AppSettings();
+        settings.ProfilePreferences[ConnectionScope.Primary(profile)] = new() { AutoConnect = true };
+        Assert.True(settings.GetPreference(runtime).AutoConnect);
+        settings.ProfilePreferences[ConnectionScope.Primary(runtime)] = new() { Enabled = false };
+        Assert.False(settings.GetPreference(runtime).Enabled);
+        Assert.True(settings.GetPreference(other).Enabled);
+        Assert.NotEqual(ConnectionScope.Primary(profile), ConnectionScope.Primary(profile with
+        {
+            ProfilePath = Path.Combine(temp.Path, "other-profiles", "shared.yaml")
+        }));
+    }
+
+    [Fact]
+    public void LegacyCredentialMigrationDoesNotGuessAmbiguousNames()
+    {
+        using var temp = new TempDirectory();
+        var profile = Connection("same", "same", Path.Combine(temp.Path, "same.yaml"), "", true);
+        var runtime = Connection("same", "other", Path.Combine(temp.Path, "other.yaml"), "same", true) with
+        {
+            StateRoot = Path.Combine(temp.Path, "state")
+        };
+        var credentials = new MemoryCredentials();
+        credentials.Set("same", "ambiguous");
+        credentials.Set("other", "unique");
+        var settings = new AppSettings();
+        settings.ProfilePreferences["profile:same"] = new() { AutoConnect = true };
+        Assert.Equal(1, ConnectionScope.MigrateLegacy([profile, runtime], settings, credentials));
+        Assert.Null(credentials.Get(ConnectionScope.Primary(profile)));
+        Assert.Null(credentials.Get(ConnectionScope.Primary(runtime)));
+        Assert.Equal("unique", credentials.Get(ConnectionScope.Profile(runtime.ProfilePath)));
+        Assert.True(settings.GetPreference(profile).AutoConnect);
+        Assert.Equal("ambiguous", credentials.Get("same"));
+    }
+
+    [Fact]
+    public void ProfileScalarEditingPreservesUnrelatedYaml()
+    {
+        const string source = """
+            # retain comment
+            config_version: 1
+            control_plane:
+              tunnel_id: tunnel_0123456789abcdef0123456789abcdef
+            mcp:
+              server_urls:
+                - channel: main
+                  url: http://localhost:8000/mcp
+            """;
+        var updated = ProfileDocumentEditor.SetSectionScalar(source, "control_plane", "residency", "global");
+        updated = ProfileDocumentEditor.SetSectionScalar(updated, "tracing", "enabled", "true", boolean: true);
+        Assert.Equal("global", ProfileDocumentEditor.ReadSectionScalar(updated, "control_plane", "residency"));
+        Assert.Equal("true", ProfileDocumentEditor.ReadSectionScalar(updated, "tracing", "enabled"));
+        Assert.Contains("# retain comment", updated);
+        Assert.Contains("http://localhost:8000/mcp", updated);
+    }
+
+    private sealed class MemoryCredentials : ICredentialStore
+    {
+        private readonly Dictionary<string, string> _values = new(StringComparer.OrdinalIgnoreCase);
+        public string? Get(string credentialId) => _values.GetValueOrDefault(credentialId);
+        public void Set(string credentialId, string secret) => _values[credentialId] = secret;
+        public void Delete(string credentialId) => _values.Remove(credentialId);
+    }
+
     private sealed class FakeInventory : ITunnelClientService
     {
         public Task<string> GetVersionAsync(CancellationToken cancellationToken = default) => Task.FromResult("fake");

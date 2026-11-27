@@ -201,7 +201,7 @@ public sealed partial class TunnelClientOperations
             }
         }
 
-        var safeName = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(name.ToUpperInvariant() + "\n" + Path.GetFullPath(connection.ProfilePath).ToUpperInvariant())));
+        var safeName = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(name.ToUpperInvariant() + "\n" + connection.StateRoot.ToUpperInvariant() + "\n" + Path.GetFullPath(connection.ProfilePath).ToUpperInvariant())));
         var workDirectory = Path.Combine(AppDataPaths.Current.ForegroundStateDirectory, safeName);
         Directory.CreateDirectory(workDirectory);
         var healthFile = Path.Combine(workDirectory, "health.url");

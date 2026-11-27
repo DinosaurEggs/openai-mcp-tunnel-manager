@@ -119,11 +119,11 @@ public sealed partial class MainWindow
 
     private async void LogClear_Click(object sender, RoutedEventArgs e)
     {
-        var identity = ViewModel.SelectedConnection?.Identity;
+        var identity = LogViewKey(ViewModel.SelectedConnection);
         await _logReadGate.WaitAsync();
         try
         {
-            if (!string.Equals(identity, ViewModel.SelectedConnection?.Identity, StringComparison.OrdinalIgnoreCase)) return;
+            if (!string.Equals(identity, LogViewKey(ViewModel.SelectedConnection), StringComparison.OrdinalIgnoreCase)) return;
             if (TryGetCurrentLogState(out var state))
             {
                 state.Tail.SkipToEnd();
@@ -245,7 +245,7 @@ public sealed partial class MainWindow
 
         if (!File.Exists(fullPath))
         {
-            if (!string.Equals(_activeLogIdentity, item.Identity, StringComparison.OrdinalIgnoreCase)) await ClearLogConsoleSelectionAsync();
+            if (!string.Equals(_activeLogIdentity, LogViewKey(item), StringComparison.OrdinalIgnoreCase)) await ClearLogConsoleSelectionAsync();
             LogConsoleStatus.Text = $"等待日志文件：{fullPath}";
             return;
         }
@@ -253,12 +253,12 @@ public sealed partial class MainWindow
         try
         {
             var switched = resetConsoleState ||
-                           !string.Equals(_activeLogIdentity, item.Identity, StringComparison.OrdinalIgnoreCase) ||
-                           !_logStates.TryGetValue(item.Identity, out var existing) ||
+                           !string.Equals(_activeLogIdentity, LogViewKey(item), StringComparison.OrdinalIgnoreCase) ||
+                           !_logStates.TryGetValue(LogViewKey(item), out var existing) ||
                            !PathsEqual(existing.Path, fullPath);
 
-            var state = GetOrCreateLogState(item.Identity, fullPath, forceReload);
-            _activeLogIdentity = item.Identity;
+            var state = GetOrCreateLogState(LogViewKey(item), fullPath, forceReload);
+            _activeLogIdentity = LogViewKey(item);
             state.LastAccess = ++_logAccessCounter;
             EvictOldLogStates();
 
@@ -281,7 +281,7 @@ public sealed partial class MainWindow
             var added = await Task.Run(() => rawLines.Select((raw, index) => JsonLogParser.ParseLine(raw, firstSequence + index)).ToArray());
             state.NextSequence += added.Length;
             var trimmedNow = added.Length > 0 && state.Buffer.Append(added);
-            if (!_logConsoleConfigured || !string.Equals(item.Identity, ViewModel.SelectedConnection?.Identity, StringComparison.OrdinalIgnoreCase)) return;
+            if (!_logConsoleConfigured || !string.Equals(LogViewKey(item), LogViewKey(ViewModel.SelectedConnection), StringComparison.OrdinalIgnoreCase)) return;
 
             if (switched || forceReload)
             {
@@ -322,6 +322,9 @@ public sealed partial class MainWindow
             LogConsoleStatus.Text = ViewModel.StatusMessage;
         }
     }
+
+    private static string LogViewKey(OpenAITunnelManager.Core.Models.TunnelConnection? item) =>
+        item is null ? string.Empty : $"{item.Identity}|{item.StateRoot}|{item.ProfilePath}";
 
     private LogViewState GetOrCreateLogState(string identity, string path, bool reset)
     {
@@ -376,7 +379,7 @@ public sealed partial class MainWindow
     private bool TryGetCurrentLogState(out LogViewState state)
     {
         if (!string.IsNullOrWhiteSpace(_activeLogIdentity) &&
-            string.Equals(_activeLogIdentity, ViewModel.SelectedConnection?.Identity, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(_activeLogIdentity, LogViewKey(ViewModel.SelectedConnection), StringComparison.OrdinalIgnoreCase) &&
             _logStates.TryGetValue(_activeLogIdentity, out var found))
         {
             state = found;

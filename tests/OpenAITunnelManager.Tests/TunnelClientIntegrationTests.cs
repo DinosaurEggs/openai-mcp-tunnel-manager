@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using OpenAITunnelManager.Core.Models;
 using OpenAITunnelManager.FakeTunnelClient;
 using OpenAITunnelManager.Infrastructure.TunnelClient;
@@ -95,6 +96,28 @@ public sealed class TunnelClientIntegrationTests : IDisposable
         await operations.StopAsync(items.Single(item => item.RuntimeAlias == "r1"), token);
         await Assert.ThrowsAsync<InvalidOperationException>(() => operations.RemoveRuntimeAsync("r1", token));
         Assert.True(File.Exists(profile.ProfilePath));
+        Assert.Equal(2, (await service.GetConnectionsAsync(token)).Count);
+    }
+
+    [Fact]
+    public async Task RuntimeRemovalRejectsSharedProcessLogEvenWithDistinctProfiles()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var (service, operations) = Services();
+        await operations.CreateProfileAsync(Spec("first"), token);
+        await operations.CreateProfileAsync(Spec("second"), token);
+        var profiles = await service.GetConnectionsAsync(token);
+        await operations.StartAsync(RuntimeSeed(profiles.Single(item => item.ProfileName == "first"), "r1"), "secret", token);
+        await operations.StartAsync(RuntimeSeed(profiles.Single(item => item.ProfileName == "second"), "r2"), "secret", token);
+        var inventory = await service.GetConnectionsAsync(token);
+        await operations.StopAsync(inventory.Single(item => item.RuntimeAlias == "r1"), token);
+        var statePath = Path.Combine(_root, "state.json");
+        var state = JsonNode.Parse(await File.ReadAllTextAsync(statePath, token))!;
+        var sharedLog = state["runtimes"]!["r1"]!["log_path"]!.GetValue<string>();
+        state["runtimes"]!["r2"]!["process"]!["log_path"] = sharedLog;
+        await File.WriteAllTextAsync(statePath, state.ToJsonString(), token);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => operations.RemoveRuntimeAsync("r1", token));
+        Assert.True(File.Exists(sharedLog));
         Assert.Equal(2, (await service.GetConnectionsAsync(token)).Count);
     }
 
