@@ -1,24 +1,13 @@
 name: WinUI 3 build
 
 on:
-  push:
-    branches:
-      - master
-      - rewrite/csharp-winui3
-  pull_request:
-    paths:
-      - "src/OpenAITunnelManager.**/**"
-      - "tests/**"
-      - "package/**"
-      - "Directory.Build.props"
-      - "Directory.Build.targets"
-      - "Directory.Packages.props"
-      - "global.json"
-      - "OpenAITunnelManager.slnx"
-      - "README.md"
-      - "RELEASE_NOTES.md"
-      - ".github/workflows/build-winui3.yml"
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: "Publish GitHub Release and package (master only)"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -312,7 +301,7 @@ jobs:
           retention-days: 14
 
   release:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master' && startsWith(github.event.head_commit.message, 'Release v')
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master' && inputs.publish_release
     needs:
       - test
       - build
@@ -342,17 +331,16 @@ jobs:
         id: version
         shell: pwsh
         env:
-          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $xml = [xml](Get-Content Directory.Build.props -Raw)
           $version = [string]$xml.Project.PropertyGroup.Version
           if ([string]::IsNullOrWhiteSpace($version)) {
             throw 'Version is missing from Directory.Build.props.'
           }
-          $expected = "Release v$version"
-          if (-not $env:COMMIT_MESSAGE.StartsWith($expected)) {
-            throw "Release commit message must start with '$expected'."
-          }
+          $tag = "v$version"
+          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) { throw "Release $tag already exists." }
           "value=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           Write-Host "Release version: $version"
 
