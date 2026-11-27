@@ -45,10 +45,16 @@ public sealed partial class TunnelClientOperations
         }
     }
 
-    public async Task DeleteProfileAsync(string name, string expectedPath, CancellationToken cancellationToken = default)
+    public Task DeleteProfileAsync(string name, string expectedPath, CancellationToken cancellationToken = default) =>
+        CoordinateLifecycleAsync(() => DeleteProfileCoreAsync(name, expectedPath, cancellationToken), cancellationToken);
+
+    private async Task DeleteProfileCoreAsync(string name, string expectedPath, CancellationToken cancellationToken)
     {
         var actual = await VerifyProfileEntryAsync(name, expectedPath, cancellationToken);
 
+        var inventory = await _inventory.GetConnectionsAsync(cancellationToken);
+        if (inventory.Any(item => item.HasRuntime && SamePath(actual, FirstNonEmpty(item.RuntimeProfilePath, item.ProfilePath))))
+            throw new InvalidOperationException("Profile 仍由 Runtime 引用，请先处理关联");
         foreach (var pair in _foreground.ToArray())
             if (SamePath(pair.Value.ProfilePath, actual)) await StopProfileAsync(pair.Key);
 

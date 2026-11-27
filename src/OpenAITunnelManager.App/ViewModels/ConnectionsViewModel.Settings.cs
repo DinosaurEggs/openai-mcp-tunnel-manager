@@ -48,7 +48,7 @@ public partial class ConnectionsViewModel
 
     public async Task SwitchToManagedTunnelClientAsync()
     {
-        if (IsTunnelClientUpdating)
+        if (IsTunnelClientUpdating || IsBusy)
             throw new InvalidOperationException("当前正在执行 tunnel-client 操作");
 
         LastTunnelClientOperationFailed = false;
@@ -75,7 +75,7 @@ public partial class ConnectionsViewModel
         string path,
         CancellationToken cancellationToken = default)
     {
-        if (IsTunnelClientUpdating)
+        if (IsTunnelClientUpdating || IsBusy)
             throw new InvalidOperationException("当前正在执行 tunnel-client 操作");
 
         var validation = await _managedTunnelClient.ValidateCustomExecutableAsync(path, cancellationToken);
@@ -103,7 +103,7 @@ public partial class ConnectionsViewModel
         bool forceDownload = false,
         CancellationToken cancellationToken = default)
     {
-        if (IsTunnelClientUpdating)
+        if (IsTunnelClientUpdating || IsBusy)
             throw new InvalidOperationException("当前正在执行其他操作");
 
         var wasInstalled = !string.IsNullOrWhiteSpace(Settings.ManagedTunnelClientVersion) &&

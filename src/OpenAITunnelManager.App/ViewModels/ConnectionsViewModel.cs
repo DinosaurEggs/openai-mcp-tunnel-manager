@@ -293,6 +293,7 @@ public partial class ConnectionsViewModel : ObservableObject
             throw new InvalidOperationException("当前选择的 Profile 已变化，请重新打开编辑器");
         }
 
+        EnsureClientAvailable();
         var updated = ProfileDocumentEditor.ApplyCommonFields(
             rawText,
             original.TunnelId,
@@ -323,10 +324,13 @@ public partial class ConnectionsViewModel : ObservableObject
         return new ProfilePreference { Enabled = pref.Enabled, AutoConnect = pref.AutoConnect, AutoReconnect = pref.AutoReconnect, UseForeground = pref.UseForeground };
     }
 
-    public Task SaveSelectedPreferenceAsync(ProfilePreference preference, string? newSecret = null, bool deleteSecret = false)
+    public async Task SaveSelectedPreferenceAsync(ProfilePreference preference, string? newSecret = null, bool deleteSecret = false)
     {
+        EnsureClientAvailable();
         var item = SelectedConnection ?? throw new InvalidOperationException("请先选择一个配置");
-        return SavePreferenceForItemAsync(item, preference, newSecret, deleteSecret);
+        IsBusy = true;
+        try { await SavePreferenceForItemAsync(item, preference, newSecret, deleteSecret); }
+        finally { IsBusy = false; }
     }
 
     private async Task SavePreferenceForItemAsync(TunnelConnection item, ProfilePreference preference, string? newSecret, bool deleteSecret)
@@ -372,6 +376,8 @@ public partial class ConnectionsViewModel : ObservableObject
             var current = fresh.FirstOrDefault(item => string.Equals(item.Identity, original.Identity, StringComparison.OrdinalIgnoreCase));
             if (current is null && original.HasRuntime) throw new InvalidOperationException("列表已发生变化，请刷新后重试");
             var target = current ?? original;
+            if (original.HasProfile && !PathsEqual(original.ProfilePath, target.ProfilePath))
+                throw new InvalidOperationException("Profile 路径已变化，请刷新后重试");
             var sharedProfile = target.HasProfile && fresh.Any(item =>
                 !string.Equals(item.Identity, target.Identity, StringComparison.OrdinalIgnoreCase) &&
                 item.HasProfile &&
@@ -390,7 +396,7 @@ public partial class ConnectionsViewModel : ObservableObject
                 profileDeleted = target.HasProfile && !File.Exists(target.ProfilePath);
             }
 
-            if (target.ProfileListed && target.HasProfile && !profileDeleted)
+            if (!target.HasRuntime && target.ProfileListed && target.HasProfile && !profileDeleted)
             {
                 await _operations.DeleteProfileAsync(target.ProfileName, target.ProfilePath);
                 profileDeleted = true;
@@ -562,6 +568,7 @@ public partial class ConnectionsViewModel : ObservableObject
             .ToArray();
         if (candidates.Length == 0) return;
 
+        var failed = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         IsBusy = true;
         try
         {
@@ -573,13 +580,16 @@ public partial class ConnectionsViewModel : ObservableObject
                 }
                 catch (Exception exception)
                 {
+                    failed[item.Identity] = exception.Message;
                     StatusMessage = $"{item.Name} 自动连接失败：{exception.Message}";
                 }
             }
 
             var statuses = await ReadStatusesAsync(Connections.ToArray(), CancellationToken.None);
-            foreach (var status in statuses)
+            foreach (var rawStatus in statuses)
             {
+                var status = !rawStatus.ProcessRunning && failed.TryGetValue(rawStatus.Identity, out var error)
+                    ? rawStatus with { State = RuntimeState.Error, Error = error } : rawStatus;
                 ReplaceConnection(status);
                 if (!string.IsNullOrWhiteSpace(status.LogPath)) _lastLogPaths[status.Identity] = status.LogPath;
             }
@@ -649,6 +659,8 @@ public partial class ConnectionsViewModel : ObservableObject
 
     private void EnsureClientAvailable()
     {
+        if (IsBusy || IsTunnelClientUpdating || _lifetimeCancellation.IsCancellationRequested)
+            throw new InvalidOperationException("当前正在执行其他操作或应用正在退出");
         _ = _operations.ResolveExecutablePath();
         IsClientAvailable = true;
     }

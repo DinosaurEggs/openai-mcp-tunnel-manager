@@ -48,17 +48,24 @@ public partial class ConnectionsViewModel
     {
         var context = _uiSynchronizationContext;
         if (context is null) return;
-        context.Post(_ => HandleForegroundProfileExited(profileName), null);
+        context.Post(async _ => await HandleForegroundProfileExitedAsync(profileName), null);
     }
 
-    private void HandleForegroundProfileExited(string profileName)
+    private async Task HandleForegroundProfileExitedAsync(string profileName)
     {
         var item = Connections.FirstOrDefault(connection =>
             connection.RunsInForeground &&
             connection.HasProfile &&
             string.Equals(connection.Identity, profileName, StringComparison.OrdinalIgnoreCase));
-        if (item is null || _manualStopped.Contains(item.Identity)) return;
-
+        if (item is null || _manualStopped.Contains(item.Identity) || _lifetimeCancellation.IsCancellationRequested) return;
+        try
+        {
+            var current = await _operations.GetStatusAsync(item, _lifetimeCancellation.Token, ReadSavedSecret(item));
+            if (current.ProcessRunning || _manualStopped.Contains(item.Identity)) return;
+        }
+        catch (OperationCanceledException) { return; }
+        catch (Exception exception) { StatusMessage = exception.Message; return; }
+        if (!Connections.Any(connection => connection.Identity == item.Identity)) return;
         var stopped = item with
         {
             State = RuntimeState.Stopped,

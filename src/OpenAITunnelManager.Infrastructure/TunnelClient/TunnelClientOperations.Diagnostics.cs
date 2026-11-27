@@ -13,7 +13,7 @@ public sealed partial class TunnelClientOperations
 
     public async Task<TunnelConnection> GetStatusAsync(TunnelConnection connection, CancellationToken cancellationToken = default, string? secret = null)
     {
-        if (connection.HasRuntime && (!connection.UseForeground || !_foreground.ContainsKey(connection.Identity)))
+        if (connection.HasRuntime && !_foreground.ContainsKey(connection.Identity))
             return await _inventory.GetStatusAsync(connection, cancellationToken, secret);
         if (!connection.HasProfile || !_foreground.TryGetValue(connection.Identity, out var record)) return connection with { State = RuntimeState.Configured, ProcessRunning = false, Healthy = false, Ready = false, ProcessId = null };
         int processId;
@@ -73,6 +73,9 @@ public sealed partial class TunnelClientOperations
             AdminUiUrl = adminUrl,
             Residency = metadata.Residency,
             Authentication = metadata.Authentication,
+            RunningTargetKind = record.TargetKind,
+            RunningTargetValue = record.TargetValue,
+            StartedAt = record.StartedAt.ToString("O"),
             RefreshedAt = DateTimeOffset.UtcNow,
             State = ready ? RuntimeState.Ready : healthy ? RuntimeState.Running : RuntimeState.Starting,
             ProcessRunning = true,

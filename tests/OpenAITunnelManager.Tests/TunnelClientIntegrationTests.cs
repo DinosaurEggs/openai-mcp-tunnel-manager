@@ -83,7 +83,10 @@ public sealed class TunnelClientIntegrationTests : IDisposable
         var profile = Assert.Single(await service.GetConnectionsAsync(token));
 
         await operations.StartAsync(RuntimeSeed(profile, "r1"), "secret", token);
-        await operations.StartAsync(RuntimeSeed(profile, "r2"), "secret", token);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => operations.StartAsync(RuntimeSeed(profile, "r2"), "secret", token));
+        // An external client can still create shared inventory; simulate that boundary.
+        var runner = new TunnelClientProcessRunner(new TunnelClientOptions { ExecutablePath = FakeExecutable });
+        await runner.RunAsync(["runtimes", "connect", "--alias", "r2", "--profile", "shared", "--profile-dir", Path.GetDirectoryName(profile.ProfilePath)!, "--tunnel-id", TunnelId, "--mcp-server-url", profile.TargetValue, "--json"], false, token);
 
         var items = await service.GetConnectionsAsync(token);
         Assert.Equal(2, items.Count);

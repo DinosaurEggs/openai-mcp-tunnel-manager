@@ -13,6 +13,7 @@ public sealed partial class TunnelClientOperations : ITunnelClientOperations
     private readonly TunnelClientProcessRunner _runner;
     private readonly ConcurrentDictionary<string, ForegroundProfile> _foreground = new(StringComparer.OrdinalIgnoreCase);
     private readonly SemaphoreSlim _foregroundGate = new(1, 1);
+    private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
     private readonly SemaphoreSlim _capabilitiesGate = new(1, 1);
     private CapabilityCache? _capabilityCache;
 
@@ -123,8 +124,15 @@ public sealed partial class TunnelClientOperations : ITunnelClientOperations
     private static string FirstNonEmpty(params string?[] values) =>
         values.FirstOrDefault(static value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
 
+    private async Task CoordinateLifecycleAsync(Func<Task> operation, CancellationToken cancellationToken)
+    {
+        await _lifecycleGate.WaitAsync(cancellationToken);
+        try { await operation(); }
+        finally { _lifecycleGate.Release(); }
+    }
+
     private sealed record CapabilityCache(string ExecutablePath, DateTime LastWriteTimeUtc, TunnelClientCapabilities Capabilities);
-    private sealed record ForegroundProfile(Process Process, string HealthFile, string LogPath, string ProfilePath, StreamWriter LogWriter)
+    private sealed record ForegroundProfile(Process Process, string HealthFile, string LogPath, string ProfilePath, RollingForegroundLog LogWriter, string TunnelId, string TargetKind, string TargetValue, DateTimeOffset StartedAt, string ExecutablePath)
     {
         public bool Stopping { get; set; }
     }

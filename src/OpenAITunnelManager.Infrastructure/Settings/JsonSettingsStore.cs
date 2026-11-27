@@ -21,6 +21,8 @@ public sealed class JsonSettingsStore : ISettingsStore
     {
         if (!File.Exists(SettingsPath)) return new AppSettings();
 
+        AppSettings settings;
+        bool migrated;
         try
         {
             var text = await File.ReadAllTextAsync(SettingsPath, cancellationToken).ConfigureAwait(false);
@@ -28,16 +30,16 @@ public sealed class JsonSettingsStore : ISettingsStore
             if (document.RootElement.ValueKind != JsonValueKind.Object)
                 throw new JsonException("settings.json 根节点必须是对象");
 
-            var (settings, migrated) = ParseSettings(document.RootElement);
+            (settings, migrated) = ParseSettings(document.RootElement);
             settings = Normalize(settings);
-            if (migrated) await SaveAsync(settings, cancellationToken).ConfigureAwait(false);
-            return settings;
         }
         catch (Exception exception) when (exception is IOException or JsonException or UnauthorizedAccessException)
         {
             TryBackupBrokenSettings();
             return new AppSettings();
         }
+        if (migrated) await SaveAsync(settings, cancellationToken).ConfigureAwait(false);
+        return settings;
     }
 
     public async Task SaveAsync(AppSettings settings, CancellationToken cancellationToken = default)
