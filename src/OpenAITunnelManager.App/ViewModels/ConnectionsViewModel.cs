@@ -48,9 +48,13 @@ public partial class ConnectionsViewModel : ObservableObject
         _autostart = autostart;
         _options = options;
         _managedTunnelClient = managedTunnelClient;
+        Connections.CollectionChanged += (_, _) => UpdateVisibleConnections();
     }
 
     public ObservableCollection<TunnelConnection> Connections { get; } = [];
+    public ObservableCollection<TunnelConnection> VisibleConnections { get; } = [];
+    [ObservableProperty] public partial string ConnectionSearch { get; set; } = string.Empty;
+    [ObservableProperty] public partial string ConnectionFilter { get; set; } = "全部";
     public AppSettings Settings { get; private set; } = new();
 
     [ObservableProperty] public partial TunnelConnection? SelectedConnection { get; set; }
@@ -155,9 +159,9 @@ public partial class ConnectionsViewModel : ObservableObject
             var statuses = await ReadStatusesAsync(itemsTask.Result, CancellationToken.None);
             MergeConnections(statuses);
 
-            SelectedConnection = Connections.FirstOrDefault(item =>
+            SelectedConnection = VisibleConnections.FirstOrDefault(item =>
                                      string.Equals(item.Identity, selectedIdentity, StringComparison.OrdinalIgnoreCase))
-                                 ?? Connections.FirstOrDefault();
+                                 ?? VisibleConnections.FirstOrDefault();
             StatusMessage = Connections.Count == 0
                 ? "未发现 Profile 或 Runtime"
                 : $"已从 tunnel-client 读取 {Connections.Count} 个配置/运行实例";
@@ -547,8 +551,8 @@ public partial class ConnectionsViewModel : ObservableObject
         var refreshed = await ReadStatusesAsync(items, CancellationToken.None);
         MergeConnections(refreshed);
         SelectedConnection = identity is null
-            ? Connections.FirstOrDefault()
-            : Connections.FirstOrDefault(item => string.Equals(item.Identity, identity, StringComparison.OrdinalIgnoreCase)) ?? Connections.FirstOrDefault();
+            ? VisibleConnections.FirstOrDefault()
+            : VisibleConnections.FirstOrDefault(item => string.Equals(item.Identity, identity, StringComparison.OrdinalIgnoreCase)) ?? VisibleConnections.FirstOrDefault();
         StatusMessage = completedMessage;
         NotifyOverviewState();
         if (SelectedConnection is not null && _lastLogPaths.TryGetValue(SelectedConnection.Identity, out var path)) CurrentLogPath = path;
@@ -620,6 +624,40 @@ public partial class ConnectionsViewModel : ObservableObject
         try { await _settingsStore.SaveAsync(Settings); }
         catch { Settings.LegacyConnectionDataMigrated = false; throw; }
         return ambiguous;
+    }
+
+    partial void OnConnectionSearchChanged(string value) => UpdateVisibleConnections();
+    partial void OnConnectionFilterChanged(string value) => UpdateVisibleConnections();
+
+    private void UpdateVisibleConnections()
+    {
+        var selected = SelectedConnection?.Identity;
+        var search = ConnectionSearch.Trim();
+        var items = Connections.Where(item =>
+            (search.Length == 0 || new[] { item.Name, item.ProfileName, item.RuntimeAlias, item.TunnelId, item.TargetValue }
+                .Any(value => value.Contains(search, StringComparison.OrdinalIgnoreCase))) &&
+            (ConnectionFilter switch
+            {
+                "运行中" => item.ProcessRunning,
+                "已停止" => !item.ProcessRunning && item.State is RuntimeState.Configured or RuntimeState.Stopped,
+                "异常 / 未知" => item.State is RuntimeState.Error or RuntimeState.Stale or RuntimeState.Unknown || item.ProcessRunning && !item.Ready,
+                _ => true
+            })).ToArray();
+        var identities = items.Select(item => item.Identity).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        for (var i = VisibleConnections.Count - 1; i >= 0; i--)
+            if (!identities.Contains(VisibleConnections[i].Identity)) VisibleConnections.RemoveAt(i);
+        for (var i = 0; i < items.Length; i++)
+        {
+            var current = VisibleConnections.FirstOrDefault(item => item.Identity == items[i].Identity);
+            if (current is null) VisibleConnections.Insert(i, items[i]);
+            else
+            {
+                var index = VisibleConnections.IndexOf(current);
+                if (index != i) VisibleConnections.Move(index, i);
+                if (current != items[i]) VisibleConnections[i] = items[i];
+            }
+        }
+        SelectedConnection = VisibleConnections.FirstOrDefault(item => item.Identity == selected) ?? VisibleConnections.FirstOrDefault();
     }
 
     private void MergeConnections(IReadOnlyList<TunnelConnection> updated)

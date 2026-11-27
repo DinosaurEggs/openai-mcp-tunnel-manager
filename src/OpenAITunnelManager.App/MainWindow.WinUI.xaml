@@ -206,8 +206,18 @@
                                         <RowDefinition Height="10" />
                                         <RowDefinition Height="*" />
                                     </Grid.RowDefinitions>
-                                    <TextBlock Text="配置列表" FontSize="16" FontWeight="SemiBold" />
-                                    <ListView x:Name="ConnectionsList" Grid.Row="2" ItemsSource="{Binding Connections}" SelectedItem="{Binding SelectedConnection, Mode=TwoWay}" SelectionMode="Single" SelectionChanged="ConnectionsList_SelectionChanged">
+                                    <StackPanel Spacing="8">
+                                        <TextBlock Text="配置列表" FontSize="16" FontWeight="SemiBold" />
+                                        <TextBox PlaceholderText="搜索名称 / Tunnel ID / Target" Text="{Binding ConnectionSearch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        <ComboBox HorizontalAlignment="Stretch" SelectedValuePath="Content" SelectedValue="{Binding ConnectionFilter, Mode=TwoWay}">
+                                            <ComboBoxItem Content="全部" IsSelected="True" />
+                                            <ComboBoxItem Content="运行中" />
+                                            <ComboBoxItem Content="已停止" />
+                                            <ComboBoxItem Content="异常 / 未知" />
+                                        </ComboBox>
+                                        <Button Content="批量操作" Click="BatchConnections_Click" HorizontalAlignment="Stretch" />
+                                    </StackPanel>
+                                    <ListView x:Name="ConnectionsList" Grid.Row="2" ItemsSource="{Binding VisibleConnections}" SelectedItem="{Binding SelectedConnection, Mode=TwoWay}" SelectionMode="Single" SelectionChanged="ConnectionsList_SelectionChanged">
                                         <ListView.ItemTemplate>
                                             <DataTemplate>
                                                 <Grid Padding="8,10">
@@ -261,6 +271,7 @@
                                         <Button Content="更多" IsEnabled="{Binding CanDeleteSelected}">
                                             <Button.Flyout>
                                                 <MenuFlyout>
+                                                    <MenuFlyoutItem Text="创建 Native Runtime" Click="CreateNativeRuntime_Click" />
                                                     <MenuFlyoutItem Text="本机偏好 / 密钥" Click="EditPreference_Click" />
                                                     <MenuFlyoutItem Text="打开 Admin UI" IsEnabled="{Binding SelectedConnection.CanOpenAdminUi}" Click="OpenAdminUi_Click" />
                                                     <MenuFlyoutItem Text="打开配置位置" IsEnabled="{Binding CanOpenConfigSelected}" Click="OpenConfigLocation_Click" />
