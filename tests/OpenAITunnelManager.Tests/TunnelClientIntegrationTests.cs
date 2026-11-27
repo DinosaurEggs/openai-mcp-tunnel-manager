@@ -89,6 +89,10 @@ public sealed class TunnelClientIntegrationTests : IDisposable
         Assert.Equal(2, items.Count);
         Assert.Equal(new[] { "r1", "r2" }, items.Select(static item => item.RuntimeAlias).Order(StringComparer.Ordinal).ToArray());
         Assert.All(items, static item => Assert.True(item.ProfileListed));
+        await operations.StopAsync(items.Single(item => item.RuntimeAlias == "r1"), token);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => operations.RemoveRuntimeAsync("r1", token));
+        Assert.True(File.Exists(profile.ProfilePath));
+        Assert.Equal(2, (await service.GetConnectionsAsync(token)).Count);
     }
 
     [Fact]
