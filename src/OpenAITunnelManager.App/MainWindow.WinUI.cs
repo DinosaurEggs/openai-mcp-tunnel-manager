@@ -107,7 +107,7 @@ public sealed partial class MainWindow : Window
 
     private async void LogTimer_Tick(DispatcherQueueTimer sender, object args)
     {
-        if (!IsLogTabSelected() || _logRefreshInProgress) return;
+        if (!IsWindowVisible(_hwnd) || ConnectionsPage.Visibility != Visibility.Visible || !IsLogTabSelected() || _logRefreshInProgress) return;
         _logRefreshInProgress = true;
         try
         {
@@ -305,6 +305,10 @@ public sealed partial class MainWindow : Window
             _trayIcon = null;
         }
     }
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool IsWindowVisible(nint hWnd);
 
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
