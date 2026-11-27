@@ -142,7 +142,10 @@ public partial class ConnectionsViewModel : ObservableObject
             var capabilitiesTask = _operations.GetCapabilitiesAsync();
             var itemsTask = _inventory.GetConnectionsAsync();
             await Task.WhenAll(capabilitiesTask, itemsTask);
-            ClientVersion = capabilitiesTask.Result.Version;
+            var capabilities = capabilitiesTask.Result;
+            if (!capabilities.Profiles || !capabilities.Runtimes || !capabilities.Doctor)
+                throw new InvalidOperationException("请选择包含 profiles、runtimes 和 doctor 的完整 tunnel-client");
+            ClientVersion = capabilities.Version;
 
             var statuses = await ReadStatusesAsync(itemsTask.Result, CancellationToken.None);
             Connections.Clear();
@@ -301,6 +304,9 @@ public partial class ConnectionsViewModel : ObservableObject
         IsBusy = true;
         try
         {
+            var currentText = await _operations.ReadProfileTextAsync(item.ProfileName, item.ProfilePath);
+            if (!string.Equals(currentText, original.Text, StringComparison.Ordinal))
+                throw new InvalidOperationException("Profile 已被其他程序修改，请重新打开编辑器");
             await _operations.SaveProfileTextAsync(item.ProfileName, item.ProfilePath, updated);
             await SavePreferenceForItemAsync(item, preference, newSecret, deleteSecret);
             await RefreshAfterOperationAsync(item.Identity, $"Profile 已保存：{item.ProfileName}");
