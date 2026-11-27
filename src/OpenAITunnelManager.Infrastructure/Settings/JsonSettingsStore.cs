@@ -8,6 +8,7 @@ namespace OpenAITunnelManager.Infrastructure.Settings;
 public sealed class JsonSettingsStore : ISettingsStore
 {
     private static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
+    private readonly SemaphoreSlim _saveGate = new(1, 1);
 
     public JsonSettingsStore(string? settingsPath = null)
     {
@@ -44,23 +45,28 @@ public sealed class JsonSettingsStore : ISettingsStore
         ArgumentNullException.ThrowIfNull(settings);
         settings.SchemaVersion = 3;
 
-        var directory = Path.GetDirectoryName(SettingsPath)!;
-        Directory.CreateDirectory(directory);
-
-        var tempPath = SettingsPath + ".tmp";
-        await using (var stream = new FileStream(
-            tempPath,
-            FileMode.Create,
-            FileAccess.Write,
-            FileShare.None,
-            16 * 1024,
-            FileOptions.Asynchronous | FileOptions.WriteThrough))
+        var snapshot = JsonSerializer.SerializeToUtf8Bytes(settings, JsonOptions);
+        await _saveGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        var tempPath = SettingsPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
         {
-            await JsonSerializer.SerializeAsync(stream, settings, JsonOptions, cancellationToken).ConfigureAwait(false);
-            await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+            Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
+            await using (var stream = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write,
+                FileShare.None, 16 * 1024, FileOptions.Asynchronous | FileOptions.WriteThrough))
+            {
+                await stream.WriteAsync(snapshot, cancellationToken).ConfigureAwait(false);
+                await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+            File.Move(tempPath, SettingsPath, overwrite: true);
         }
-
-        File.Move(tempPath, SettingsPath, overwrite: true);
+        finally
+        {
+            try { File.Delete(tempPath); }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+            _saveGate.Release();
+        }
     }
 
     private static (AppSettings Settings, bool Migrated) ParseSettings(JsonElement root)
