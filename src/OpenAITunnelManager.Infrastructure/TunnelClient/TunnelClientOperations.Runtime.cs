@@ -111,10 +111,8 @@ public sealed partial class TunnelClientOperations
         if (items.Any(item => item.HasRuntime && !string.Equals(item.Identity, connection.Identity, StringComparison.OrdinalIgnoreCase) &&
                 AllRuntimePaths(item).Any(path => SamePath(profilePath, path))))
             throw new InvalidOperationException("共享 Profile 不能由 Native Runtime 重新生成，请使用前台运行");
-        using var inventory = await RunJsonAsync(["runtimes", "list", "--json"], cancellationToken);
-        var stateRoot = GetString(inventory.RootElement, "state_root");
         return NativeRuntimeProfileGuard.Validate(await File.ReadAllTextAsync(profilePath, cancellationToken),
-            stateRoot, connection.RuntimeAlias);
+            connection.StateRoot, connection.RuntimeAlias);
     }
 
     private async Task ConnectRuntimeAsync(TunnelConnection connection, string? secret, CancellationToken cancellationToken)

@@ -100,7 +100,7 @@ public sealed partial class TunnelClientOperations : ITunnelClientOperations
             .ToArray();
         if (matches.Length != 1) throw new InvalidOperationException($"无法确认 tunnel-client Profile {name} 的唯一文件，请刷新列表");
         if (!SamePath(matches[0].Path, expectedPath)) throw new InvalidOperationException("Profile 路径已发生变化，请刷新列表");
-        return matches[0].Path;
+        return Path.GetFullPath(matches[0].Path, AppContext.BaseDirectory);
     }
 
     private static string GetString(JsonElement element, params string[] names)
@@ -117,7 +117,7 @@ public sealed partial class TunnelClientOperations : ITunnelClientOperations
 
     private static bool SamePath(string left, string right)
     {
-        try { return string.Equals(Path.GetFullPath(left), Path.GetFullPath(right), StringComparison.OrdinalIgnoreCase); }
+        try { return string.Equals(Path.GetFullPath(left, AppContext.BaseDirectory), Path.GetFullPath(right, AppContext.BaseDirectory), StringComparison.OrdinalIgnoreCase); }
         catch { return false; }
     }
 

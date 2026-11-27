@@ -17,8 +17,9 @@ public sealed class TunnelClientService(TunnelClientProcessRunner runner) : ITun
         using var profilesJson = await RunJsonAsync(["profiles", "list", "--json"], cancellationToken).ConfigureAwait(false);
         using var runtimesJson = await RunJsonAsync(["runtimes", "list", "--json"], cancellationToken).ConfigureAwait(false);
         var stateRoot = GetString(runtimesJson.RootElement, "state_root");
-        if (string.IsNullOrWhiteSpace(stateRoot) || !Path.IsPathFullyQualified(stateRoot))
+        if (string.IsNullOrWhiteSpace(stateRoot))
             throw new InvalidOperationException("runtimes list JSON 缺少有效的 state_root");
+        stateRoot = Path.GetFullPath(stateRoot, AppContext.BaseDirectory);
         var profiles = ParseProfiles(profilesJson.RootElement);
         var profilesByName = profiles.ToDictionary(static p => p.Name, StringComparer.OrdinalIgnoreCase);
         var linkedProfiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -183,11 +184,11 @@ public sealed class TunnelClientService(TunnelClientProcessRunner runner) : ITun
                 healthy,
                 ready,
                 GetString(root, "tunnel_id"),
-                FirstNonEmpty(GetString(root, "profile_path", "profile_file"), GetString(Child(root, "process"), "profile_path"), GetString(root, "config_path")),
+                ResolveReportedPath(FirstNonEmpty(GetString(root, "profile_path", "profile_file"), GetString(Child(root, "process"), "profile_path"), GetString(root, "config_path"))),
                 FirstNonEmpty(GetString(root, "health_url", "health_base_url"), GetString(Child(Child(root, "local"), "effective_health"), "url")),
                 FirstNonEmpty(GetString(root, "health_details_url"), GetString(Child(Child(root, "local"), "effective_health"), "health_details_url")),
                 FirstNonEmpty(GetString(root, "mcp_health_url"), GetString(Child(Child(root, "local"), "effective_health"), "mcp_health_url")),
-                FirstNonEmpty(GetString(Child(root, "process"), "log_path"), GetString(root, "log_path", "log_file"), GetString(Child(Child(root, "local"), "log"), "path")),
+                ResolveReportedPath(FirstNonEmpty(GetString(Child(root, "process"), "log_path"), GetString(root, "log_path", "log_file"), GetString(Child(Child(root, "local"), "log"), "path"))),
                 FindInt32(Child(root, "process"), "pid", "process_id") ?? FindInt32(root, "pid", "process_id"),
                 errorMessage,
                 root.Clone());
@@ -216,7 +217,7 @@ public sealed class TunnelClientService(TunnelClientProcessRunner runner) : ITun
     {
         if (root.ValueKind != JsonValueKind.Array) throw new InvalidOperationException("profiles list JSON 根节点不是数组");
         return root.EnumerateArray().Where(static item => item.ValueKind == JsonValueKind.Object)
-            .Select(item => new ProfileEntry(GetString(item, "name"), GetString(item, "path")))
+            .Select(item => new ProfileEntry(GetString(item, "name"), ResolveReportedPath(GetString(item, "path"))))
             .Where(static item => !string.IsNullOrWhiteSpace(item.Name) && !string.IsNullOrWhiteSpace(item.Path)).ToArray();
     }
 
@@ -228,7 +229,7 @@ public sealed class TunnelClientService(TunnelClientProcessRunner runner) : ITun
             .Select(item => new RuntimeEntry(
                 GetString(item, "alias"),
                 GetString(item, "profile_name"),
-                FirstNonEmpty(GetString(item, "profile_path"), GetString(item, "config_path")),
+                ResolveReportedPath(FirstNonEmpty(GetString(item, "profile_path"), GetString(item, "config_path"))),
                 GetString(item, "tunnel_id"), OwnedPaths(item)))
             .Where(static item => !string.IsNullOrWhiteSpace(item.Alias)).ToArray();
     }
@@ -246,7 +247,9 @@ public sealed class TunnelClientService(TunnelClientProcessRunner runner) : ITun
 
     private static IReadOnlyList<string> OwnedPaths(JsonElement element) =>
         new[] { "config_path", "profile_path", "health_url_file", "log_path" }
-            .Select(key => GetString(element, key)).Where(path => !string.IsNullOrWhiteSpace(path)).ToArray();
+            .Select(key => ResolveReportedPath(GetString(element, key))).Where(path => !string.IsNullOrWhiteSpace(path)).ToArray();
+
+    private static string ResolveReportedPath(string path) => string.IsNullOrWhiteSpace(path) ? string.Empty : Path.GetFullPath(path, AppContext.BaseDirectory);
 
     private static JsonElement Child(JsonElement element, string name) => TryGetProperty(element, name, out var value) ? value : default;
 

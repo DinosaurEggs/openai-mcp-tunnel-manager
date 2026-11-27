@@ -231,7 +231,6 @@ public sealed class ManagedTunnelClientService : IDisposable
 
     public async Task ValidateInstalledVersionAsync(string version, CancellationToken cancellationToken = default)
     {
-        TunnelClientVersionPolicy.RequireSupported(version);
         var text = await ValidateExecutableAsync(GetExecutablePath(version), cancellationToken).ConfigureAwait(false);
         VerifyVersion(text, version);
     }
