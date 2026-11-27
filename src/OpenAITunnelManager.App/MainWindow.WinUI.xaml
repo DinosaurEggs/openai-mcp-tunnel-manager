@@ -209,17 +209,29 @@
                                         <RowDefinition Height="10" />
                                         <RowDefinition Height="*" />
                                     </Grid.RowDefinitions>
-                                    <StackPanel Spacing="8">
-                                        <TextBlock Text="配置列表" FontSize="16" FontWeight="SemiBold" />
-                                        <TextBox PlaceholderText="搜索名称 / Tunnel ID / Target" Text="{Binding ConnectionSearch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                        <ComboBox HorizontalAlignment="Stretch" SelectedValuePath="Content" SelectedValue="{Binding ConnectionFilter, Mode=TwoWay}">
-                                            <ComboBoxItem Content="全部" IsSelected="True" />
-                                            <ComboBoxItem Content="运行中" />
-                                            <ComboBoxItem Content="已停止" />
-                                            <ComboBoxItem Content="异常 / 未知" />
-                                        </ComboBox>
-                                        <Button Content="批量操作" Click="BatchConnections_Click" HorizontalAlignment="Stretch" />
-                                        <Button Content="检查过期 Runtime" Click="CleanupStaleRuntime_Click" HorizontalAlignment="Stretch" />
+                                    <StackPanel Spacing="6">
+                                        <Grid ColumnSpacing="8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="配置列表" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" TextWrapping="Wrap" />
+                                            <ComboBox Grid.Column="1" HorizontalAlignment="Right" SelectedValuePath="Content" SelectedValue="{Binding ConnectionFilter, Mode=TwoWay}">
+                                                <ComboBoxItem Content="全部" IsSelected="True" />
+                                                <ComboBoxItem Content="运行中" />
+                                                <ComboBoxItem Content="已停止" />
+                                                <ComboBoxItem Content="异常 / 未知" />
+                                            </ComboBox>
+                                        </Grid>
+                                        <TextBox PlaceholderText="搜索名称 / Tunnel ID / Target" MinWidth="0" Text="{Binding ConnectionSearch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        <Grid ColumnSpacing="6">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <Button Content="批量操作" Click="BatchConnections_Click" HorizontalAlignment="Stretch" />
+                                            <Button Grid.Column="1" Content="检查过期" ToolTipService.ToolTip="检查过期 Runtime" Click="CleanupStaleRuntime_Click" HorizontalAlignment="Stretch" />
+                                        </Grid>
                                     </StackPanel>
                                     <ListView x:Name="ConnectionsList" Grid.Row="2" ItemsSource="{Binding VisibleConnections}" SelectedItem="{Binding SelectedConnection, Mode=TwoWay}" SelectionMode="Single" SelectionChanged="ConnectionsList_SelectionChanged">
                                         <ListView.ItemTemplate>

@@ -46,6 +46,8 @@
 - [x] 列表选择不再被 Runtime 周期 status 刷新替换对象。
 - [x] 手动“刷新”仍允许重新读取完整 inventory / status。
 
+- 配置列表标题与状态筛选同一行，搜索独占一行，批量操作与过期 Runtime 检查并排，减少头部高度。
+
 ## 日志标签
 
 - [x] 使用 WinUIEdit / Scintilla 原生 `LogConsoleControl`，不依赖 WebView2 / npm / 浏览器前端。
