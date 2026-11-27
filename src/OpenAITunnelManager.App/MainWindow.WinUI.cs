@@ -130,9 +130,11 @@ public sealed partial class MainWindow : Window
         DashboardPage.Visibility = tag == "dashboard" ? Visibility.Visible : Visibility.Collapsed;
         ConnectionsPage.Visibility = tag == "connections" ? Visibility.Visible : Visibility.Collapsed;
         SettingsPage.Visibility = tag == "settings" ? Visibility.Visible : Visibility.Collapsed;
+        RemotePage.Visibility = tag == "remote" ? Visibility.Visible : Visibility.Collapsed;
 
         RequestResponsiveLayout();
         RequestUiPolish();
+        if (_initialized && tag == "remote" && AdminProfileCombo.ItemsSource is null) _ = LoadAdminProfilesAsync();
 
         if (!updateNavigation) return;
 

@@ -38,6 +38,9 @@
                 <NavigationViewItem Content="连接" Tag="connections" IsSelected="True">
                     <NavigationViewItem.Icon><FontIcon Glyph="&#xE71B;" /></NavigationViewItem.Icon>
                 </NavigationViewItem>
+                <NavigationViewItem Content="远端 Tunnel" Tag="remote">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE753;" /></NavigationViewItem.Icon>
+                </NavigationViewItem>
             </NavigationView.MenuItems>
 
             <NavigationView.Content>
@@ -216,6 +219,7 @@
                                             <ComboBoxItem Content="异常 / 未知" />
                                         </ComboBox>
                                         <Button Content="批量操作" Click="BatchConnections_Click" HorizontalAlignment="Stretch" />
+                                        <Button Content="检查过期 Runtime" Click="CleanupStaleRuntime_Click" HorizontalAlignment="Stretch" />
                                     </StackPanel>
                                     <ListView x:Name="ConnectionsList" Grid.Row="2" ItemsSource="{Binding VisibleConnections}" SelectedItem="{Binding SelectedConnection, Mode=TwoWay}" SelectionMode="Single" SelectionChanged="ConnectionsList_SelectionChanged">
                                         <ListView.ItemTemplate>
@@ -484,6 +488,39 @@
                                 </Grid>
                             </Border>
                         </Grid>
+                    </Grid>
+
+                    <Grid x:Name="RemotePage" Visibility="Collapsed">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                            <StackPanel Spacing="12">
+                                <TextBlock Text="远端 Tunnel 管理" Style="{StaticResource TitleTextBlockStyle}" />
+                                <TextBlock Text="通过官方 Admin CLI 管理远端资源。Admin Key 与 Runtime Key 独立，保存的 Admin Profile 仅包含引用。" TextWrapping="Wrap" Opacity="0.7" />
+                                <ComboBox x:Name="AdminProfileCombo" Header="Admin Profile" DisplayMemberPath="Name" HorizontalAlignment="Stretch" SelectionChanged="AdminProfile_SelectionChanged" />
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button Content="刷新配置" Click="RefreshAdminProfiles_Click" />
+                                    <Button Content="新增 / 修改" Click="SaveAdminProfile_Click" />
+                                    <Button Content="设为活动" Click="ActivateAdminProfile_Click" />
+                                    <Button Content="删除配置" Click="DeleteAdminProfile_Click" />
+                                </StackPanel>
+                                <ComboBox x:Name="RemoteScopeType" Header="查询范围" HorizontalAlignment="Stretch" SelectedIndex="0">
+                                    <ComboBoxItem Content="Organization" />
+                                    <ComboBoxItem Content="Workspace" />
+                                    <ComboBoxItem Content="Tenant" />
+                                </ComboBox>
+                                <TextBox x:Name="RemoteScopeId" Header="Scope ID" />
+                                <PasswordBox x:Name="RemoteAdminSecret" Header="本次 Admin Key（可选）" PlaceholderText="留空使用所选 Admin Profile 的环境变量 / 文件引用" />
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button Content="查询 Tunnel" Click="ListRemoteTunnels_Click" />
+                                    <Button Content="创建 Tunnel" Click="CreateRemoteTunnel_Click" />
+                                    <Button Content="刷新详情" Click="GetRemoteTunnel_Click" />
+                                    <Button Content="编辑" Click="UpdateRemoteTunnel_Click" />
+                                    <Button Content="删除 Tunnel" Click="DeleteRemoteTunnel_Click" />
+                                </StackPanel>
+                                <ListView x:Name="RemoteTunnelList" DisplayMemberPath="DisplayName" SelectionMode="Single" MinHeight="100" MaxHeight="280" />
+                                <TextBlock x:Name="RemoteStatusText" TextWrapping="Wrap" />
+                                <TextBox x:Name="RemoteResultText" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="140" />
+                            </StackPanel>
+                        </ScrollViewer>
                     </Grid>
 
                     <Grid x:Name="SettingsPage" Visibility="Collapsed">
